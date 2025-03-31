@@ -1,0 +1,300 @@
+import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:stockflow/utils/colors_utils.dart';
+
+class StockBreakFilteredPage extends StatefulWidget {
+  @override
+  _StockBreakFilteredPageState createState() => _StockBreakFilteredPageState();
+}
+
+class _StockBreakFilteredPageState extends State<StockBreakFilteredPage> {
+  final TextEditingController _nameController = TextEditingController();
+  final TextEditingController _brandController = TextEditingController();
+  final TextEditingController _categoryController = TextEditingController();
+  final TextEditingController _storeNumberController = TextEditingController();
+  String? _selectedPriceRange;
+
+  List<DocumentSnapshot> _filteredProducts = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchUserStoreNumber();
+  }
+
+  Future<void> _fetchUserStoreNumber() async {
+    User? user = FirebaseAuth.instance.currentUser;
+    if (user != null) {
+      DocumentSnapshot userDoc = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
+      if (userDoc.exists) {
+        final storeNumber = userDoc['storeNumber'];
+        setState(() { _storeNumberController.text = storeNumber ?? '';});
+      }
+    }
+  }
+
+  // Função que faz o filtro dos produtos
+  List<DocumentSnapshot> _filterProducts(List<DocumentSnapshot> allProducts) {
+    final name = _nameController.text.toLowerCase();
+    final brand = _brandController.text.toLowerCase();
+    final category = _categoryController.text.toLowerCase();
+    final storeNumber = _storeNumberController.text.toLowerCase();
+
+    double minPrice = 0;
+    double maxPrice = double.infinity;
+
+    if (_selectedPriceRange != null) {
+      if (_selectedPriceRange == '5000+') {
+        minPrice = 5000;
+        maxPrice = double.infinity;
+      } else {
+        final range = _selectedPriceRange!.split('-');
+        minPrice = double.tryParse(range[0]) ?? 0;
+        maxPrice = double.tryParse(range[1]) ?? double.infinity;
+      }
+    }
+
+    return allProducts.where((product) {
+      final data = product.data() as Map<String, dynamic>;
+
+      final productName = (data['name'] ?? "").toString().toLowerCase();
+      final productBrand = (data['brand'] ?? "").toString().toLowerCase();
+      final productCategory = (data['category'] ?? "").toString().toLowerCase();
+      final productStoreNumber = (data['storeNumber'] ?? "").toString().toLowerCase();
+      final productPrice = (data['salePrice'] ?? 0.0) is int
+          ? (data['salePrice'] as int).toDouble()
+          : (data['salePrice'] ?? 0.0) as double;
+      final stockBreak = data['stockBreak'] ?? 0;
+
+      if (stockBreak < 1) return false;
+      if (storeNumber.isNotEmpty && productStoreNumber != storeNumber) {return false;}
+
+      return productName.contains(name) &&
+          productBrand.contains(brand) &&
+          productCategory.contains(category) &&
+          productPrice >= minPrice &&
+          productPrice <= maxPrice;
+    }).toList();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(
+          "Stock Brake Management",
+          style: TextStyle(color: Colors.white),
+        ),
+        backgroundColor: Colors.transparent, // Fundo transparente para a AppBar
+        elevation: 0,
+        flexibleSpace: Container(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              colors: [
+              hexStringToColor("CB2B93"),
+              hexStringToColor("9546C4"),
+              hexStringToColor("5E61F4"),
+
+              ],
+              //begin: Alignment.topLeft, //end: Alignment.bottomRight,
+            ),
+          ),
+        ),
+      ),
+      body: Container(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [
+              hexStringToColor("CB2B93"),
+              hexStringToColor("9546C4"),
+              hexStringToColor("5E61F4"),
+            ],
+          ),
+        ),
+        child: Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: Container(
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.8),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.all(16.0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _buildTextField(_nameController, 'Name'),
+                      _buildTextField(_brandController, 'Brand'),
+                      _buildTextField(_categoryController, 'Category'),
+                      _buildTextField(_storeNumberController, 'Filter by store number', enabled: false),
+                      _buildDropdown(),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+            Expanded(
+              child: StreamBuilder<QuerySnapshot>(
+                stream: FirebaseFirestore.instance.collection('products').snapshots(),
+                builder: (context, snapshot) {
+                  if (snapshot.connectionState == ConnectionState.waiting) {
+                    return Center(child: CircularProgressIndicator());
+                  }
+
+                  if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+                    return Center(child: Text('No products found.'));
+                  }
+
+                  final allProducts = snapshot.data!.docs;
+                  _filteredProducts = _filterProducts(allProducts);
+
+                  return ListView.builder(
+                    itemCount: _filteredProducts.length,
+                    itemBuilder: (context, index) {
+                      final product = _filteredProducts[index];
+                      final data = product.data() as Map<String, dynamic>;
+                      final productId = product.id;
+
+                      return Card(
+                        margin: EdgeInsets.symmetric(vertical: 8, horizontal: 16),
+                        child: ListTile(
+                        title: Text(
+                          data['name'],
+                          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
+                        ),                          subtitle: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text("Brand: ${data['brand'] ?? "Without brand"}"),
+                              Text("Model: ${data['model'] ?? "Without model"}"),
+                              //Text("Sale Price: € ${data['salePrice']?.toStringAsFixed(2) ?? "0.00"}"),
+                              Text("Stock Break: ${data['stockBreak'] ?? 0}"),
+                            ],
+                          ), onTap: () => _showProductDetailsDialog(context, data, productId),
+                        ),
+                      );
+                    },
+                  );
+                },
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTextField(TextEditingController controller, String label, {bool enabled = true}) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8.0),
+      child: TextField(
+        controller: controller,
+        onChanged: (_) {
+          setState(() {}); // Agora o setState é chamado corretamente.
+        },
+        enabled: enabled,
+        decoration: InputDecoration(labelText: label, border: OutlineInputBorder()),
+      ),
+    );
+  }
+
+  Widget _buildDropdown() {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8.0),
+      child: DropdownButton<String>(
+        isExpanded: true,
+        value: _selectedPriceRange,
+        onChanged: (value) {
+          setState(() {
+            _selectedPriceRange = value;
+          });
+        },
+        hint: Text("Select Price Range"),
+        items: [
+          '0-100', '100-200', '200-300', '300-400',
+          '400-500', '500-600', '600-700', '700-800',
+          '800-900', '900-1000', '1000-2000', '2000-3000',
+          '3000-4000', '4000-5000', '5000+'
+        ].map<DropdownMenuItem<String>>((String value) {
+          return DropdownMenuItem<String>(
+            value: value,
+            child: Text(value),
+          );
+        }).toList(),
+      ),
+    );
+  }
+
+  void _showProductDetailsDialog(BuildContext context, Map<String, dynamic> data, String productId) {
+    final TextEditingController quantityController = TextEditingController();
+    
+    showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: Text('Transfer Product'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text("Product Name: ${data['name'] ?? 'N/A'}"),
+              Text("Brand: ${data['brand'] ?? 'N/A'}"),
+              Text("Model: ${data['model'] ?? 'N/A'}"),
+              Text("Stock Break: ${data['stockBreak'] ?? 0}"),
+              Text("Current Stock: ${data['stockCurrent'] ?? 0}"),
+              SizedBox(height: 10),
+              TextField(
+                controller: quantityController,
+                keyboardType: TextInputType.number,
+                decoration: InputDecoration(
+                  labelText: "Quantity to transfer",
+                  border: OutlineInputBorder(),
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: Text('Cancel'),
+            ),
+            ElevatedButton(
+              onPressed: () async {
+                final int transferQuantity = int.tryParse(quantityController.text) ?? 0;
+                final int currentStockBreak = data['stockBreak'] ?? 0;
+                final int currentStockCurrent = data['stockCurrent'] ?? 0;
+
+                if (transferQuantity > 0 && transferQuantity <= currentStockBreak) {
+                  final updatedStockBreak = currentStockBreak - transferQuantity;
+                  final updatedStockCurrent = currentStockCurrent + transferQuantity;
+
+                  await FirebaseFirestore.instance
+                      .collection('products')
+                      .doc(productId)
+                      .update({
+                    'stockBreak': updatedStockBreak,
+                    'stockCurrent': updatedStockCurrent,
+                  });
+
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('Stock updated successfully!')),
+                  );
+
+                  Navigator.of(context).pop();
+                } else {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('Invalid quantity!')),
+                  );
+                }
+              }, child: Text('Transfer'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+}

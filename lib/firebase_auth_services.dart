@@ -1,0 +1,40 @@
+import 'package:firebase_auth/firebase_auth.dart';
+
+class FirebaseAuthService {
+  final FirebaseAuth _auth = FirebaseAuth.instance;
+
+  // Método para registrar um novo utilizador
+  Future<User?> signUpWithEmailAndPassword(String email, String password) async {
+    try {
+      // Cria um novo utilizador com email e senha
+      UserCredential userCredential = await _auth.createUserWithEmailAndPassword(
+        email: email,
+        password: password,
+      );
+
+      // Envia o email de verificação
+      await userCredential.user?.sendEmailVerification();
+
+      return userCredential.user; // Retorna o utilizador criado
+    } catch (e) {
+      print(e); // Mostra o erro no console
+      return null; // Retorna null em caso de erro
+    }
+  }
+
+  // Método para fazer login com email e senha
+  Future<User?> signInWithEmailAndPassword(String email, String password) async {
+    try {
+      UserCredential userCredential = await _auth.signInWithEmailAndPassword(
+        email: email,
+        password: password,
+      );
+
+      return userCredential.user; // Retorna o utilizador logado
+    } catch (e) {
+      print(e); // Mostra o erro no console
+      return null; // Retorna null em caso de erro
+    }
+  }
+  registerWithEmailAndPassword(String trim, String trim2) {}
+}

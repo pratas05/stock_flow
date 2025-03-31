@@ -1,0 +1,705 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/material.dart';
+import 'package:stockflow/utils/colors_utils.dart';
+import 'package:intl/intl.dart';
+
+class AccountSettings extends StatefulWidget {
+  const AccountSettings({super.key});
+
+  @override
+  State<AccountSettings> createState() => _AccountSettingsState();
+}
+
+class _AccountSettingsState extends State<AccountSettings> {
+  String? _nickname;
+  String? _storeNumber; // Variável para armazenar o store number
+
+  @override
+  void initState() {
+    super.initState();
+    _loadUserData(); // Carrega o nickname e store number ao iniciar
+  }
+
+  Future<void> _loadUserData() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user != null) {
+      final snapshot = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
+      setState(() {
+        _nickname = snapshot.data()?['name'];
+        _storeNumber = snapshot.data()?['storeNumber']; // Carrega o store number
+      });
+      if (_nickname == null || _storeNumber == null) {  // Verifica se o utilizador é novo (sem nome ou número de loja)
+        setState(() {
+        });
+        _showSetupDialog(context); 
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: Container(
+        width: double.infinity, height: double.infinity,
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            colors: [
+              hexStringToColor("CB2B93"),
+              hexStringToColor("9546C4"),
+              hexStringToColor("5E61F4"),
+            ],
+            begin: Alignment.topCenter, end: Alignment.bottomCenter,
+          ),
+        ),
+        child: Stack(
+          children: [
+            Positioned(
+              right: 0, top: 0, bottom: 0,
+              child: Container(
+                width: MediaQuery.of(context).size.width * 0.85, padding: EdgeInsets.all(16.0),
+                child: SingleChildScrollView(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      SizedBox(height: 50),
+                      ...[
+                        _buildQuickActionButton(
+                          "See Store Number", Icons.store, "Have access to your store number.", 
+                          onPressed: () => _showEditStoreNumberDialog(context)
+                        ),
+                        _buildQuickActionButton(
+                          "Edit Account Information", Icons.person, "Update your personal information.",
+                          onPressed: () => _showEditPersonalInfoDialog(context)
+                        ),
+                        _buildQuickActionButton(
+                          "Change Password", Icons.lock, "Change your credentials, via email",
+                          onPressed: () => _showChangePasswordDialog(context)
+                        ),
+                        _buildQuickActionButton(
+                          "Activity History", Icons.notifications, "View employee schedules",
+                          onPressed: () => showActivityHistory(context)
+                        ),
+                        _buildQuickActionButton(
+                          "Privacy Policy", Icons.privacy_tip, "Adjust your privacy settings.",
+                          onPressed: () => showTermsAndConditions(context)
+                        ),
+                        _buildQuickActionButton(
+                          "Admin Schedule", Icons.lock_clock, "Register your schedule",
+                          onPressed: () => adminSchedule(context)
+                        ),
+                      ].expand((widget) => [widget, SizedBox(height: 20)]).toList(),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // Função para exibir o pop-up de configuração de loja e nome para usuários novos
+  Future<void> _showSetupDialog(BuildContext context) async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+
+    final userDocRef = FirebaseFirestore.instance.collection('users').doc(user.uid);
+    if ((await userDocRef.get()).exists) return;
+
+    final storeNumberController = TextEditingController();
+    final nicknameController = TextEditingController();
+
+    await showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        title: Text("Complete Your Setup"),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text("Enter store number and username."),
+            SizedBox(height: 8),
+            TextField(controller: storeNumberController, keyboardType: TextInputType.number, decoration: InputDecoration(labelText: "Store Number")),
+            SizedBox(height: 8),
+            TextField(controller: nicknameController, decoration: InputDecoration(labelText: "Username")),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: Text("Cancel")),
+          TextButton(
+            onPressed: () async {
+              final storeNumber = storeNumberController.text.trim();
+              final nickname = nicknameController.text.trim();
+              if (storeNumber.isEmpty || nickname.isEmpty) {
+                ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Please fill out all fields!")));
+                return;
+              }
+              try {
+                await userDocRef.set({
+                  'storeNumber': storeNumber,
+                  'name': nickname,
+                  'userEmail': user.email,
+                  'adminPermission': storeNumber,
+                  'userId': user.uid,
+                });
+                setState(() {
+                  _storeNumber = storeNumber;
+                  _nickname = nickname;
+                });
+                Navigator.pop(context);
+                ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Setup completed successfully!")));
+              } catch (e) {
+                Navigator.pop(context);
+                ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Error: ${e.toString()}")));
+              }
+            },
+            child: Text("Save", style: TextStyle(fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildQuickActionButton(String title, IconData icon, String description, {required VoidCallback onPressed}) {
+    bool _isHovered = false;
+
+    return StatefulBuilder(
+      builder: (context, setState) {
+        return MouseRegion(
+          onEnter: (_) {
+            setState(() {
+              _isHovered = true; // Ativa o efeito de hover
+            });
+          },
+          onExit: (_) {
+            setState(() {
+              _isHovered = false; // Desativa o efeito de hover
+            });
+          },
+          cursor: SystemMouseCursors.click,
+          child: GestureDetector(
+            onTap: onPressed,
+            child: AnimatedContainer(
+              duration: Duration(milliseconds: 300),
+              width: MediaQuery.of(context).size.width * 0.4,
+              padding: EdgeInsets.symmetric(horizontal: 16, vertical: 20),
+              margin: EdgeInsets.symmetric(vertical: 8),
+              decoration: BoxDecoration(
+                color: _isHovered ? Colors.blue[100] : Colors.white,
+                borderRadius: BorderRadius.circular(12),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(_isHovered ? 0.3 : 0.2), spreadRadius: 2,
+                    blurRadius: 10, offset: Offset(0, _isHovered ? 8 : 4),
+                  ),
+                ],
+                border: Border.all(color: _isHovered ? Colors.black : Colors.transparent, width: 2),
+              ),
+              child: Row(
+                children: [
+                  AnimatedScale(
+                    scale: _isHovered ? 1.5 : 1.0, duration: Duration(milliseconds: 300),
+                    child: Icon(icon, color: _isHovered ? Colors.black : Colors.black, size: 32),
+                  ),
+                  SizedBox(width: 16),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        AnimatedOpacity(
+                          opacity: _isHovered ? 1.0 : 0.8, duration: Duration(milliseconds: 300),
+                          child: Text(
+                            title, style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.black),
+                          ),
+                        ),
+                        SizedBox(height: 4),
+                        AnimatedOpacity(
+                          opacity: _isHovered ? 1.0 : 0.6, duration: Duration(milliseconds: 300),
+                          child: Text(description, style: TextStyle(fontSize: 14, color: Colors.black.withOpacity(0.7))),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+  
+  Future<void> _showEditStoreNumberDialog(BuildContext context) async {
+    final user = FirebaseAuth.instance.currentUser;
+    TextEditingController storeNumberController = TextEditingController();
+    String? currentStoreNumber;
+
+    if (user != null) {  // Obtenha o número da loja existente no Firestore
+      final snapshot = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
+      currentStoreNumber = snapshot.data()?['storeNumber'];
+
+      if (currentStoreNumber != null) {
+        storeNumberController.text = currentStoreNumber; // Preenche o valor atual no campo
+      }
+    }
+    await showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: Text("Store Number"),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (user != null) Text("Email: ${user.email ?? 'N/A'}"),
+              SizedBox(height: 8.0),
+              TextFormField( // Exibe o número da loja de forma não editável
+                controller: storeNumberController..text = _storeNumber ?? '', // Preenche o campo com o número da loja
+                enabled: false, // Impede a edição do número da loja
+                decoration: InputDecoration(labelText: "Store Number"), style: TextStyle(color: Colors.black),
+              ),
+            ],
+          ),
+          actions: [TextButton(onPressed: () => Navigator.of(context).pop(), child: Text("Close"))],
+        );
+      },
+    );
+  }
+
+  Future<void> _showEditPersonalInfoDialog(BuildContext context) async {
+    final user = FirebaseAuth.instance.currentUser;  
+    if (user == null) return; // Garantir que o usuário esteja autenticado
+    
+    TextEditingController nicknameController = TextEditingController(text: _nickname);   // Inicializa o controlador com o nome atual, se disponível
+    String? errorMessage;
+
+    await showDialog(
+      context: context,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setState) {
+            return AlertDialog(
+              title: Text("Edit Personal Information"),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // Exibe o e-mail do administrador
+                  Text("Email: ${user.email ?? 'N/A'}"),
+                  SizedBox(height: 8.0), // Espaçamento entre os campos
+
+                  Text("Current Name: $_nickname", style: TextStyle(fontWeight: FontWeight.bold)), // Exibe o nome atual do admin
+                  SizedBox(height: 8.0), // Espaçamento entre os campos
+
+                  TextField( // Campo para editar o nickname
+                    controller: nicknameController,
+                    decoration: InputDecoration(
+                      labelText: "New Name", errorText: errorMessage,
+                    ),
+                  ),
+                ],
+              ),
+              actions: [
+                TextButton(onPressed: () => Navigator.of(context).pop(), child: Text("Cancel")),
+                TextButton(
+                  onPressed: () async {
+                    String nickname = nicknameController.text.trim();
+                    if (nickname.isEmpty || nickname == _nickname) {
+                      setState(() => errorMessage = nickname.isEmpty ? "Name cannot be empty." : "Name must be different.");
+                      return;
+                    }
+                    await FirebaseFirestore.instance // Salva o novo nickname no Firestore
+                        .collection('users')
+                        .doc(user.uid)
+                        .set({
+                          'name': nickname,
+                          'userId': user.uid,
+                          'userEmail': user.email,
+                        }, SetOptions(merge: true));
+                    setState(() { // Atualiza o estado local do _nickname
+                      _nickname = nickname; // Atualiza o nome na UI
+                    });
+                  },
+                  child: Text("Save", style: TextStyle(fontWeight: FontWeight.bold)),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  void _showChangePasswordDialog(BuildContext context) async {
+  final user = FirebaseAuth.instance.currentUser;
+  if (user == null) return;
+
+  final confirm = await showDialog<bool>(
+    context: context,
+    builder: (context) => AlertDialog(
+      title: Text("Confirm Password Reset"),
+      content: Text("Are you sure you want to reset your password?"),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(context, false), child: Text("No")),
+        TextButton(
+          onPressed: () => Navigator.pop(context, true),
+          child: Text('Yes, Send Email', style: TextStyle(fontWeight: FontWeight.bold)),
+        ),
+      ],
+    ),
+  );
+
+    if (confirm == true) {
+      await user.sendEmailVerification();
+      showDialog(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: Text("Password Reset Email Sent"),
+          content: Text.rich(
+            TextSpan(
+              children: [
+                TextSpan(text: "Check your email "),
+                TextSpan(text: user.email, style: TextStyle(fontWeight: FontWeight.bold),),
+                TextSpan(text: " to reset your password."),
+              ],
+            ),
+          ),
+          actions: [TextButton(onPressed: () => Navigator.pop(context), child: Text("OK"))],
+        ),
+      );
+    }
+  }
+
+  Future<void> showActivityHistory(BuildContext context) async {
+    final Map<DateTime, Map<String, List<Map<String, dynamic>>>> userActivityMap = {};
+    final String? currentUserId = FirebaseAuth.instance.currentUser?.uid;
+
+    if (currentUserId == null) {
+      showDialog(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: Text('Erro'),
+          content: Text('Você precisa estar autenticado para ver o histórico de atividades.'),
+          actions: [TextButton(onPressed: () => Navigator.of(context).pop(), child: Text('Close'))],
+        ),
+      ); return;
+    }
+
+    final activityRef = FirebaseFirestore.instance.collection('user_activity');
+    final userRef = FirebaseFirestore.instance.collection('users');
+    Map<String, String> userNameCache = {};
+
+    try {
+      final snapshot = await activityRef.get();
+      final limitDate = DateTime.now().subtract(Duration(days: 30));
+
+      for (var doc in snapshot.docs) {
+        final date = (doc['timestamp'] as Timestamp).toDate();
+        final dateKey = DateTime(date.year, date.month, date.day);
+        final userId = doc['userId'];
+
+        if (dateKey.isAfter(limitDate)) {
+          userActivityMap.putIfAbsent(dateKey, () => {});
+          userNameCache[userId] ??= (await userRef.doc(userId).get()).data()?['name'] ?? 'Nome não encontrado';
+          userActivityMap[dateKey]!.putIfAbsent(userId, () => []).add({'action': doc['action'], 'timestamp': date, 'name': userNameCache[userId]!});
+        }
+      }
+    } catch (e) {
+      print("Erro ao buscar o histórico de atividades: $e");
+    }
+
+    if (userActivityMap.isEmpty) {
+      showDialog(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: Text('Histórico de Atividades'),
+          content: Text('Nenhuma atividade encontrada nos últimos 30 dias.'),
+          actions: [TextButton(onPressed: () => Navigator.of(context).pop(), child: Text('Fechar'))],
+        ),
+      );
+      return;
+    }
+
+    final sortedDates = userActivityMap.keys.toList()..sort((a, b) => b.compareTo(a));
+    List<List<DateTime>> dateGroups = [for (int i = 0; i < sortedDates.length; i += 7) sortedDates.sublist(i, (i + 7).clamp(0, sortedDates.length))];
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('Activity History'),
+        content: Container(
+          width: double.maxFinite,
+          child: ListView.builder(
+            shrinkWrap: true,
+            itemCount: dateGroups.length,
+            itemBuilder: (context, groupIndex) => Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: dateGroups[groupIndex]
+                      .map((date) => Container(
+                            padding: EdgeInsets.symmetric(horizontal: 16.0), width: 120,
+                            child: Text(DateFormat('dd/MM/yyyy').format(date), style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                          ))
+                      .toList(),
+                ),
+                SizedBox(height: 8),
+                Row(
+                  children: dateGroups[groupIndex]
+                      .map((date) => Container(
+                            padding: EdgeInsets.symmetric(horizontal: 16.0), width: 120,
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: userActivityMap[date]!.entries.expand((entry) => [
+                                Text('User: ${entry.value[0]['name']}', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
+                                ...entry.value.map((activity) => Padding(
+                                      padding: EdgeInsets.only(top: 4.0),
+                                      child: Text('${activity['action']} - ${DateFormat('HH:mm').format(activity['timestamp'])}', style: TextStyle(fontSize: 12)),
+                                    ))
+                              ]).toList(),
+                            ),
+                          ))
+                      .toList(),
+                ),
+                SizedBox(height: 16),
+              ],
+            ),
+          ),
+        ),
+        actions: [TextButton(onPressed: () => Navigator.of(context).pop(), child: Text('Fechar'))],
+      ),
+    );
+  }
+
+  void showTermsAndConditions(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: Text("Terms and Conditions"),
+          content: SingleChildScrollView(
+            child: Column(
+              children: [
+                Text(
+                  '''
+  Privacy Policy
+    Last updated: November 4, 2024
+
+    This Privacy Policy describes Our policies and procedures on the collection, use, and disclosure of Your information when You use the Service and tells You about Your privacy rights and how the law protects You.
+    We use Your Personal data to provide and improve the Service. By using the Service, You agree to the collection and use of information in accordance with this Privacy Policy.
+
+    Additional Privacy Compliance and Regulations
+    Our Privacy Policy also covers the following compliance regulations and considerations:
+
+    Google Analytics and Tracking
+    Yes, we use Google Analytics and other related tools to monitor and analyze our website traffic, understand user behavior, and improve our services.
+
+    Email Communications
+    Yes, we may send emails to users, and users can opt in to receive emails from us for updates, special offers, and other service-related information.
+
+    CCPA + CPRA Compliance
+    This Privacy Policy has been updated to include requirements from the California Consumer Privacy Act (CCPA), amended by the California Privacy Rights Act (CPRA), which apply to websites, apps, and businesses with users from California, USA. We comply with user rights for California residents, including access, deletion, and opting out of data sales.
+
+    GDPR Compliance
+    We comply with the General Data Protection Regulation (GDPR) for users from the European Union (EU) and European Economic Area (EEA). Our users have rights including access, correction, deletion, and data portability.
+
+    CalOPPA Compliance
+    We comply with the California Online Privacy Protection Act (CalOPPA), which applies to websites, apps, and businesses in the US or with users from California, USA. This policy includes disclosure about the types of personal information collected and how it is used, as required under CalOPPA.
+
+    COPPA Compliance
+    We comply with the Children’s Online Privacy Protection Act (COPPA) in the United States. Our services are not directed to children under the age of 13, and we do not knowingly collect personal information from them. If we become aware of any data collected from children, we take steps to delete it.
+
+    Interpretation and Definitions
+    Interpretation
+    The words of which the initial letter is capitalized have meanings defined under the following conditions. The following definitions shall have the same meaning regardless of whether they appear in singular or in plural.
+
+    Definitions
+    For the purposes of this Privacy Policy:
+    • Account means a unique account created for You to access our Service or parts of our Service.
+    • Affiliate means an entity that controls, is controlled by or is under common control with a party, where "control" means ownership of 50% or more of the shares, equity interest, or other securities entitled to vote for election of directors or other managing authority.
+    • Application refers to stockflow, the software program provided by the Company.
+    • Company (referred to as either "the Company", "We", "Us" or "Our" in this Agreement) refers to stockflow.
+    • Country refers to: Portugal
+    • Device means any device that can access the Service such as a computer, a cellphone, or a digital tablet.
+    • Personal Data is any information that relates to an identified or identifiable individual.
+    • Service refers to the Application.
+    • Service Provider means any natural or legal person who processes the data on behalf of the Company. It refers to third-party companies or individuals employed by the Company to facilitate the Service, to provide the Service on behalf of the Company, to perform services related to the Service, or to assist the Company in analyzing how the Service is used.
+    • Usage Data refers to data collected automatically, either generated by the use of the Service or from the Service infrastructure itself (for example, the duration of a page visit).
+    • You means the individual accessing or using the Service, or the company, or other legal entity on behalf of which such individual is accessing or using the Service, as applicable.
+
+    Collecting and Using Your Personal Data
+    Types of Data Collected
+    Personal Data
+    While using Our Service, We may ask You to provide Us with certain personally identifiable information that can be used to contact or identify You. Personally identifiable information may include, but is not limited to:
+    • Email address
+    • First name and last name
+    • Address, State, Province, ZIP/Postal code, City
+    • Usage Data
+
+    Usage Data
+    Usage Data is collected automatically when using the Service. Usage Data may include information such as Your Device's Internet Protocol address (e.g. IP address), browser type, browser version, the pages of our Service that You visit, the time and date of Your visit, the time spent on those pages, unique device identifiers and other diagnostic data.
+
+    Information Collected while Using the Application
+    While using Our Application, in order to provide features of Our Application, We may collect, with Your prior permission:
+    • Pictures and other information from your Device's camera and photo library.
+    We use this information to provide features of Our Service, to improve and customize Our Service. The information may be uploaded to the Company's servers and/or a Service Provider's server or it may be simply stored on Your device.
+    You can enable or disable access to this information at any time, through Your Device settings.
+
+    Use of Your Personal Data
+    The Company may use Personal Data for the following purposes:
+    • To provide and maintain our Service, including to monitor the usage of our Service.
+    • To manage Your Account: to manage Your registration as a user of the Service. The Personal Data You provide can give You access to different functionalities of the Service that are available to You as a registered user.
+    • For the performance of a contract: the development, compliance, and undertaking of the purchase contract for the products, items, or services You have purchased or of any other contract with Us through the Service.
+    • To contact You: To contact You by email, telephone calls, SMS, or other equivalent forms of electronic communication, such as a mobile application's push notifications regarding updates or informative communications related to the functionalities, products, or contracted services, including security updates.
+    • To provide You with news, special offers, and general information about other goods, services, and events which we offer that are similar to those that you have already purchased or enquired about unless You have opted not to receive such information.
+    • To manage Your requests: To attend and manage Your requests to Us.
+    • For business transfers: We may use Your information to evaluate or conduct a merger, divestiture, restructuring, reorganization, dissolution, or other sale or transfer of some or all of Our assets, where Personal Data held by Us about our Service users is among the assets transferred.
+    • For other purposes: We may use Your information for other purposes, such as data analysis, identifying usage trends, determining the effectiveness of our promotional campaigns, and evaluating and improving our Service, products, services, marketing, and user experience.
+
+    Retention of Your Personal Data
+    The Company will retain Your Personal Data only for as long as is necessary for the purposes set out in this Privacy Policy. We will retain and use Your Personal Data to comply with our legal obligations, resolve disputes, and enforce our agreements and policies.
+
+    Transfer of Your Personal Data
+    Your information, including Personal Data, may be transferred to and maintained on computers located outside of Your jurisdiction where data protection laws may differ. Your consent to this Privacy Policy followed by Your submission of such information represents Your agreement to that transfer.
+
+    Delete Your Personal Data
+    You have the right to delete or request deletion of Your Personal Data collected by Us. You can delete or update information through your Account settings or by contacting Us.
+
+    Disclosure of Your Personal Data
+    Business Transactions
+    If the Company is involved in a merger, acquisition, or asset sale, Your Personal Data may be transferred.
+
+    Law Enforcement
+    We may disclose Your Personal Data if required by law or in response to valid requests by public authorities.
+
+    Security of Your Personal Data
+    We use commercially acceptable means to protect Your Personal Data, but no method is 100% secure.
+
+    Children's Privacy
+    Our Service does not address anyone under the age of 13, and we do not knowingly collect personal identifiable information from them.
+
+    Changes to This Privacy Policy
+    We may update Our Privacy Policy from time to time. You are advised to review this Privacy Policy periodically.
+
+    Contact Us
+    If you have any questions about this Privacy Policy, You can contact us at helpstockflow@gmail.com
+                  '''
+                ),
+              ],
+            ),
+          ),
+          actions: <Widget>[
+            TextButton(
+              child: Text("Close"),
+              onPressed: () {Navigator.of(context).pop();},
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Future<void> adminSchedule(BuildContext context) async {
+    final String? adminId = FirebaseAuth.instance.currentUser?.uid;
+
+    if (adminId == null) {
+      _showDialog(
+        context,
+        'Erro', 'Você precisa estar autenticado para registrar o horário.',);
+      return;
+    }
+    showDialog(   // Usa o rootNavigator para evitar contexto inválido
+      context: Navigator.of(context, rootNavigator: true).context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: Text('Mark your own schedule'),
+          content: Text('Choose an action:'),
+          actions: [
+            TextButton(
+              onPressed: () async {
+                Navigator.of(context).pop(); await _registerActivity(adminId, 'Entry Marked', context);
+              },
+              child: Text(
+                'Mark Entry', style: TextStyle(fontWeight: FontWeight.bold)),
+            ),
+            TextButton(
+              onPressed: () async {
+                Navigator.of(context).pop(); // Fecha o diálogo
+                await _registerActivity(adminId, 'Exit Marked', context);
+              },
+              child: Text('Mark Exit', style: TextStyle(fontWeight: FontWeight.bold)),
+            ),
+            TextButton(
+              onPressed: () async {
+                Navigator.of(context).pop(); // Fecha o diálogo
+              }, child: Text("Close"),  
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Future<void> _registerActivity(String adminId, String action, BuildContext parentContext) async {
+    final CollectionReference activityRef = FirebaseFirestore.instance.collection('user_activity');
+    DateTime now = DateTime.now(); // Obtém a data de hoje
+    DateTime startOfDay = DateTime(now.year, now.month, now.day);
+    DateTime endOfDay = DateTime(now.year, now.month, now.day, 23, 59, 59);
+
+    try { // Verifica se já existe um registro do mesmo tipo para hoje
+      QuerySnapshot existingActivity = await activityRef
+          .where('userId', isEqualTo: adminId)
+          .where('timestamp', isGreaterThanOrEqualTo: Timestamp.fromDate(startOfDay))
+          .where('timestamp', isLessThanOrEqualTo: Timestamp.fromDate(endOfDay))
+          .orderBy('userId') // Deve estar em conformidade com o índice
+          .orderBy('timestamp', descending: true) // Índice exige ordem decrescente
+          .get();
+
+      // Filtrar os resultados pela ação
+      bool actionAlreadyExists = existingActivity.docs.any((doc) => doc['action'] == action);
+
+      if (actionAlreadyExists) {
+        if (parentContext.mounted) { // Exibe o alerta se a ação já foi registrada hoje
+          _showDialog(
+            parentContext,
+            'Error', 'Action "$action" already marked today',
+          );
+        } return;
+      }
+
+      await activityRef.add({  // Se não há registro, cria um novo
+        'userId': adminId,
+        'action': action,
+        'timestamp': Timestamp.now(),
+      });
+
+      if (parentContext.mounted) {
+        _showDialog(
+          parentContext, 'Success', 'Horário "$action" registrado com sucesso.',
+        );
+      }
+    } catch (e) {
+      print("Erro ao registrar o horário: $e"); // Em caso de erro, exibe um alerta
+      if (parentContext.mounted) {
+        _showDialog(
+          parentContext,
+          'Erro', 'Ocorreu um erro ao registrar o horário.',
+        );
+      }
+    }
+  }
+
+  void _showDialog(BuildContext context, String title, String content) {
+    showDialog(
+      context: Navigator.of(context, rootNavigator: true).context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: Text(title), content: Text(content),
+          actions: [
+            TextButton(onPressed: () => Navigator.of(context).pop(), child: Text('Close')),
+          ],
+        );
+      },
+    );
+  }
+}

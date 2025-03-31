@@ -1,0 +1,349 @@
+import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:stockflow/utils/colors_utils.dart';
+
+class FinanceAndHumanResourcesPage extends StatefulWidget {
+  const FinanceAndHumanResourcesPage({Key? key}) : super(key: key);
+
+  @override
+  _FinanceAndHumanResourcesPageState createState() =>
+      _FinanceAndHumanResourcesPageState();
+}
+
+class _FinanceAndHumanResourcesPageState
+    extends State<FinanceAndHumanResourcesPage> with SingleTickerProviderStateMixin {
+  late Future<String?> _storeNumberFuture;
+  late TabController _tabController;
+
+  Future<String?> _getUserStoreNumber() async {
+    try {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) {
+        throw Exception("Usuário não autenticado.");
+      }
+
+      final userDoc = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .get();
+
+      if (!userDoc.exists) {
+        throw Exception("Documento do usuário não encontrado.");
+      }
+
+      final storeNumber = userDoc.data()?['storeNumber'] as String?;
+      if (storeNumber == null) {
+        throw Exception("Número da loja não encontrado.");
+      }
+
+      return storeNumber;
+    } catch (e) {
+      debugPrint("Error fetching user storeNumber: $e");
+      return null;
+    }
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _storeNumberFuture = _getUserStoreNumber();
+    _tabController = TabController(length: 2, vsync: this);
+  }
+
+  Future<void> _toggleAdminPermission(String userId, bool currentPermission) async {
+    try {
+      final currentUser = FirebaseAuth.instance.currentUser;
+      if (currentUser == null) {
+        throw Exception("User not authenticated");
+      }
+
+      final adminDoc = await FirebaseFirestore.instance.collection('users').doc(currentUser.uid).get();
+      if (!adminDoc.exists) {
+        throw Exception("Admin document not found");
+      }
+
+      final adminStoreNumber = adminDoc.data()?['storeNumber'];
+
+      if (adminStoreNumber == null || adminStoreNumber.isEmpty) {
+        throw Exception("Admin storeNumber is missing");
+      }
+
+      // Atualiza o campo adminPermission do usuário
+      await FirebaseFirestore.instance.collection('users').doc(userId).update({
+        'adminPermission': currentPermission ? "" : adminStoreNumber,  // Atualiza adminPermission
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(currentPermission
+              ? 'Admin permission removed!'
+              : 'Admin permission granted!'),
+        ),
+      );
+    } catch (e) {
+      debugPrint("Error updating admin permission: $e");
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Error updating admin permissions.')),
+      );
+    }
+  }
+
+Future<Map<String, String>> _getVatValues(String storeNumber) async {
+  try {
+    final ivaDoc = await FirebaseFirestore.instance
+        .collection('iva')
+        .doc(storeNumber)
+        .get();
+
+    if (ivaDoc.exists) {
+      return {
+        'VAT1': ivaDoc.data()?['VAT1']?.toString() ?? '0',
+        'VAT2': ivaDoc.data()?['VAT2']?.toString() ?? '0',
+        'VAT3': ivaDoc.data()?['VAT3']?.toString() ?? '0',
+        'VAT4': ivaDoc.data()?['VAT4']?.toString() ?? '0',
+      };
+    } else {
+      return {'VAT1': '0', 'VAT2': '0', 'VAT3': '0', 'VAT4': '0'};
+    }
+  } catch (e) {
+    debugPrint("Error fetching IVA values: $e");
+    return {'VAT1': '0', 'VAT2': '0', 'VAT3': '0', 'VAT4': '0'};
+  }
+}
+
+
+  Future<void> _updateIvaValues(String storeNumber, Map<String, String> newIva) async {
+    try {
+      await FirebaseFirestore.instance
+          .collection('iva')
+          .doc(storeNumber)
+          .set(newIva, SetOptions(merge: true));
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('VAT values updated!')),
+      );
+    } catch (e) {
+      debugPrint("Error updating IVA values: $e");
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Erro ao atualizar valores de IVA.')),
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: Container(
+        width: MediaQuery.of(context).size.width,
+        height: MediaQuery.of(context).size.height,
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            colors: [
+              hexStringToColor("CB2B93"),
+              hexStringToColor("9546C4"),
+              hexStringToColor("5E61F4"),
+            ],
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+          ),
+        ),
+        child: FutureBuilder<String?>( // FutureBuilder to get store number
+          future: _storeNumberFuture,
+          builder: (context, snapshot) {
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return const Center(child: CircularProgressIndicator());
+            }
+
+            if (snapshot.hasError || !snapshot.hasData || snapshot.data == null) {
+              return const Center(
+                child: Text(
+                  'Erro ao buscar o número da loja.',
+                  style: TextStyle(fontSize: 18, color: Colors.black),
+                ),
+              );
+            }
+
+            final storeNumber = snapshot.data!;
+            final currentUserId = FirebaseAuth.instance.currentUser?.uid;
+
+            return Column(
+              children: [
+                TabBar(
+                  controller: _tabController,
+                  tabs: const [
+                    Tab(
+                      child: Text(
+                        'Human Resources',
+                        style: TextStyle(color: Colors.white),
+                      ),
+                    ),
+                    Tab(
+                      child: Text(
+                        'Finance',
+                        style: TextStyle(color: Colors.white),
+                      ),
+                    ),
+                  ],
+                ),
+                Expanded(
+                  child: TabBarView(
+                    controller: _tabController,
+                    children: [
+                      StreamBuilder<QuerySnapshot>(
+                        stream: FirebaseFirestore.instance
+                            .collection('users')
+                            .where('storeNumber', isEqualTo: storeNumber)
+                            .snapshots(),
+                        builder: (context, userSnapshot) {
+                          if (userSnapshot.connectionState == ConnectionState.waiting) {
+                            return const Center(child: CircularProgressIndicator());
+                          }
+
+                          if (userSnapshot.hasError) {
+                            return const Center(
+                              child: Text(
+                                'Erro ao buscar os usuários.',
+                                style: TextStyle(fontSize: 18, color: Colors.black),
+                              ),
+                            );
+                          }
+
+                          final users = userSnapshot.data?.docs ?? [];
+
+                          if (users.isEmpty) {
+                            return const Center(
+                              child: Text(
+                                'Nenhum usuário encontrado para esta loja.',
+                                style: TextStyle(fontSize: 18, color: Colors.black),
+                              ),
+                            );
+                          }
+
+                          return ListView.builder(
+                            itemCount: users.length,
+                            itemBuilder: (context, index) {
+                              final user = users[index].data() as Map<String, dynamic>;
+                              final userName = user['name'] ?? 'Sem nome';
+                              final userEmail = user['userEmail'] ?? 'Sem email';
+                              final userId = user['userId'];
+                              final adminPermission = (user['adminPermission'] ?? '').toString();
+
+                              // Filtra o usuário logado para não aparecer na lista
+                              if (userId == currentUserId) {
+                                return const SizedBox.shrink(); // Não exibe o usuário logado
+                              }
+
+                              final hasAdminPermission = adminPermission.isNotEmpty;
+
+                              return Card(
+                                margin: const EdgeInsets.symmetric(vertical: 8.0, horizontal: 16.0),
+                                elevation: 5,
+                                child: ListTile(
+                                  title: Text(userName),
+                                  subtitle: Text(userEmail),
+                                  trailing: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      const Icon(Icons.account_circle, color: Colors.purple),
+                                      IconButton(
+                                        icon: Icon(
+                                          hasAdminPermission
+                                              ? Icons.remove_circle_outline
+                                              : Icons.admin_panel_settings,
+                                          color: hasAdminPermission ? Colors.red : Colors.blue,
+                                        ),
+                                        onPressed: () {
+                                          if (userId != null) {
+                                            _toggleAdminPermission(userId, hasAdminPermission);
+                                          }
+                                        },
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              );
+                            },
+                          );
+                        },
+                      ),
+                      Padding(
+                        padding: const EdgeInsets.all(16.0),
+                        child: FutureBuilder<Map<String, String>>(
+                          future: _getVatValues(storeNumber),
+                          builder: (context, ivaSnapshot) {
+                            if (ivaSnapshot.connectionState == ConnectionState.waiting) {
+                              return const Center(child: CircularProgressIndicator());
+                            }
+
+                            if (ivaSnapshot.hasError || !ivaSnapshot.hasData) {
+                              return const Center(
+                                child: Text(
+                                  'Erro ao buscar os valores de IVA.',
+                                  style: TextStyle(fontSize: 18, color: Colors.black),
+                                ),
+                              );
+                            }
+
+                            final ivaValues = ivaSnapshot.data!;
+                            final ivaControllers = {
+                              for (var key in ivaValues.keys)
+                                key: TextEditingController(text: ivaValues[key])
+                            };
+
+                            return Column(
+                              children: [
+                                Container(
+                                  padding: const EdgeInsets.all(16.0),
+                                  decoration: BoxDecoration(
+                                    color: Colors.white,
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  child: Column(
+                                    children: [
+                                      for (var key in ivaControllers.keys)
+                                        Padding(
+                                          padding: const EdgeInsets.symmetric(vertical: 4.0),
+                                          child: TextField(
+                                            controller: ivaControllers[key],
+                                            decoration: InputDecoration(
+                                              labelText: key.toUpperCase(),
+                                              border: const OutlineInputBorder(),
+                                            ),
+                                          ),
+                                        ),
+                                      ElevatedButton(
+                                        onPressed: () {
+                                          final updatedIva = {
+                                            for (var key in ivaControllers.keys)
+                                              key: ivaControllers[key]!.text,
+                                          };
+                                          _updateIvaValues(storeNumber, updatedIva);
+                                        },
+                                        child: const Text('Save VAT'),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                const SizedBox(height: 20),
+                                Expanded(
+                                  child: Container(
+                                    width: double.infinity,
+                                    height: MediaQuery.of(context).size.height / 2,
+                                  ),
+                                ),
+                              ],
+                            );
+                          },
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            );
+          },
+        ),
+      ),
+    );
+  }
+}

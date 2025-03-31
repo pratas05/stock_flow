@@ -1,0 +1,46 @@
+{
+  "project_info": {
+    "project_number": "178121884772",
+    "project_id": "stockflow-9debf",
+    "storage_bucket": "stockflow-9debf.appspot.com"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:178121884772:android:067862edf2ca30f8c3cb71",
+        "android_client_info": {
+          "package_name": "com.stockflow.stockflow"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "178121884772-46b4siat7u8q31saob1p1nh25g4hj3gm.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBmllgRZi07eIXPmIeZXwV_2--4cLS_YCw"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "178121884772-46b4siat7u8q31saob1p1nh25g4hj3gm.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "178121884772-gtooq68ghktag0jofkd0hsbqg5chidu4.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.stockflow.stockflow"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

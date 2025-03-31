@@ -1,0 +1,1126 @@
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:stockflow/utils/colors_utils.dart';
+
+// ADICIONAR ICON DE PENDENTE QUANDO O ADMIN ENCOMENDA PRODUTOS. QUANDO CARREGAR EM UPDATE RETIRAR BOTAO DE PENDENTE 
+
+class WarehouseManagementPage extends StatefulWidget {
+  const WarehouseManagementPage({super.key});
+
+  @override
+  _WarehouseManagementPageState createState() =>
+      _WarehouseManagementPageState();
+}
+
+class _WarehouseManagementPageState extends State<WarehouseManagementPage>
+    with SingleTickerProviderStateMixin {
+  late TabController _tabController;
+  final TextEditingController _searchController = TextEditingController(); // Controlador para o TextField
+  String _searchText = ""; // Variável para armazenar o texto de pesquisa
+  bool isPriceEditable = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _tabController = TabController(length: 3, vsync: this);
+  }
+
+  Widget _buildWarehouseList() {
+  return FutureBuilder<DocumentSnapshot>(
+    future: FirebaseAuth.instance.currentUser == null
+        ? null
+        : FirebaseFirestore.instance
+            .collection('users')
+            .doc(FirebaseAuth.instance.currentUser!.uid)
+            .get(),
+    builder: (context, AsyncSnapshot<DocumentSnapshot> userSnapshot) {
+      if (!userSnapshot.hasData) {
+        return Center(child: CircularProgressIndicator());
+      }
+
+      String? storeNumber = userSnapshot.data?['storeNumber']; // Obtemos o número da loja associado ao administrador
+      if (storeNumber == null) {
+        return Center(child: Text("Store number not set. Please configure it."));
+      }
+
+      return Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: Center(
+              child: Container(
+                width: MediaQuery.of(context).size.width * 0.7,
+                child: TextField(
+                  controller: _searchController,
+                  onChanged: (text) {
+                    setState(() {
+                      _searchText = text; // Atualiza o texto da pesquisa conforme o utilizador digita
+                    });
+                  },
+                  decoration: InputDecoration(
+                    labelText: "Search Product",
+                    hintText: "Enter Product Name",
+                    prefixIcon: Icon(Icons.search),
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(8.0)),
+                  ),
+                ),
+              ),
+            ),
+          ),
+          Expanded(
+            child: StreamBuilder<QuerySnapshot>(
+              stream: FirebaseFirestore.instance
+                  .collection('products')
+                  .where('storeNumber', isEqualTo: storeNumber) // Filtra os produtos pelo número de loja
+                  .snapshots(),
+              builder: (context, AsyncSnapshot<QuerySnapshot> productSnapshot) {
+                if (!productSnapshot.hasData) {
+                  return Center(child: CircularProgressIndicator());
+                }
+
+                var products = productSnapshot.data!.docs;
+                var filteredProducts = products.where((product) {
+                  return product['name'] // Filtra os produtos conforme o texto da pesquisa
+                      .toString()
+                      .toLowerCase()
+                      .contains(_searchText.toLowerCase());
+                }).toList();
+
+                if (filteredProducts.isEmpty) {return Center(child: Text("No products found"));}
+
+                return ListView.builder(
+                  itemCount: filteredProducts.length,
+                  itemBuilder: (context, index) {
+                    var product = filteredProducts[index];
+                    return Center(
+                      child: Container(
+                        width: MediaQuery.of(context).size.width * 0.6,
+                        child: Card(
+                          margin: EdgeInsets.symmetric(vertical: 8.0, horizontal: 16.0), elevation: 4.0,
+                          child: ListTile(
+                            contentPadding: EdgeInsets.all(16.0),
+                            title: Text(
+                              product['name'],
+                              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
+                            ),
+                            subtitle: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text('Brand: ${product['brand']}'),
+                                Text('Sale Price: €${product['salePrice']}'),
+                              ],
+                            ), onTap: () async {await _showWarehouseStockDialog(context, product);},
+                          ),
+                        ),
+                      ),
+                    );
+                  },
+                );
+              },
+            ),
+          ),
+        ],
+      );
+    },
+  );
+}
+
+Future<void> _showWarehouseStockDialog(BuildContext context, DocumentSnapshot product) async {     
+  int stockOrder = product['stockOrder'];
+  int wareHouseStock = product['wareHouseStock'];
+  int stockMax = product['stockMax'];
+
+  TextEditingController warehouseController = TextEditingController();
+  TextEditingController orderController = TextEditingController();
+
+  warehouseController.text = wareHouseStock.toString();
+  orderController.text = stockOrder.toString();
+
+  String successMessage = ''; // Mensagem de sucesso
+  String errorMessage = '';   // Mensagem de erro
+  String warningMessage = ''; // Mensagem de aviso
+  bool isOrderConfirmed = false; // Para controlar se a notificação de pedido já foi enviada
+
+  await showDialog(
+    context: context,
+    builder: (BuildContext context) {
+      return StatefulBuilder( // Envolvendo o diálogo com StatefulBuilder para permitir o setState
+        builder: (context, setState) {
+          return AlertDialog(
+            title: Text('Update Stock in the warehouse - ${product['name']}'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                SizedBox(height: 16),
+                Text('Stock Order: $stockOrder'),
+                SizedBox(height: 8),
+                Text('Warehouse Stock: $wareHouseStock'),
+                SizedBox(height: 8),
+                Text('Max stock allowed in the warehouse: $stockMax'),
+                SizedBox(height: 8),
+                TextField(
+                  controller: orderController,
+                  keyboardType: TextInputType.number,
+                  decoration: InputDecoration(
+                    labelText: 'Order Stock',
+                    hintText: 'Enter amount to order',
+                  ),
+                ),
+                if (warningMessage.isNotEmpty) 
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 8.0),
+                    child: Text(
+                      warningMessage, style: TextStyle(color: Colors.amber, fontWeight: FontWeight.bold),
+                    ),
+                  ),
+                if (errorMessage.isNotEmpty) 
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 8.0),
+                    child: Text(
+                      errorMessage, style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold),
+                    ),
+                  ),
+                if (successMessage.isNotEmpty) 
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 8.0),
+                    child: Text(
+                      successMessage, style: TextStyle(color: Colors.green, fontWeight: FontWeight.bold),
+                    ),
+                  ),
+              ],
+            ),
+            actions: [
+              TextButton(  // Botão para confirmar o valor de encomenda e atualizar `stockOrder`
+                onPressed: () {
+                  int orderAmount = int.tryParse(orderController.text) ?? 0;
+                  if (orderAmount == 0) {
+                    setState(() {
+                      warningMessage = 'Please enter an amount to order before confirming.'; // Aviso se não houver valor
+                      errorMessage = ''; // Limpa mensagens de erro
+                      successMessage = ''; // Limpa mensagens de sucesso
+                    });
+                  } else {
+                    int newStockOrder = stockOrder + orderAmount;
+                    int potentialTotalStock = wareHouseStock + newStockOrder;
+
+                    if (potentialTotalStock > stockMax) {
+                      // Exibe erro se o total planejado excede o estoque máximo
+                      setState(() {
+                        errorMessage = 'Error: Order exceeds the maximum stock limit!';
+                        warningMessage = ''; // Limpa mensagem de aviso
+                      });
+                    } else {
+                      // Atualiza o valor de encomenda no Firebase
+                      FirebaseFirestore.instance.collection('products').doc(product.id).update({
+                        'stockOrder': newStockOrder,  // Atualiza o valor de encomenda
+                      }).then((_) {
+                        setState(() {
+                          stockOrder = newStockOrder; // Atualiza o valor de `stockOrder` na interface
+                          successMessage = 'Order Stock updated successfully!';
+                          errorMessage = ''; // Limpa a mensagem de erro
+                          warningMessage = ''; // Limpa mensagem de aviso
+                        });
+
+                        if (!isOrderConfirmed) { // Enviar notificação de "Pedido de produtos"
+                          final user = FirebaseAuth.instance.currentUser;
+
+                          if (user != null) { // Obter storeNumber do usuário
+                            FirebaseFirestore.instance.collection('users').doc(user.uid).get().then((userSnapshot) {
+                              final storeNumber = userSnapshot.data()?['storeNumber'];
+                              if (storeNumber != null) {
+                                // Criar a notificação
+                                FirebaseFirestore.instance.collection('notifications').add({
+                                  'message': 'Were ordered $stockOrder quantity of ${product['brand']} - ${product['name']} - ${product['model']}',
+                                  'productId': product.id,
+                                  'storeNumber': storeNumber,
+                                  'userId': user.uid,
+                                  'timestamp': FieldValue.serverTimestamp(),
+                                  'notificationType': 'Order', // Tipo de notificação (Pedido)
+                                }).then((notificationRef) {
+                                  final notificationId = notificationRef.id; // Após a notificação ser criada, obtenha o notificationId e atualize o documento
+
+                                  notificationRef.update({ // Atualiza a notificação com o notificationId
+                                    'notificationId': notificationId,
+                                  });
+                                  setState(() {
+                                    isOrderConfirmed = true; // Marca que a notificação de pedido foi enviada
+                                  });
+                                }).catchError((error) {
+                                  print("Error adding notification: $error"); // Caso ocorra um erro ao criar a notificação
+                                });
+                              }
+                            });
+                          }
+                        }
+                      });
+                    }
+                  }
+                }, child: Text("Confirm Order", style: TextStyle(fontWeight: FontWeight.bold)),
+              ),
+              
+              TextButton( // Botão para atualizar o estoque do armazém com o valor de `stockOrder`
+                onPressed: () async {
+                  final user = FirebaseAuth.instance.currentUser;
+
+                  if (user == null) {
+                    setState(() {
+                      errorMessage = 'User not authenticated. Please log in again.';
+                    }); return;
+                  }
+
+                  try {
+                    final userSnapshot = await FirebaseFirestore.instance.collection('users').doc(user.uid).get(); // Obter storeNumber do usuário
+                    final storeNumber = userSnapshot.data()?['storeNumber'];
+
+                    if (storeNumber == null) {
+                      setState(() {
+                        errorMessage = 'Store number not set. Please configure it in account settings.';
+                      }); return;
+                    }
+
+                    if (stockOrder > 0) {
+                      int newWareHouseStock = wareHouseStock + stockOrder;
+
+                      // Atualizar o estoque no Firebase
+                      await FirebaseFirestore.instance.collection('products').doc(product.id).update({
+                        'wareHouseStock': newWareHouseStock,
+                        'stockOrder': 0,
+                      });
+                      // Criar notificação de atualização de estoque no Firebase
+                      final notificationRef = await FirebaseFirestore.instance.collection('notifications').add({
+                        'message': 'Warehouse stock updated for ${product['brand']} - ${product['name']} - ${product['model']}. From $wareHouseStock to $newWareHouseStock.',
+                        'productId': product.id,
+                        'storeNumber': storeNumber,
+                        'userId': user.uid,
+                        'timestamp': FieldValue.serverTimestamp(),
+                        'notificationType': 'Update', // Tipo de notificação (Atualização de estoque)
+                      });
+
+                      // Atualizar o documento para incluir o `notificationId`
+                      await notificationRef.update({'notificationId': notificationRef.id});
+
+                      setState(() {
+                        wareHouseStock = newWareHouseStock;
+                        stockOrder = 0; // Zera o `stockOrder` na interface
+                        successMessage = 'Warehouse Stock updated successfully!';
+                        errorMessage = ''; // Limpa a mensagem de erro
+                        warningMessage = ''; // Limpa mensagem de aviso
+                      });
+                    } else {
+                      setState(() {
+                        errorMessage = 'Please confirm an order before updating stock.';
+                        warningMessage = ''; // Limpa mensagem de aviso
+                      });
+                    }
+                  } catch (e) {
+                    setState(() {
+                      errorMessage = 'An error occurred while updating stock or sending notification.';
+                      warningMessage = ''; // Limpa mensagem de aviso
+                    }); print(e); // Log de erro
+                  }
+                },
+                child: Text("Update", style: TextStyle(fontWeight: FontWeight.bold)),
+              ),
+
+              TextButton(onPressed: () {Navigator.of(context).pop();}, child: Text('Cancel')),
+            ],
+          );
+        },
+      );
+    },
+  );
+}
+
+  Widget _buildWarehouseForm() {
+  return FutureBuilder<DocumentSnapshot>(
+    future: FirebaseAuth.instance.currentUser != null
+        ? FirebaseFirestore.instance
+            .collection('users')
+            .doc(FirebaseAuth.instance.currentUser!.uid)
+            .get()
+        : null,
+    builder: (context, AsyncSnapshot<DocumentSnapshot> userSnapshot) {
+      if (!userSnapshot.hasData || userSnapshot.connectionState == ConnectionState.waiting) {
+        return Center(child: CircularProgressIndicator());
+      }
+
+      final userStoreNumber = (userSnapshot.data?.data() as Map<String, dynamic>?)?['storeNumber'];
+
+      if (userStoreNumber == null) {
+        return Center(child: Text("No store number assigned to this user."));
+      }
+
+      return Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: Center(
+              child: Container(
+                width: MediaQuery.of(context).size.width * 0.7,
+                child: TextField(
+                  controller: _searchController,
+                  onChanged: (text) {setState(() { _searchText = text;}); }, // Atualiza o texto da pesquisa conforme o usuário digita
+                  decoration: InputDecoration(
+                    labelText: "Search Product",
+                    hintText: "Enter Product Name",
+                    prefixIcon: Icon(Icons.search),
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(8.0)),
+                  ),
+                ),
+              ),
+            ),
+          ),
+          Expanded(
+            child: StreamBuilder<QuerySnapshot>(
+              stream: FirebaseFirestore.instance
+                  .collection('products')
+                  .where('storeNumber', isEqualTo: userStoreNumber)
+                  .snapshots(),
+              builder: (context, AsyncSnapshot<QuerySnapshot> snapshot) {
+                if (!snapshot.hasData || snapshot.connectionState == ConnectionState.waiting) {
+                  return Center(child: CircularProgressIndicator());
+                }
+
+                var products = snapshot.data!.docs;
+                var filteredProducts = products.where((product) {
+                  return product['name'] // Filtra os produtos conforme o texto da pesquisa
+                      .toString()
+                      .toLowerCase()
+                      .contains(_searchText.toLowerCase());
+                }).toList();
+
+                if (filteredProducts.isEmpty) {
+                  return Center(
+                    child: Text("No products found"),
+                  );
+                }
+
+                return ListView.builder(
+                  itemCount: filteredProducts.length,
+                  itemBuilder: (context, index) {
+                    var product = filteredProducts[index];
+                    return Center(
+                      child: Container(
+                        width: MediaQuery.of(context).size.width * 0.6,
+                        child: Card(
+                          margin: EdgeInsets.symmetric(vertical: 8.0, horizontal: 16.0),
+                          elevation: 4.0,
+                          child: ListTile(
+                            contentPadding: EdgeInsets.all(16.0),
+                            title: Text(
+                              product['name'],
+                              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
+                            ),
+                            subtitle: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text('Brand: ${product['brand']}'),
+                                Text('Sale Price: €${product['salePrice']}'),
+                              ],
+                            ), onTap: () async {await _showProductDetailsDialog(context, product);},
+                          ),
+                        ),
+                      ),
+                    );
+                  },
+                );
+              },
+            ),
+          ),
+        ],
+      );
+    },
+  );
+}
+
+Future<void> _showProductDetailsDialog(BuildContext context, DocumentSnapshot product) async { 
+  TextEditingController _incrementController = TextEditingController();
+  TextEditingController _salePriceController = TextEditingController(text: product['salePrice'].toString());
+
+  String successMessage = ''; // Mensagem de sucesso para exibir no popup
+  int wareHouseStock = product['wareHouseStock'];
+  int stockMin = product['stockMin'];
+  int currentStock = product['stockCurrent']; // Stock de Loja
+  String errorMessage = '';
+
+  // Verifica imediatamente se o estoque do armazém é zero
+  if (wareHouseStock == 0) {errorMessage = "You need to order more products"; } // Mensagem de erro se estoque do armazém for zero
+
+  Future<void> _handleUpdateStock(StateSetter setState) async {
+    int increment = int.tryParse(_incrementController.text) ?? 0;
+
+    // Verifica novamente se o estoque do armazém é zero
+    if (wareHouseStock == 0) {
+      setState(() {
+        errorMessage = "You need to order more products"; // Mensagem de erro específica
+        successMessage = ''; // Limpa qualquer mensagem de sucesso anterior
+      }); return;
+    }
+
+    if (currentStock < stockMin && increment < stockMin) {
+      setState(() {
+        errorMessage = "You need to put more products in shop";
+        successMessage = ''; // Limpa qualquer mensagem de sucesso anterior
+      }); return;
+    }
+
+    if (increment <= 0) {
+      setState(() {
+        errorMessage = "You need to insert a valid amount of products";
+        successMessage = ''; // Limpa qualquer mensagem de sucesso anterior
+      }); return;
+    } else if (increment > wareHouseStock) {
+      setState(() {
+        errorMessage = "You cannot add more stock than the warehouse has";
+        successMessage = ''; // Limpa qualquer mensagem de sucesso anterior
+      }); return;
+    }
+
+    try {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) {throw Exception("User not authenticated");}
+
+      final userSnapshot = await FirebaseFirestore.instance.collection('users').doc(user.uid).get(); // Obter `storeNumber` do usuário
+      final storeNumber = userSnapshot.data()?['storeNumber'];
+
+      if (storeNumber == null) {
+        setState(() {
+          errorMessage = 'Store number not set. Please configure it in account settings.';
+          successMessage = '';
+        }); return;
+      }
+
+      await FirebaseFirestore.instance.collection('products').doc(product.id).update({ // Atualiza no Firebase
+        'stockCurrent': currentStock + increment,
+        'wareHouseStock': wareHouseStock - increment,
+      });
+      // Enviar notificação
+      final notificationRef = await FirebaseFirestore.instance.collection('notifications').add({
+        'message': '$increment of ${product['brand']} - ${product['name']} - ${product['model']}, were transferred from Warehouse to Shop.',
+        'productId': product.id,
+        'storeNumber': storeNumber,
+        'userId': user.uid,
+        'timestamp': FieldValue.serverTimestamp(),
+        'notificationType': 'Transfer', // Tipo de notificação (Atualização de estoque)
+      });
+
+      await notificationRef.update({'notificationId': notificationRef.id}); // Atualizar o documento para incluir o `notificationId`
+
+      // Atualiza os valores locais e o estado do dialog para refletir as mudanças
+      setState(() {
+        currentStock += increment;
+        wareHouseStock -= increment;
+        successMessage = "Product stock updated successfully!";
+        errorMessage = ''; // Limpa a mensagem de erro após a atualização bem-sucedida
+      });
+    } catch (e) {
+      setState(() {
+        errorMessage = "Failed to update stock: ${e.toString()}";
+        successMessage = ''; // Limpa qualquer mensagem de sucesso anterior
+      }); print(e); // Log do erro para depuração
+    }
+  }
+
+  Future<void> _handleUpdatePrice(StateSetter setState) async {
+    double newPrice = double.tryParse(_salePriceController.text) ?? product['salePrice'];
+
+    if (newPrice == product['salePrice']) { // Verifica se o novo preço é o mesmo que o preço atual
+      setState(() {
+        errorMessage = "The new price must be different from the current price.";
+        successMessage = ''; // Limpa qualquer mensagem de sucesso anterior
+      }); return;
+    }
+
+    try {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) {throw Exception("User not authenticated");}
+
+      final userSnapshot = await FirebaseFirestore.instance.collection('users').doc(user.uid).get(); // Obter `storeNumber` do usuário
+      final storeNumber = userSnapshot.data()?['storeNumber'];
+
+      if (storeNumber == null) {
+        setState(() {
+          errorMessage = 'Store number not set. Please configure it in account settings.';
+          successMessage = '';
+        });return;
+      }
+
+      final oldPrice = product['salePrice']; // Armazenar o preço atual antes de realizar a atualização
+      await FirebaseFirestore.instance.collection('products').doc(product.id).update({ // Atualiza o preço no Firebase
+        'salePrice': newPrice,
+      });
+
+      // Enviar notificação com os valores antigos e novos
+      final notificationRef = await FirebaseFirestore.instance.collection('notifications').add({
+        'message': 'Price of ${product['brand']} - ${product['name']} - ${product['model']} updated from €$oldPrice to €$newPrice.',
+        'productId': product.id,
+        'storeNumber': storeNumber,
+        'userId': user.uid,
+        'timestamp': FieldValue.serverTimestamp(),
+        'notificationType': 'UpdatePrice', // Tipo de notificação (Atualização de estoque)
+      });
+
+      await notificationRef.update({'notificationId': notificationRef.id}); // Atualizar o documento para incluir o `notificationId`
+
+      // Atualiza o estado do dialog para refletir as mudanças
+      setState(() {
+        successMessage = "Sale price updated successfully!";
+        errorMessage = ''; // Limpa a mensagem de erro após a atualização bem-sucedida
+      });
+    } catch (e) {
+      setState(() {
+        errorMessage = "Failed to update price: ${e.toString()}";
+        successMessage = ''; // Limpa qualquer mensagem de sucesso anterior
+      }); print(e); // Log do erro para depuração
+    }
+  }
+
+  showDialog(
+    context: context,
+    builder: (BuildContext context) {
+      bool isPriceEditable = false; // Declare isPriceEditable fora do StatefulBuilder, assim ele será preservado
+
+      return StatefulBuilder(
+        builder: (context, setState) {
+          return AlertDialog(
+            title: Text("Update Product Details"),
+            content: SingleChildScrollView(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text("Name: ", style: TextStyle(fontWeight: FontWeight.bold)),
+                  Text("${product['name']}"),
+
+                  Text("Model: ", style: TextStyle(fontWeight: FontWeight.bold)),
+                  Text("${product['model']}"),
+
+                  Text("Current Stock on the Shop: ", style: TextStyle(fontWeight: FontWeight.bold)),
+                  Text("$currentStock"),
+
+                  Text("Warehouse Stock: ", style: TextStyle(fontWeight: FontWeight.bold)),
+                  Text("$wareHouseStock"),
+
+                  Text("Min Stock on the Shop: ", style: TextStyle(fontWeight: FontWeight.bold)),
+                  Text("$stockMin"),
+
+                  if (errorMessage.isNotEmpty)  // Exibe a mensagem de erro se houver
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 8.0),
+                      child: Text(errorMessage, style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
+                    ),
+
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 16.0),
+                    child: TextField(
+                      controller: _incrementController,
+                      keyboardType: TextInputType.number,
+                      decoration: InputDecoration(
+                        labelText: "Enter Stock to Add from Warehouse to Shop",
+                        hintText: "Enter until Max: $wareHouseStock products", border: OutlineInputBorder(),
+                      ),
+                    ),
+                  ),
+
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 16.0),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: TextField(
+                            controller: _salePriceController,
+                            keyboardType: TextInputType.numberWithOptions(decimal: true),
+                            decoration: InputDecoration(
+                              labelText: "Sale Price",
+                              hintText: "Enter Sale Price",
+                              border: OutlineInputBorder(),
+                            ),
+                            enabled: isPriceEditable, // O campo de preço será editável se isPriceEditable for true
+                          ),
+                        ),
+                        IconButton(
+                          icon: Icon(Icons.edit),
+                          onPressed: () {
+                            setState(() {isPriceEditable = true;}); // Permite a edição do preço de venda
+                          },
+                        ),
+                      ],
+                    ),
+                  ),
+
+                  if (successMessage.isNotEmpty)
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 8.0),
+                      child: Text(
+                        successMessage, style: TextStyle(color: Colors.green, fontWeight: FontWeight.bold)),
+                    ),
+                 ],
+               ),
+             ),
+            actions: <Widget>[
+              TextButton(
+                onPressed: () {
+                  Navigator.of(context).pop(); // Fecha o diálogo
+                },
+                child: Text("Close"),
+              ),
+              TextButton(
+                onPressed: () => _handleUpdateStock(setState),
+                child: Text("Update Stock", style: TextStyle(fontWeight: FontWeight.bold)),
+              ),
+              TextButton(
+                onPressed: () {
+                  if (isPriceEditable) {
+                    _handleUpdatePrice(setState);
+                  }
+                }, child: Text("Update Sale Price", style: TextStyle(fontWeight: FontWeight.bold)),
+              ),
+            ],
+          );
+        },
+      );
+    },
+  );
+}
+
+Widget _buildTransferBetweenWarehouses() {
+  return Center(
+    child: ElevatedButton(
+      onPressed: () => _showStoreSelectionDialog(),
+      child: Text("Transfer Product"),
+      style: ElevatedButton.styleFrom(foregroundColor: Colors.white, backgroundColor: Colors.deepPurple, // Button background color
+      ),
+    ),
+  );
+}
+
+Future<String?> _getCurrentUserStoreNumber() async {
+  try {
+    User? currentUser = FirebaseAuth.instance.currentUser;
+    if (currentUser == null) throw "User not logged in";
+
+    DocumentSnapshot userDoc = await FirebaseFirestore.instance
+        .collection('users')
+        .doc(currentUser.uid)
+        .get();
+
+    return userDoc.get('storeNumber').toString();
+  } catch (e) {
+    print("Error fetching current user's store number: $e");
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text("Failed to fetch your store information.")),
+    );
+    return null;
+  }
+}
+
+Future<List<String>> _fetchStores() async {
+  try {
+    QuerySnapshot snapshot =
+        await FirebaseFirestore.instance.collection('users').get();
+    return snapshot.docs
+        .map((doc) => doc.get('storeNumber').toString())
+        .where((storeNumber) => storeNumber.isNotEmpty)
+        .toList();
+  } catch (e) {
+    print("Error fetching stores: $e");
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text("Failed to fetch stores. Please try again.")),
+    ); return [];
+  }
+}
+
+Future<List<Map<String, dynamic>>> _fetchProducts(String storeNumber) async {
+  try {
+    QuerySnapshot snapshot = await FirebaseFirestore.instance
+        .collection('products')
+        .where('storeNumber', isEqualTo: storeNumber)
+        .get();
+    return snapshot.docs.map((doc) {
+      return {
+        'name': doc.get('name'),
+        'stockCurrent': doc.get('stockCurrent'),
+        'brand': doc.get('brand'),
+        'category': doc.get('category'),
+        'description': doc.get('description'),
+        'model': doc.get('model'),
+        'salePrice': doc.get('salePrice'),
+        'stockBreak': doc.get('stockBreak'),
+        'stockMax': doc.get('stockMax'),
+        'stockMin': doc.get('stockMin'),
+        'wareHouseStock': doc.get('wareHouseStock')
+      };
+    }).toList();
+  } catch (e) {
+    print("Error fetching products for store $storeNumber: $e");
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text("Failed to fetch products. Please try again.")),
+    ); return [];
+  }
+}
+
+Future<void> _showStoreSelectionDialog() async {
+  String? currentStore = await _getCurrentUserStoreNumber();
+  if (currentStore == null) return;
+
+  List<String> stores = await _fetchStores();
+  if (stores.isEmpty) return;
+
+  Set<String> uniqueStores = stores.toSet();
+  List<String> filteredStores = uniqueStores.toList();
+
+  String? fromStore = currentStore;
+  String? toStore;
+
+  await showDialog(
+    context: context,
+    builder: (BuildContext context) {
+      return AlertDialog(
+        title: Text("Select Stores"),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            DropdownButtonFormField<String>(
+              decoration: InputDecoration(labelText: "From Store"),
+              value: fromStore,
+              items: [DropdownMenuItem(value: fromStore, child: Text(fromStore))],
+              onChanged: null,
+            ),
+            DropdownButtonFormField<String>(
+              decoration: InputDecoration(labelText: "To Store"),
+              value: toStore,
+              items: filteredStores
+                  .where((store) => store != fromStore)
+                  .map((store) => DropdownMenuItem(
+                        value: store,
+                        child: Text(store),
+                      ))
+                  .toList(),
+              onChanged: (value) {toStore = value;},
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(), child: Text("Back"),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(), child: Text("Cancel"),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              if (toStore != null && fromStore != toStore) {
+                Navigator.of(context).pop();
+                _showProductSelectionDialog(fromStore, toStore!);
+              } else {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text("Please select two different stores.")),
+                );
+              }
+            }, child: Text("Next"),
+          ),
+        ],
+      );
+    },
+  );
+}
+
+Future<void> _showProductSelectionDialog(String fromStore, String toStore) async {
+  List<Map<String, dynamic>> products = await _fetchProducts(fromStore);
+  if (products.isEmpty) return;
+  String? selectedProduct;
+
+  await showDialog(
+    context: context,
+    builder: (BuildContext context) {
+      return StatefulBuilder(
+        builder: (BuildContext context, StateSetter setState) {
+          return AlertDialog(
+            title: Text("Select Product from Store $fromStore"),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: products
+                .map((product) => RadioListTile<String>(
+                      title: Text(
+                        "${product['name']} (Stock: ${product['wareHouseStock']})",
+                        style: TextStyle(
+                          color: product['wareHouseStock'] > 0 ? Colors.black : Colors.grey, // Ajusta a cor para indicar desabilitado
+                        ),
+                      ),
+                      value: product['name'],
+                      groupValue: selectedProduct,
+                      onChanged: product['wareHouseStock'] > 0
+                          ? (value) {setState(() {selectedProduct = value;});}
+                          : null, // Desabilita interação
+                    ))
+                  .toList()
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () {
+                  Navigator.of(context).pop();
+                  _showStoreSelectionDialog(); // Volta ao popup anterior
+                },
+                child: Text("Back"),
+              ),
+              TextButton(onPressed: () => Navigator.of(context).pop(), child: Text("Cancel")),
+              ElevatedButton(
+                onPressed: selectedProduct != null
+                ? () {
+                    // Encontra o produto selecionado para obter o estoque disponível
+                    final selectedProductDetails = products.firstWhere((product) => product['name'] == selectedProduct);
+
+                    int availableStock = selectedProductDetails['wareHouseStock'];  // Obtém o Stock disponível
+                    Navigator.of(context).pop(); // Fecha o diálogo atual e abre o próximo
+                    _showQuantityDialog(
+                      fromStore,
+                      toStore,
+                      selectedProduct!,
+                      availableStock, // Passa o Stock disponível
+                    );
+                  }
+                : null, child: Text("Next"), style: ElevatedButton.styleFrom()
+              ),
+            ],
+          );
+        },
+      );
+    },
+  );
+}
+
+Future<void> _showQuantityDialog(String fromStore, String toStore, String product, int availableStock) async {
+  TextEditingController quantityController = TextEditingController();
+
+  await showDialog(
+    context: context,
+    builder: (BuildContext context) {
+      return StatefulBuilder(
+        builder: (BuildContext context, StateSetter setState) {
+          return AlertDialog(
+            title: Text("Enter Quantity to Transfer"),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text("From Store: $fromStore"),
+                Text("To Store: $toStore"),
+                Text("Product: $product"),
+                Text("Available in Warehouse: $availableStock"),
+                SizedBox(height: 10),
+                TextField(
+                  controller: quantityController,
+                  decoration: InputDecoration(labelText: "Quantity"),
+                  keyboardType: TextInputType.number,
+                  onChanged: (value) {setState(() {});}, // Atualiza o estado para validação ao digitar
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () {
+                  Navigator.of(context).pop();
+                  _showProductSelectionDialog(fromStore, toStore); // Volta ao popup anterior
+                },
+                child: Text("Back"),
+              ),
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(), child: Text("Cancel"),
+              ),
+              ElevatedButton(
+                onPressed: () {
+                  int? quantity = int.tryParse(quantityController.text);
+                  if (quantity == null || quantity <= 0) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text("Please enter a valid quantity.")),
+                    );
+                  } else if (quantity > availableStock) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text("Entered quantity exceeds available stock.")),
+                    );
+                  } else {
+                    Navigator.of(context).pop();
+                    _confirmTransfer(fromStore, toStore, product, quantity);
+                  }
+                }, child: Text("Confirm"),
+              ),
+            ],
+          );
+        },
+      );
+    },
+  );
+}
+
+void _confirmTransfer (String fromStore, String toStore, String product, int quantity) async {
+  try {
+    final scaffoldContext = context; // Salvar o contexto principal antes de abrir o diálogo
+
+    showDialog( // Mostra um diálogo de confirmação
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: Text("Confirm Transfer"),
+          content: Text(
+              "Are you sure you want to transfer $quantity of $product from Store $fromStore to Store $toStore?"),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: Text("Cancel"),
+            ),
+            ElevatedButton(
+              onPressed: () async {
+                Navigator.of(context).pop(); // Fecha o diálogo de confirmação
+
+                final fromStoreProductRef = FirebaseFirestore.instance // Referência para o produto na loja de origem
+                    .collection('products')
+                    .where('storeNumber', isEqualTo: fromStore)
+                    .where('name', isEqualTo: product);
+
+                final toStoreProductRef = FirebaseFirestore.instance // Referência para o produto na loja de destino
+                    .collection('products')
+                    .where('storeNumber', isEqualTo: toStore)
+                    .where('name', isEqualTo: product);
+
+                final fromStoreSnapshot = await fromStoreProductRef.get(); // Verifica o produto na loja de origem
+                if (fromStoreSnapshot.docs.isEmpty) {
+                  ScaffoldMessenger.of(scaffoldContext).showSnackBar(
+                    SnackBar(
+                      content: Text(
+                          "Error: The product does not exist in the origin store."),
+                    ),
+                  ); return;
+                }
+                final fromProductDoc = fromStoreSnapshot.docs.first; // Verifica o Stock disponível
+                int currentWareHouseStock =
+                    fromProductDoc.get('wareHouseStock') as int;
+
+                if (quantity > currentWareHouseStock) {
+                  ScaffoldMessenger.of(scaffoldContext).showSnackBar(
+                    SnackBar(
+                      content: Text(
+                          "Error: Not enough stock available in the origin store."),
+                    ),
+                  ); return;
+                }
+
+                await fromProductDoc.reference.update({'wareHouseStock': currentWareHouseStock - quantity});  // Atualiza o Stock na loja de origem
+
+                final toStoreSnapshot = await toStoreProductRef.get(); // Verifica se o produto já existe na loja de destino
+                if (toStoreSnapshot.docs.isEmpty) {
+                  await FirebaseFirestore.instance.collection('products').add({ // Cria o produto na loja de destino
+                    'name': fromProductDoc.get('name'),
+                    'brand': fromProductDoc.get('brand'),
+                    'category': fromProductDoc.get('category'),
+                    'createdAt': Timestamp.now(),
+                    'description': fromProductDoc.get('description'),
+                    'lastPurchasePrice': fromProductDoc.get('lastPurchasePrice'),
+                    'model': fromProductDoc.get('model'),
+                    'salePrice': fromProductDoc.get('salePrice'),
+                    'stockBreak': fromProductDoc.get('stockBreak'),
+                    'stockCurrent': 0, // Sempre 0 na loja de destino
+                    'stockMax': fromProductDoc.get('stockMax'),
+                    'stockMin': fromProductDoc.get('stockMin'),
+                    'stockOrder': fromProductDoc.get('stockOrder'),
+                    'storeNumber': toStore,
+                    'subCategory': fromProductDoc.get('subCategory'),
+                    'vatCode': fromProductDoc.get('vatCode'),
+                    'wareHouseStock': quantity, // Estoque transferido
+                    'productLocation': fromProductDoc.get('productLocation'),
+                  });
+                } else {
+                  // Atualiza o estoque do produto existente na loja de destino
+                  final toProductDoc = toStoreSnapshot.docs.first;
+                  int currentToWareHouseStock =
+                      toProductDoc.get('wareHouseStock') as int;
+
+                  await toProductDoc.reference.update({
+                    'wareHouseStock': currentToWareHouseStock + quantity});
+                }
+
+                ScaffoldMessenger.of(scaffoldContext).showSnackBar( // Exibe mensagem de sucesso
+                  SnackBar(
+                    content: Text(
+                        "Success! $quantity of $product transferred from Store $fromStore to Store $toStore."),
+                  ),
+                );
+              }, child: Text("Confirm"),
+            ),
+          ],
+        );
+      },
+    );
+  } catch (e) {
+    print("Error during transfer: $e"); // Tratamento de erro
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Error occurred during the transfer. Please try again.")));
+  }
+}
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Text("WareHouse Management", style: TextStyle(color: Colors.white)),
+        backgroundColor: Colors.transparent, elevation: 0,
+        flexibleSpace: Container(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              colors: [
+                hexStringToColor("CB2B93"),
+                hexStringToColor("9546C4"),
+                hexStringToColor("5E61F4"),
+              ],
+              begin: Alignment.topLeft, end: Alignment.bottomRight,
+            ),
+          ),
+        ),
+        bottom: TabBar(
+          controller: _tabController,
+          tabs: [
+            Tab(
+              child: Container(
+                padding: EdgeInsets.symmetric(vertical: 5),
+                child: Text(
+                  "WareHouse to Shop", style: TextStyle(color: Colors.white),
+                ),
+              ),
+            ),
+            Tab(
+              child: Container(
+                padding: EdgeInsets.symmetric(vertical: 5),
+                child: Text("WareHouse Stock", style: TextStyle(color: Colors.white)),
+              ),
+            ),
+            Tab(
+              child: Container(
+                padding: EdgeInsets.symmetric(vertical: 5),
+                child: Text("Transfer Between Warehouses", style: TextStyle(color: Colors.white)),
+              ),
+            ),
+          ],
+        ),
+      ),
+      body: Container(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            colors: [
+              hexStringToColor("CB2B93"),
+              hexStringToColor("9546C4"),
+              hexStringToColor("5E61F4"),
+            ],
+            begin: Alignment.topLeft, end: Alignment.bottomRight,
+          ),
+        ),
+        child: TabBarView(
+          controller: _tabController,
+          children: [
+            _buildWarehouseForm(),
+            _buildWarehouseList(),
+            _buildTransferBetweenWarehouses(),
+          ],
+        ),
+      ),
+    );
+  }
+}
