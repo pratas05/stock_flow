@@ -9,10 +9,7 @@ import 'package:timeago/timeago.dart' as timeago;
 
 // [1. MODEL]
 class NotificationModel {
-  final String id;
-  final String message;
-  final String notificationType;
-  final String storeNumber;
+  final String id, message, notificationType, storeNumber;
   final Timestamp timestamp;
   final String? productId;
   final String? userId;
@@ -184,10 +181,12 @@ class NotificationsStockAlert extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      extendBodyBehindAppBar: true,
       appBar: PreferredSize(
         preferredSize: Size.fromHeight(80.0),
         child: AppBar(
-          backgroundColor: Color.fromRGBO(185, 30, 145, 800),
+          backgroundColor: Colors.transparent,
+          elevation: 0,
           flexibleSpace: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [

@@ -56,7 +56,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         children: [
                           Image.asset(
                             "assets/images/logo.png",
-                            width: 60, height: 60,
+                            width: 50, height: 50,
                           ),
                           const SizedBox(width: 8),
                           const Text(
@@ -227,13 +227,13 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
         child: Row(
           children: [
-            Icon(icon, color: isSelected ? Colors.blue : Colors.black, size: 30), // Alterar a cor do ícone
+            Icon(icon, color: isSelected ? Colors.blue : Colors.black, size: 23), // Alterar a cor do ícone
             const SizedBox(width: 16),
             Expanded(
               child: Text(
                 title,
                 style: TextStyle(
-                  color: isSelected ? Colors.blue : Colors.black, fontSize: 18, fontWeight: FontWeight.bold,
+                  color: isSelected ? Colors.blue : Colors.black, fontSize: 15, fontWeight: FontWeight.bold,
                 ),
               ),
             ),
