@@ -57,6 +57,10 @@ Contributions are welcome! Please follow these steps:
 
 This project is licensed under the [MIT License](LICENSE).
 
+Owners: 
+@pratas05
+@GabrielChavesM
+
 ## Contact
 
 For questions or feedback, please contact [your email or GitHub profile link].
