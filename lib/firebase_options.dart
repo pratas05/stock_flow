@@ -21,20 +21,11 @@ class DefaultFirebaseOptions {
     }
     switch (defaultTargetPlatform) {
       case TargetPlatform.android:
-        throw UnsupportedError(
-          'DefaultFirebaseOptions have not been configured for android - '
-          'you can reconfigure this by running the FlutterFire CLI again.',
-        );
+        return android;
       case TargetPlatform.iOS:
-        throw UnsupportedError(
-          'DefaultFirebaseOptions have not been configured for ios - '
-          'you can reconfigure this by running the FlutterFire CLI again.',
-        );
+        return ios;
       case TargetPlatform.macOS:
-        throw UnsupportedError(
-          'DefaultFirebaseOptions have not been configured for macos - '
-          'you can reconfigure this by running the FlutterFire CLI again.',
-        );
+        return macos;
       case TargetPlatform.windows:
         return windows;
       case TargetPlatform.linux:
@@ -50,13 +41,13 @@ class DefaultFirebaseOptions {
   }
 
   static const FirebaseOptions windows = FirebaseOptions(
-    apiKey: 'AIzaSyD8BHzW5yiZ5BSYRfTkMbvbs8CGBkWkAm8',
-    appId: '1:178121884772:web:7d89150076b29f5dc3cb71',
+    apiKey: 'AIzaSyA91RSuXaLpOrUtNatnYSpGcepAf6GNuPI',
+    appId: '1:178121884772:web:f5b872427dd00280c3cb71',
     messagingSenderId: '178121884772',
     projectId: 'stockiteasy-9debf',
     authDomain: 'stockiteasy-9debf.firebaseapp.com',
     storageBucket: 'stockiteasy-9debf.appspot.com',
-    measurementId: 'G-7NJL8ENF9B',
+    measurementId: 'G-1Q9CVZVTE5',
   );
 
   static const FirebaseOptions web = FirebaseOptions(
@@ -68,4 +59,35 @@ class DefaultFirebaseOptions {
     storageBucket: 'stockiteasy-9debf.appspot.com',
     measurementId: 'G-7NJL8ENF9B',
   );
+
+  static const FirebaseOptions macos = FirebaseOptions(
+    apiKey: 'AIzaSyBwo_dARChoqyRs15FgdOs-_JY6BwBgVZ4',
+    appId: '1:178121884772:ios:e4a292cc01d9d7f9c3cb71',
+    messagingSenderId: '178121884772',
+    projectId: 'stockiteasy-9debf',
+    storageBucket: 'stockiteasy-9debf.appspot.com',
+    androidClientId: '178121884772-kbksiqsgb4teev4tq4u8aemvhjg68b90.apps.googleusercontent.com',
+    iosClientId: '178121884772-cn6c5rq6aiq9u7stvksliaiku1bjvvhr.apps.googleusercontent.com',
+    iosBundleId: 'com.example.stockflow',
+  );
+
+  static const FirebaseOptions ios = FirebaseOptions(
+    apiKey: 'AIzaSyBwo_dARChoqyRs15FgdOs-_JY6BwBgVZ4',
+    appId: '1:178121884772:ios:e4a292cc01d9d7f9c3cb71',
+    messagingSenderId: '178121884772',
+    projectId: 'stockiteasy-9debf',
+    storageBucket: 'stockiteasy-9debf.appspot.com',
+    androidClientId: '178121884772-kbksiqsgb4teev4tq4u8aemvhjg68b90.apps.googleusercontent.com',
+    iosClientId: '178121884772-cn6c5rq6aiq9u7stvksliaiku1bjvvhr.apps.googleusercontent.com',
+    iosBundleId: 'com.example.stockflow',
+  );
+
+  static const FirebaseOptions android = FirebaseOptions(
+    apiKey: 'AIzaSyBmllgRZi07eIXPmIeZXwV_2--4cLS_YCw',
+    appId: '1:178121884772:android:d0f55a9682a1b63dc3cb71',
+    messagingSenderId: '178121884772',
+    projectId: 'stockiteasy-9debf',
+    storageBucket: 'stockiteasy-9debf.appspot.com',
+  );
+
 }
