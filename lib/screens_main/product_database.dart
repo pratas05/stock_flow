@@ -621,10 +621,7 @@ List<Widget> _buildTabs() {
             contentPadding: EdgeInsets.all(12.0),
             title: Text( 
               product['name'], 
-              style: TextStyle(
-                fontWeight: FontWeight.bold, 
-                fontSize: 16,
-              ),
+              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
             ),
             subtitle: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -640,11 +637,7 @@ List<Widget> _buildTabs() {
                     SizedBox(width: 4),
                     Text(
                       '${product['salePrice']}',
-                      style: TextStyle(
-                        fontSize: 14,
-                        color: Colors.green,
-                        fontWeight: FontWeight.bold,
-                      ),
+                      style: TextStyle(fontSize: 14, color: Colors.green, fontWeight: FontWeight.bold),
                     ),
                   ],
                 ),
@@ -688,8 +681,6 @@ List<Widget> _buildTabs() {
       ],
     );
   }
-
-
 
   Future<void> _showProductDetailsDialog(BuildContext context, DocumentSnapshot product) async {
     final Color primaryColor = Theme.of(context).primaryColor;
@@ -829,8 +820,7 @@ List<Widget> _buildTabs() {
               Container(
                 padding: EdgeInsets.all(8),
                 decoration: BoxDecoration(
-                  color: highlightColor.withOpacity(0.1),
-                  shape: BoxShape.circle,
+                  color: highlightColor.withOpacity(0.1), shape: BoxShape.circle,
                 ),
                 child: Icon(Icons.inventory, size: 20, color: highlightColor),
               ),
@@ -864,8 +854,7 @@ List<Widget> _buildTabs() {
 
   Widget _buildPricingSection(DocumentSnapshot product, Color highlightColor) {
     return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
+      decoration: BoxDecoration(color: Colors.white,
         borderRadius: BorderRadius.circular(12),
         boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 6, offset: Offset(0, 2))],
       ),
@@ -901,8 +890,7 @@ List<Widget> _buildTabs() {
 
   Widget _buildAdditionalInfoSection(DocumentSnapshot product, Color highlightColor) {
     return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
+      decoration: BoxDecoration(color: Colors.white,
         borderRadius: BorderRadius.circular(12),
         boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 6, offset: Offset(0, 2))],
       ),
@@ -937,14 +925,7 @@ List<Widget> _buildTabs() {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                label,
-                style: TextStyle(
-                  fontSize: 14,
-                  color: Colors.grey[600],
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
+              Text(label, style: TextStyle(fontSize: 14, color: Colors.grey[600], fontWeight: FontWeight.w500)),
               SizedBox(height: 4),
               Text(
                 value.isNotEmpty ? value : 'Not specified',
@@ -961,19 +942,13 @@ List<Widget> _buildTabs() {
     return Row(
       children: [
         SizedBox(width: 40),
-        Expanded(
-          flex: 2,
-          child: Text(
-            label,
-            style: TextStyle(fontSize: 14, color: Colors.grey[600]),
-          ),
+        Expanded(flex: 2,
+          child: Text(label, style: TextStyle(fontSize: 14, color: Colors.grey[600])),
         ),
         Expanded(
           flex: 1,
-          child: Text(
-            value,
-            style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: color),
-            textAlign: TextAlign.right,
+          child: Text(value,
+            style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: color), textAlign: TextAlign.right,
           ),
         ),
       ],
@@ -984,18 +959,13 @@ List<Widget> _buildTabs() {
     return Row(
       children: [
         SizedBox(width: 40),
-        Expanded(
-          flex: 2,
-          child: Text(
-            label,
-            style: TextStyle(fontSize: 14, color: Colors.grey[600]),
-          ),
+        Expanded(flex: 2,
+          child: Text(label, style: TextStyle(fontSize: 14, color: Colors.grey[600])),
         ),
         Expanded(
           flex: 1,
           child: Text(
-            "€$value",
-            style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: color),
+            "€$value", style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: color),
             textAlign: TextAlign.right,
           ),
         ),
@@ -1007,7 +977,6 @@ List<Widget> _buildTabs() {
     final date = timestamp.toDate();
     return '${date.day}/${date.month}/${date.year} ${date.hour}:${date.minute.toString().padLeft(2, '0')}';
   }
-
 
   Future<bool> _showDeleteConfirmationDialog(BuildContext context) async {
     return (await showDialog<bool>(
