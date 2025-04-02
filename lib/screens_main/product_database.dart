@@ -9,12 +9,7 @@ import 'package:stockflow/utils/colors_utils.dart';
 // [1. MODEL]
 class ProductModel {
   final String? id;
-  final String name;
-  final String description;
-  final String category;
-  final String subCategory;
-  final String brand;
-  final String model;
+  final String name, description, category, subCategory, brand, model;
   final int stockMax, stockCurrent, stockOrder, stockMin, wareHouseStock, stockBreak;
   final double lastPurchasePrice, salePrice;
   final String vatCode, storeNumber, productLocation;
@@ -231,9 +226,6 @@ class _ProductDatabasePageState extends State<ProductDatabasePage> with SingleTi
   }
 
     final vatCode = _vatCodeController.text;
-    if (!['1', '2', '3', '4'].contains(vatCode)) {
-      _showSnackBar("VAT Code must be 1, 2, 3, or 4"); return;
-    }
 
     int stockMax = int.tryParse(_stockMaxController.text) ?? 0;
     int stockMin = int.tryParse(_stockMinController.text) ?? 0;
@@ -460,7 +452,10 @@ List<Widget> _buildTabs() {
       _buildTextField(_stockOrderController, "Order Stock", isNumber: true),
       _buildTextField(_lastPurchasePriceController, "Last Purchase Price", isNumber: true),
       _buildTextField(_salePriceController, "Sale Price", isNumber: true),
-      _buildTextField(_vatCodeController, "VAT Code (1, 2, 3, or 4)", isNumber: true),
+      _buildTextField(_vatCodeController, "VAT Code (1, 2, 3, or 4)", 
+        isNumber: true,
+        maxLength: 1, 
+      ),
     ];
   }
 
@@ -511,7 +506,7 @@ List<Widget> _buildTabs() {
       "Order Stock": '[0-9]',
       "Min Stock": '[0-9]',
       "Last Purchase Price": '[0-9]',
-      "VAT Code (1, 2, 3, or 4)": '[1-4]', 
+      "VAT Code (1, 2, 3, or 4)": r'[1-4]', 
       "Product Location": '[a-zA-Z0-9 ]',
       "Sale Price": '[0-9]',
     };
@@ -694,55 +689,325 @@ List<Widget> _buildTabs() {
     );
   }
 
+
+
   Future<void> _showProductDetailsDialog(BuildContext context, DocumentSnapshot product) async {
-    showDialog(
+    final Color primaryColor = Theme.of(context).primaryColor;
+    final Color highlightColor = Colors.blueAccent;
+
+    await showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        title: Text("Product Details"),
-        content: SingleChildScrollView(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: _buildProductDetailsList(product),
+      builder: (context) => Dialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        insetPadding: EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+        elevation: 10,
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+            maxWidth: MediaQuery.of(context).size.width * 0.7,
+            maxHeight: MediaQuery.of(context).size.height * 0.8,
+          ),
+          child: Container(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topLeft, end: Alignment.bottomRight,
+                colors: [Colors.grey[50]!, Colors.grey[100]!],
+              ),
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text(
+                            "📦 Product Details",
+                            style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: primaryColor),
+                          ),
+                          IconButton(
+                            icon: Icon(Icons.close, color: Colors.grey),
+                            onPressed: () => Navigator.of(context).pop(),
+                          ),
+                        ],
+                      ),
+                      SizedBox(height: 16),
+                      Container(
+                        height: 2,
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(colors: [primaryColor.withOpacity(0.3), Colors.transparent]),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Expanded(
+                  child: SingleChildScrollView(
+                    padding: EdgeInsets.symmetric(horizontal: 24),
+                    child: Column(
+                      children: [
+                        _buildProductInfoSection(product, highlightColor),
+                        SizedBox(height: 16),
+                        _buildStockInfoSection(product, highlightColor),
+                        SizedBox(height: 16),
+                        _buildPricingSection(product, highlightColor),
+                        SizedBox(height: 16),
+                        _buildAdditionalInfoSection(product, highlightColor),
+                        SizedBox(height: 24),
+                      ],
+                    ),
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 24),
+                  child: Center(
+                    child: ElevatedButton(
+                      onPressed: () => Navigator.of(context).pop(),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: primaryColor,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        padding: EdgeInsets.symmetric(horizontal: 32, vertical: 12),
+                      ),
+                      child: Text("Close", style: TextStyle(color: Colors.white, fontSize: 16)),
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
-        actions: [TextButton(onPressed: () => Navigator.of(context).pop(), child: Text("Close"))],
       ),
     );
   }
 
-  List<Widget> _buildProductDetailsList(DocumentSnapshot product) {
-    final details = {
-      "Name": product['name'],
-      "Description": product['description'],
-      "Category": product['category'],
-      "Subcategory": product['subCategory'],
-      "Brand": product['brand'],
-      "Model": product['model'],
-      "Max Stock": product['stockMax'].toString(),
-      "WareHouse Stock": product['wareHouseStock'].toString(),
-      "Current Stock": product['stockCurrent'].toString(),
-      "Order Stock": product['stockOrder'].toString(),
-      "Min Stock": product['stockMin'].toString(),
-      "Stock Break": product['stockBreak'].toString(),
-      "Sale Price": "€${product['salePrice']}",
-      "Last Purchase Price": "€${product['lastPurchasePrice']}",
-      "VAT Code": product['vatCode'],
-      "Product Location": product['productLocation'] ?? 'Not Located',
-    };
-
-    return details.entries.map((entry) {
-      return Padding(
-        padding: const EdgeInsets.only(bottom: 8.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text("${entry.key}: ", style: TextStyle(fontWeight: FontWeight.bold)),
-            Text(entry.value),
-          ],
-        ),
-      );
-    }).toList();
+  Widget _buildProductInfoSection(DocumentSnapshot product, Color highlightColor) {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 6, offset: Offset(0, 2))],
+      ),
+      padding: EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _buildDetailRow(Icons.shopping_bag, "Product Name", product['name'], highlightColor),
+          Divider(height: 24, thickness: 1),
+          _buildDetailRow(Icons.description, "Description", product['description'], highlightColor),
+          Divider(height: 24, thickness: 1),
+          _buildDetailRow(Icons.category, "Category", product['category'], highlightColor),
+          Divider(height: 24, thickness: 1),
+          _buildDetailRow(Icons.subtitles, "Subcategory", product['subCategory'], highlightColor),
+          Divider(height: 24, thickness: 1),
+          _buildDetailRow(Icons.branding_watermark, "Brand", product['brand'], highlightColor),
+          Divider(height: 24, thickness: 1),
+          _buildDetailRow(Icons.model_training, "Model", product['model'], highlightColor),
+        ],
+      ),
+    );
   }
+
+  Widget _buildStockInfoSection(DocumentSnapshot product, Color highlightColor) {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 6, offset: Offset(0, 2))],
+      ),
+      padding: EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: highlightColor.withOpacity(0.1),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(Icons.inventory, size: 20, color: highlightColor),
+              ),
+              SizedBox(width: 16),
+              Text(
+                "Stock Information",
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: Colors.grey[800]),
+              ),
+            ],
+          ),
+          SizedBox(height: 16),
+          _buildStockRow("Max Stock", product['stockMax'].toString(), Colors.blue),
+          Divider(height: 16, thickness: 1),
+          _buildStockRow("Warehouse Stock", product['wareHouseStock'].toString(), Colors.green),
+          Divider(height: 16, thickness: 1),
+          _buildStockRow(
+            "Current Stock", 
+            product['stockCurrent'].toString(), 
+            product['stockCurrent'] <= product['stockMin'] ? Colors.orange : Colors.green
+          ),
+          Divider(height: 16, thickness: 1),
+          _buildStockRow("Order Stock", product['stockOrder'].toString(), Colors.blue),
+          Divider(height: 16, thickness: 1),
+          _buildStockRow("Min Stock", product['stockMin'].toString(), Colors.blue),
+          Divider(height: 16, thickness: 1),
+          _buildStockRow("Stock Break", product['stockBreak'].toString(), Colors.red),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPricingSection(DocumentSnapshot product, Color highlightColor) {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 6, offset: Offset(0, 2))],
+      ),
+      padding: EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: highlightColor.withOpacity(0.1),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(Icons.attach_money, size: 20, color: highlightColor),
+              ),
+              SizedBox(width: 16),
+              Text(
+                "Pricing Information",
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: Colors.grey[800]),
+              ),
+            ],
+          ),
+          SizedBox(height: 16),
+          _buildPriceRow("Sale Price", product['salePrice']?.toString() ?? '0', Colors.green),
+          Divider(height: 16, thickness: 1),
+          _buildPriceRow("Last Purchase Price", product['lastPurchasePrice']?.toString() ?? '0', Colors.blue),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildAdditionalInfoSection(DocumentSnapshot product, Color highlightColor) {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 6, offset: Offset(0, 2))],
+      ),
+      padding: EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _buildDetailRow(Icons.confirmation_number, "VAT Code", product['vatCode'], highlightColor),
+          Divider(height: 24, thickness: 1),
+          _buildDetailRow(Icons.location_on, "Product Location", product['productLocation'] ?? 'Not Located', highlightColor),
+          Divider(height: 24, thickness: 1),
+          _buildDetailRow(Icons.calendar_today, "Created At", _formatDate(product['createdAt']), highlightColor),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDetailRow(IconData icon, String label, String value, Color highlightColor) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          padding: EdgeInsets.all(8),
+          decoration: BoxDecoration(
+            color: highlightColor.withOpacity(0.1),
+            shape: BoxShape.circle,
+          ),
+          child: Icon(icon, size: 20, color: highlightColor),
+        ),
+        SizedBox(width: 16),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 14,
+                  color: Colors.grey[600],
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+              SizedBox(height: 4),
+              Text(
+                value.isNotEmpty ? value : 'Not specified',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: Colors.grey[800]),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildStockRow(String label, String value, Color color) {
+    return Row(
+      children: [
+        SizedBox(width: 40),
+        Expanded(
+          flex: 2,
+          child: Text(
+            label,
+            style: TextStyle(fontSize: 14, color: Colors.grey[600]),
+          ),
+        ),
+        Expanded(
+          flex: 1,
+          child: Text(
+            value,
+            style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: color),
+            textAlign: TextAlign.right,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildPriceRow(String label, String value, Color color) {
+    return Row(
+      children: [
+        SizedBox(width: 40),
+        Expanded(
+          flex: 2,
+          child: Text(
+            label,
+            style: TextStyle(fontSize: 14, color: Colors.grey[600]),
+          ),
+        ),
+        Expanded(
+          flex: 1,
+          child: Text(
+            "€$value",
+            style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: color),
+            textAlign: TextAlign.right,
+          ),
+        ),
+      ],
+    );
+  }
+
+  String _formatDate(Timestamp timestamp) {
+    final date = timestamp.toDate();
+    return '${date.day}/${date.month}/${date.year} ${date.hour}:${date.minute.toString().padLeft(2, '0')}';
+  }
+
 
   Future<bool> _showDeleteConfirmationDialog(BuildContext context) async {
     return (await showDialog<bool>(
@@ -774,8 +1039,76 @@ List<Widget> _buildTabs() {
       context: context,
       builder: (_) => AlertDialog(
         title: Text("Edit Product"),
-        content: SingleChildScrollView(child: _buildProductForm(isEditing: true)),
-        actions: _buildEditDialogActions(product),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: _buildProductFields(),
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.of(context).pop(), child: Text("Cancel")),
+          ElevatedButton(
+            onPressed: () async {
+              try {
+                final vatCode = _vatCodeController.text;
+
+                final storeNumber = await _viewModel.getUserStoreNumber();
+                final user = FirebaseAuth.instance.currentUser;
+                if (user == null) throw Exception("No user is logged in.");
+
+                final oldProduct = ProductModel.fromFirestore(product);
+                final updatedProduct = ProductModel(
+                  id: product.id,
+                  name: _nameController.text,
+                  description: _descriptionController.text,
+                  category: _categoryController.text,
+                  subCategory: _subCategoryController.text,
+                  brand: _brandController.text,
+                  model: _modelController.text,
+                  stockMax: int.tryParse(_stockMaxController.text) ?? 0,
+                  stockCurrent: int.tryParse(_stockCurrentController.text) ?? 0,
+                  stockOrder: int.tryParse(_stockOrderController.text) ?? 0,
+                  stockMin: int.tryParse(_stockMinController.text) ?? 0,
+                  wareHouseStock: int.tryParse(_wareHouseStockController.text) ?? 0,
+                  stockBreak: int.tryParse(_stockBreakController.text) ?? 0,
+                  lastPurchasePrice: double.tryParse(_lastPurchasePriceController.text) ?? 0.0,
+                  salePrice: double.tryParse(_salePriceController.text) ?? 0.0,
+                  vatCode: vatCode,
+                  storeNumber: storeNumber,
+                  productLocation: _productLocationController.text.isNotEmpty 
+                      ? _productLocationController.text 
+                      : 'Not Located',
+                  createdAt: oldProduct.createdAt,
+                );
+
+                final changes = _getFieldChanges(oldProduct, updatedProduct);
+                if (changes.isEmpty) {
+                  _showSnackBar("No changes detected. Modify at least one field to save.");
+                  return;
+                }
+
+                await _viewModel.updateProduct(product.id, updatedProduct);
+
+                await _viewModel.createNotification(
+                  message: "Product - ${updatedProduct.name}. The following fields were updated: ${changes.join(', ')}.",
+                  notificationType: "Edit",
+                  productId: product.id,
+                  storeNumber: storeNumber,
+                  userId: user.uid,
+                );
+
+                if (!mounted) return;
+                ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Product updated successfully!")));
+                Navigator.of(context).pop();
+              } catch (e) {
+                print("Error updating product: $e");
+                if (!mounted) return;
+                ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Error updating product.")));
+              }
+            },
+            child: Text("Save Product"),
+          ),
+        ],
       ),
     );
   }
@@ -799,76 +1132,6 @@ List<Widget> _buildTabs() {
       _productLocationController: product['productLocation'] ?? 'Not Located',
     };
     fields.forEach((controller, value) => controller.text = value);
-  }
-
-  List<Widget> _buildEditDialogActions(DocumentSnapshot product) {
-    return [
-      TextButton(onPressed: () => Navigator.of(context).pop(), child: Text("Cancel")),
-      TextButton(
-        onPressed: () async {
-          try {
-            // Validate VAT code (must be 1, 2, 3, or 4)
-            final vatCode = _vatCodeController.text;
-            if (!['1', '2', '3', '4'].contains(vatCode)) {
-              _showSnackBar("VAT Code must be 1, 2, 3, or 4");
-              return;
-            }
-
-            final storeNumber = await _viewModel.getUserStoreNumber();
-            final user = FirebaseAuth.instance.currentUser;
-            if (user == null) throw Exception("No user is logged in.");
-
-            final oldProduct = ProductModel.fromFirestore(product);
-            final updatedProduct = ProductModel(
-              id: product.id,
-              name: _nameController.text,
-              description: _descriptionController.text,
-              category: _categoryController.text,
-              subCategory: _subCategoryController.text,
-              brand: _brandController.text,
-              model: _modelController.text,
-              stockMax: int.tryParse(_stockMaxController.text) ?? 0,
-              stockCurrent: int.tryParse(_stockCurrentController.text) ?? 0,
-              stockOrder: int.tryParse(_stockOrderController.text) ?? 0,
-              stockMin: int.tryParse(_stockMinController.text) ?? 0,
-              wareHouseStock: int.tryParse(_wareHouseStockController.text) ?? 0,
-              stockBreak: int.tryParse(_stockBreakController.text) ?? 0,
-              lastPurchasePrice: double.tryParse(_lastPurchasePriceController.text) ?? 0.0,
-              salePrice: double.tryParse(_salePriceController.text) ?? 0.0,
-              vatCode: vatCode,
-              storeNumber: storeNumber,
-              productLocation: _productLocationController.text.isNotEmpty 
-                  ? _productLocationController.text 
-                  : 'Not Located',
-              createdAt: oldProduct.createdAt,
-            );
-
-            await _viewModel.updateProduct(product.id, updatedProduct);
-            
-            final changes = _getFieldChanges(oldProduct, updatedProduct);
-            if (changes.isNotEmpty) {
-              await _viewModel.createNotification(
-                message: "Product - ${updatedProduct.name}. The following fields were updated: ${changes.join(', ')}.",
-                notificationType: "Edit",
-                productId: product.id,
-                storeNumber: storeNumber,
-                userId: user.uid,
-              );
-            }
-
-            if (!mounted) return;
-            ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Product updated successfully!")));
-            Navigator.of(context).pop();
-            _clearFields();
-          } catch (e) {
-            print("Error updating product: $e");
-            if (!mounted) return;
-            ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Error updating product.")));
-          }
-        },
-        child: Text("Save", style: TextStyle(fontWeight: FontWeight.bold)),
-      ),
-    ];
   }
 
   List<String> _getFieldChanges(ProductModel oldProduct, ProductModel newProduct) {

@@ -9,12 +9,7 @@ import 'package:stockflow/utils/colors_utils.dart';
 // [1. MODEL]
 class ProductModel {
   final String? id;
-  final String name;
-  final String description;
-  final String category;
-  final String subCategory;
-  final String brand;
-  final String model;
+  final String name, description, category, subCategory, brand, model;
   final int stockMax, stockCurrent, stockOrder, stockMin, wareHouseStock, stockBreak;
   final double lastPurchasePrice, salePrice;
   final String vatCode, storeNumber, productLocation;
@@ -798,7 +793,6 @@ List<Widget> _buildTabs() {
       _vatCodeController: product['vatCode'],
       _productLocationController: product['productLocation'] ?? 'Not Located',
     };
-
     fields.forEach((controller, value) => controller.text = value);
   }
 
