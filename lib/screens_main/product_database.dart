@@ -307,10 +307,7 @@ class _ProductDatabasePageState extends State<ProductDatabasePage> with SingleTi
         title: Text("Products Management", style: TextStyle(color: Colors.white)),
         backgroundColor: Colors.transparent, elevation: 0,
         flexibleSpace: _buildGradientContainer(),
-        bottom: TabBar(
-          controller: _tabController,
-          tabs: _buildTabs(),
-        ),
+        bottom: TabBar( controller: _tabController, tabs: _buildTabs()),
       ),
       body: _buildGradientContainer(
         child: TabBarView(
@@ -362,8 +359,7 @@ List<Widget> _buildTabs() {
       padding: EdgeInsets.all(16.0),
       child: Column(
         children: [
-          ..._buildProductFields(),
-          SizedBox(height: 20),
+          ..._buildProductFields(), SizedBox(height: 20),
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
@@ -448,14 +444,10 @@ List<Widget> _buildTabs() {
           ),
         ),
       ),
-
-      _buildTextField(_stockOrderController, "Order Stock", isNumber: true),
+      _buildTextField(_stockOrderController, "Order Stock (Default = 0)", isNumber: true),
       _buildTextField(_lastPurchasePriceController, "Last Purchase Price", isNumber: true),
-      _buildTextField(_salePriceController, "Sale Price", isNumber: true),
-      _buildTextField(_vatCodeController, "VAT Code (1, 2, 3, or 4)", 
-        isNumber: true,
-        maxLength: 1, 
-      ),
+      _buildTextField(_salePriceController, "Sale Price", isNumber: true, maxLength: 1),
+      _buildTextField(_vatCodeController, "VAT Code (1, 2, 3, or 4)", isNumber: true, maxLength: 1),
     ];
   }
 
@@ -508,7 +500,7 @@ List<Widget> _buildTabs() {
       "Last Purchase Price": '[0-9]',
       "VAT Code (1, 2, 3, or 4)": r'[1-4]', 
       "Product Location": '[a-zA-Z0-9 ]',
-      "Sale Price": '[0-9]',
+      "Sale Price": r'[0-9]',
     };
     return filters.containsKey(label)
         ? [FilteringTextInputFormatter.allow(RegExp(filters[label]!))]
@@ -517,9 +509,7 @@ List<Widget> _buildTabs() {
 
   InputDecoration _getInputDecoration(String label) {
     return InputDecoration(
-      labelText: label,
-      fillColor: Colors.grey[100],
-      filled: true,
+      labelText: label, fillColor: Colors.grey[100], filled: true,
       border: OutlineInputBorder(),
       labelStyle: TextStyle(color: Colors.black),
       hintStyle: TextStyle(color: Colors.grey),
@@ -620,8 +610,7 @@ List<Widget> _buildTabs() {
           child: ListTile(
             contentPadding: EdgeInsets.all(12.0),
             title: Text( 
-              product['name'], 
-              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+              product['name'], style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
             ),
             subtitle: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -727,8 +716,7 @@ List<Widget> _buildTabs() {
                         ],
                       ),
                       SizedBox(height: 16),
-                      Container(
-                        height: 2,
+                      Container(height: 2,
                         decoration: BoxDecoration(
                           gradient: LinearGradient(colors: [primaryColor.withOpacity(0.3), Colors.transparent]),
                         ),
@@ -779,8 +767,7 @@ List<Widget> _buildTabs() {
 
   Widget _buildProductInfoSection(DocumentSnapshot product, Color highlightColor) {
     return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
+      decoration: BoxDecoration(color: Colors.white,
         borderRadius: BorderRadius.circular(12),
         boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 6, offset: Offset(0, 2))],
       ),
