@@ -9,10 +9,9 @@ import 'package:stockflow/utils/colors_utils.dart';
 // [1. MODEL]
 class ProductModel {
   final String? id;
-  final String name, description, category, subCategory, brand, model;
+  final String name, description, category, subCategory, brand, model, vatCode, storeNumber, productLocation;
   final int stockMax, stockCurrent, stockOrder, stockMin, wareHouseStock, stockBreak;
   final double lastPurchasePrice, salePrice;
-  final String vatCode, storeNumber, productLocation;
   final Timestamp createdAt;
 
   ProductModel({
@@ -169,13 +168,13 @@ class _ProductDatabasePageState extends State<ProductDatabasePage> with SingleTi
   final _brandController = TextEditingController();
   final _modelController = TextEditingController();
   final _stockMaxController = TextEditingController();
-  final _wareHouseStockController = TextEditingController(text: "0");
+  final _wareHouseStockController = TextEditingController();
   final _stockCurrentController = TextEditingController(text: "0");
   final _stockOrderController = TextEditingController(text: "0"); // Default value 0
   final _stockMinController = TextEditingController();
   final _stockBreakController = TextEditingController(text: "0");
   final _lastPurchasePriceController = TextEditingController();
-  final _salePriceController = TextEditingController(text: "0");
+  final _salePriceController = TextEditingController(); 
   final _vatCodeController = TextEditingController();
   final _productLocationController = TextEditingController();
 
@@ -188,9 +187,7 @@ class _ProductDatabasePageState extends State<ProductDatabasePage> with SingleTi
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
     _searchController.addListener(() {
-      setState(() {
-        _searchText = _searchController.text;
-      });
+      setState(() { _searchText = _searchController.text;});
     });
   }
 
@@ -201,34 +198,33 @@ class _ProductDatabasePageState extends State<ProductDatabasePage> with SingleTi
     super.dispose();
   }
 
-  Future<void> _saveProduct() async {
-    // Validate all required fields
-  final requiredFields = {
-    "Product Name": _nameController.text,
-    "Description": _descriptionController.text,
-    "Category": _categoryController.text,
-    "Subcategory": _subCategoryController.text,
-    "Brand": _brandController.text,
-    "Model": _modelController.text,
-    "Max Stock": _stockMaxController.text,
-    "Min Stock": _stockMinController.text,
-    "Last Purchase Price": _lastPurchasePriceController.text,
-    "VAT Code": _vatCodeController.text,
-  };
+  Future<void> _saveProduct() async {  // Validate all required fields
+    final requiredFields = {
+      "Product Name": _nameController.text,
+      "Description": _descriptionController.text,
+      "Category": _categoryController.text,
+      "Subcategory": _subCategoryController.text,
+      "Brand": _brandController.text,
+      "Model": _modelController.text,
+      "Max Stock": _stockMaxController.text,
+      "Min Stock": _stockMinController.text,
+      "Last Purchase Price": _lastPurchasePriceController.text,
+      "VAT Code": _vatCodeController.text,
+    };
 
-  final emptyFields = requiredFields.entries
-      .where((entry) => entry.value.isEmpty)
-      .map((entry) => entry.key)
-      .toList();
+    final emptyFields = requiredFields.entries
+        .where((entry) => entry.value.isEmpty)
+        .map((entry) => entry.key)
+        .toList();
 
-  if (emptyFields.isNotEmpty) {
-    _showSnackBar("Please fill all required fields: ${emptyFields.join(', ')}"); return;
-  }
+    if (emptyFields.isNotEmpty) {
+      _showSnackBar("Please fill all required fields: ${emptyFields.join(', ')}"); return;
+    }
 
     final vatCode = _vatCodeController.text;
 
-    int stockMax = int.tryParse(_stockMaxController.text) ?? 0;
-    int stockMin = int.tryParse(_stockMinController.text) ?? 0;
+    int stockMax = int.tryParse(_stockMaxController.text) ?? 0; // Will be 0 if empty
+    int stockMin = int.tryParse(_stockMinController.text) ?? 0; // Will be 0 if empty
     int stockOrder = int.tryParse(_stockOrderController.text) ?? 0; // Will be 0 if empty
 
     if (stockMin >= stockMax) return _showSnackBar("Stock Min must be less than Stock Max");
@@ -250,20 +246,19 @@ class _ProductDatabasePageState extends State<ProductDatabasePage> with SingleTi
         stockCurrent: int.tryParse(_stockCurrentController.text) ?? 0,
         stockOrder: stockOrder,
         stockMin: stockMin,
-        wareHouseStock: int.tryParse(_wareHouseStockController.text) ?? 0,
+        wareHouseStock: _wareHouseStockController.text.isEmpty ? 0 
+          : int.tryParse(_wareHouseStockController.text) ?? 0,
         stockBreak: 0,
         lastPurchasePrice: double.tryParse(_lastPurchasePriceController.text) ?? 0.0,
         salePrice: double.tryParse(_salePriceController.text) ?? 0.0,
         vatCode: vatCode,
         storeNumber: storeNumber,
-        productLocation: _productLocationController.text.isNotEmpty 
-            ? _productLocationController.text 
+        productLocation: _productLocationController.text.isNotEmpty ? _productLocationController.text 
             : 'Not Located',
         createdAt: Timestamp.now(),
       );
 
       final DocumentReference productRef = await _viewModel.saveProduct(product);
-      
       await _viewModel.createNotification(
         message: "A new product was created: ${_brandController.text} - ${_nameController.text} - ${_modelController.text}.",
         notificationType: "Create",
@@ -272,10 +267,8 @@ class _ProductDatabasePageState extends State<ProductDatabasePage> with SingleTi
         userId: user.uid,
       );
 
-      _showSnackBar("Product saved successfully!");
-      _clearFields();
-    } catch (e) {
-      print("Error saving product: $e");
+      _showSnackBar("Product saved successfully!"); _clearFields();
+    } catch (e) {print("$e");
       _showSnackBar("Error saving product.");
     }
   }
@@ -292,7 +285,8 @@ class _ProductDatabasePageState extends State<ProductDatabasePage> with SingleTi
     _brandController.clear();
     _modelController.clear();
     _stockMaxController.clear();
-    _stockOrderController.text = "0"; // Reset to default value
+    _wareHouseStockController.clear(); 
+    _stockOrderController.clear();
     _stockMinController.clear();
     _stockBreakController.clear();
     _lastPurchasePriceController.clear();
@@ -305,17 +299,12 @@ class _ProductDatabasePageState extends State<ProductDatabasePage> with SingleTi
     return Scaffold(
       appBar: AppBar(
         title: Text("Products Management", style: TextStyle(color: Colors.white)),
-        backgroundColor: Colors.transparent, elevation: 0,
-        flexibleSpace: _buildGradientContainer(),
+        backgroundColor: Colors.transparent, elevation: 0, flexibleSpace: _buildGradientContainer(),
         bottom: TabBar( controller: _tabController, tabs: _buildTabs()),
       ),
       body: _buildGradientContainer(
-        child: TabBarView(
-          controller: _tabController,
-          children: [
-            _buildProductForm(),
-            _buildProductList(),
-          ],
+        child: TabBarView(controller: _tabController,
+          children: [_buildProductForm(), _buildProductList()],
         ),
       ),
     );
@@ -329,25 +318,22 @@ class _ProductDatabasePageState extends State<ProductDatabasePage> with SingleTi
             hexStringToColor("CB2B93"),
             hexStringToColor("9546C4"),
             hexStringToColor("5E61F4"),
-          ],
-          begin: Alignment.topLeft, end: Alignment.bottomRight,
+          ], begin: Alignment.topLeft, end: Alignment.bottomRight,
         ),
       ), 
       child: child,
     );
   }
 
-List<Widget> _buildTabs() {
+  List<Widget> _buildTabs() {
     return [
       Tab(
-        child: Padding(
-          padding: EdgeInsets.symmetric(vertical: 5),
+        child: Padding(padding: EdgeInsets.symmetric(vertical: 5),
           child: Text("Register Products", style: TextStyle(color: Colors.white)),
         ),
       ),
       Tab(
-        child: Padding(
-          padding: EdgeInsets.symmetric(vertical: 5),
+        child: Padding(padding: EdgeInsets.symmetric(vertical: 5),
           child: Text("Edit & Search Products", style: TextStyle(color: Colors.white)),
         ),
       ),
@@ -360,8 +346,7 @@ List<Widget> _buildTabs() {
       child: Column(
         children: [
           ..._buildProductFields(), SizedBox(height: 20),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
+          Row(mainAxisAlignment: MainAxisAlignment.center,
             children: [
               if (!isEditing)
                 _buildButton("Save Product", _saveProduct, width: 140),
@@ -374,95 +359,36 @@ List<Widget> _buildTabs() {
   }
 
   List<Widget> _buildProductFields() {
-    return [
-      _buildTextField(_nameController, "Product Name"),
-      _buildTextField(_descriptionController, "Description", maxLength: 300),
-      _buildTextField(_categoryController, "Category"),
-      _buildTextField(_subCategoryController, "Subcategory"),
-      _buildTextField(_brandController, "Brand"),
-      _buildTextField(_modelController, "Model"),
-      _buildTextField(_stockMaxController, "Max Stock", isNumber: true),
-      _buildTextField(_stockMinController, "Min Stock", isNumber: true),
-      _buildTextField(_productLocationController, "Product Location (default: Not Located)"),
-
-      Padding(
-        padding: const EdgeInsets.symmetric(vertical: 8.0),
-        child: SizedBox(width: 1000,
-          child: TextFormField(
-            controller: TextEditingController(text: "0"),
-            readOnly: true,
-            decoration: InputDecoration(
-              labelText: 'WareHouse Stock',
-              labelStyle: TextStyle(color: Colors.black),
-              filled: true,
-              fillColor: Colors.grey[300],
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(5.0),
-                borderSide: BorderSide(color: Colors.black),
-              ),
-            ),
-          ),
-        ),
-      ),
-
-      Padding(
-        padding: const EdgeInsets.symmetric(vertical: 8.0),
-        child: SizedBox(width: 1000,
-          child: TextFormField(
-            controller: TextEditingController(text: "0"),
-            readOnly: true,
-            decoration: InputDecoration(
-              labelText: 'Current Stock',
-              labelStyle: TextStyle(color: Colors.black),
-              filled: true,
-              fillColor: Colors.grey[300],
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(5.0),
-                borderSide: BorderSide(color: Colors.black),
-              ),
-            ),
-          ),
-        ),
-      ),
-
-      Padding(
-        padding: const EdgeInsets.symmetric(vertical: 8.0),
-        child: SizedBox(width: 1000,
-          child: TextFormField(
-            controller: TextEditingController(text: "0"),
-            readOnly: true,
-            decoration: InputDecoration(
-              labelText: 'Stock Break',
-              labelStyle: TextStyle(color: Colors.black),
-              filled: true,
-              fillColor: Colors.grey[300],
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(5.0),
-                borderSide: BorderSide(color: Colors.black),
-              ),
-            ),
-          ),
-        ),
-      ),
-      _buildTextField(_stockOrderController, "Order Stock (Default = 0)", isNumber: true),
-      _buildTextField(_lastPurchasePriceController, "Last Purchase Price", isNumber: true),
-      _buildTextField(_salePriceController, "Sale Price", isNumber: true, maxLength: 1),
-      _buildTextField(_vatCodeController, "VAT Code (1, 2, 3, or 4)", isNumber: true, maxLength: 1),
-    ];
-  }
+  return [
+    _buildTextField(_nameController, "Product Name"),
+    _buildTextField(_descriptionController, "Description", maxLength: 300),
+    _buildTextField(_categoryController, "Category"),
+    _buildTextField(_subCategoryController, "Subcategory"),
+    _buildTextField(_brandController, "Brand"),
+    _buildTextField(_modelController, "Model"),
+    _buildTextField(_stockMaxController, "Max Stock", isNumber: true),
+    _buildTextField(_stockMinController, "Min Stock", isNumber: true),
+    _buildTextField(_wareHouseStockController, "WareHouse Stock", isNumber: true),
+    _buildTextField(_stockCurrentController, "Current Stock", isNumber: true, readOnly: true),
+    _buildTextField(_stockBreakController, "Stock Break", isNumber: true, readOnly: true),
+    _buildTextField(_stockOrderController, "Order Stock (Default = 0)", isNumber: true),
+    _buildTextField(_lastPurchasePriceController, "Last Purchase Price", isNumber: true),
+    _buildTextField(_salePriceController, "Sale Price", isNumber: true,),
+    _buildTextField(_vatCodeController, "VAT Code (1, 2, 3, or 4)", isNumber: true, maxLength: 1),
+    _buildTextField(_productLocationController, "Product Location (default: Not Located)"),
+  ];
+}
 
   Widget _buildButton(String label, VoidCallback onPressed, {Color? color, double? width}) {
-    return Container(
-      width: width,
+    return Container(width: width,
       child: ElevatedButton(
-        onPressed: onPressed, style: ElevatedButton.styleFrom(foregroundColor: color),
-        child: Text(label),
+        onPressed: onPressed, style: ElevatedButton.styleFrom(foregroundColor: color), child: Text(label),
       ),
     );
   }
 
   Widget _buildTextField(TextEditingController controller, String label,
-      {bool isNumber = false, int maxLength = 0}) {
+      {bool isNumber = false, int maxLength = 0, bool readOnly = false}) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 8.0),
       child: SizedBox(width: 1000,
@@ -474,11 +400,11 @@ List<Widget> _buildTabs() {
           maxLength: maxLength > 0 ? maxLength : null,
           inputFormatters: _getInputFormatters(label),
           decoration: _getInputDecoration(label),
+          readOnly: readOnly,
           onChanged: (value) {
-            if (controller.text.isEmpty &&
-                ["Sale Price", "Current Stock", "WareHouse Stock", "Order Stock"].contains(label)) {
-              controller.text = "0";
-              controller.selection = TextSelection.collapsed(offset: controller.text.length);
+            if (isNumber && value.isEmpty) {
+              controller.text = '';
+              controller.selection = TextSelection.collapsed(offset: 0);
             }
           },
         ),
@@ -494,6 +420,7 @@ List<Widget> _buildTabs() {
       "Brand": '[a-zA-Z ]',
       "Category": '[a-zA-Z ]',
       "Subcategory": '[a-zA-Z ]',
+      "WareHouse Stock": '[0-9]',
       "Max Stock": '[0-9]',
       "Order Stock": '[0-9]',
       "Min Stock": '[0-9]',
@@ -525,16 +452,11 @@ List<Widget> _buildTabs() {
         FutureBuilder<String>(
           future: _viewModel.getUserStoreNumber(),
           builder: (context, snapshot) {
-            if (snapshot.connectionState == ConnectionState.waiting) {
-              return SizedBox.shrink();
-            }
-            if (snapshot.hasError || !snapshot.hasData || snapshot.data!.isEmpty) {
-              return SizedBox.shrink();
-            }
+            if (snapshot.connectionState == ConnectionState.waiting) {return SizedBox.shrink();}
+            if (snapshot.hasError || !snapshot.hasData || snapshot.data!.isEmpty) {return SizedBox.shrink();}
             return Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
-              child: Align(
-                alignment: Alignment.centerLeft,
+              child: Align(alignment: Alignment.centerLeft, // Alinhar a esquerda
                 child: Text(
                   'Store Number: ${snapshot.data}',
                   style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white),
@@ -547,19 +469,16 @@ List<Widget> _buildTabs() {
           child: FutureBuilder<String>(
             future: _viewModel.getUserStoreNumber(),
             builder: (context, storeSnapshot) {
-              if (!storeSnapshot.hasData) {
-                return Center(child: CircularProgressIndicator());
-              }
+              if (!storeSnapshot.hasData) {return Center(child: CircularProgressIndicator());}
 
-              if (storeSnapshot.data!.isEmpty) {
-                return Center(child: Text("Store information not available.", style: TextStyle(fontSize: 18, color: Color.fromARGB(255, 0, 0, 0))));}
+              if (storeSnapshot.data!.isEmpty) {return Center(child: Text("Store information not available.", 
+                style: TextStyle(fontSize: 18, color: Color.fromARGB(255, 0, 0, 0))));
+              }
 
               return StreamBuilder<QuerySnapshot>(
                 stream: _viewModel.getProductsStream(storeSnapshot.data!),
                 builder: (context, productSnapshot) {
-                  if (!productSnapshot.hasData) {
-                    return Center(child: CircularProgressIndicator());
-                  }
+                  if (!productSnapshot.hasData) {return Center(child: CircularProgressIndicator());}
 
                   var filteredProducts = productSnapshot.data!.docs.where((product) =>
                       product['name'].toString().toLowerCase().contains(_searchText.toLowerCase())).toList();
@@ -600,25 +519,19 @@ List<Widget> _buildTabs() {
     );
   }
 
-    Widget _buildProductCard(QueryDocumentSnapshot product) {
+  Widget _buildProductCard(QueryDocumentSnapshot product) {
     return Center(
       child: SizedBox(
         width: MediaQuery.of(context).size.width * 0.4,
         child: Card(
-          margin: EdgeInsets.symmetric(vertical: 6.0, horizontal: 8.0),
-          elevation: 2.0,
+          margin: EdgeInsets.symmetric(vertical: 6.0, horizontal: 8.0), elevation: 2.0,
           child: ListTile(
             contentPadding: EdgeInsets.all(12.0),
-            title: Text( 
-              product['name'], style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-            ),
+            title: Text( product['name'], style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
             subtitle: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  'Brand: ${product['brand'] ?? ''}', 
-                  style: TextStyle(fontSize: 14), 
-                ),
+                Text('Brand: ${product['brand'] ?? ''}', style: TextStyle(fontSize: 14)),
                 SizedBox(height: 6),
                 Row(
                   children: [
@@ -656,159 +569,425 @@ List<Widget> _buildTabs() {
       mainAxisSize: MainAxisSize.min,
       children: [
         IconButton(
-          icon: Icon(Icons.edit),
-          onPressed: () => _editProduct(product),
-        ),
-        IconButton(
           icon: Icon(Icons.delete),
           onPressed: () async {
-            if (await _showDeleteConfirmationDialog(context)) {
-              await _viewModel.deleteProduct(product.id);
-            }
+            if (await _showDeleteConfirmationDialog(context)) { await _viewModel.deleteProduct(product.id);}
           },
         ),
       ],
     );
   }
 
-  Future<void> _showProductDetailsDialog(BuildContext context, DocumentSnapshot product) async {
+Future<void> _showProductDetailsDialog(BuildContext context, DocumentSnapshot product) async {
     final Color primaryColor = Theme.of(context).primaryColor;
     final Color highlightColor = Colors.blueAccent;
+    bool isEditing = false;
+    final productModel = ProductModel.fromFirestore(product);
+
+    final nameController = TextEditingController(text: productModel.name);
+    final descriptionController = TextEditingController(text: productModel.description);
+    final categoryController = TextEditingController(text: productModel.category);
+    final subCategoryController = TextEditingController(text: productModel.subCategory);
+    final brandController = TextEditingController(text: productModel.brand);
+    final modelController = TextEditingController(text: productModel.model);
+    final stockMaxController = TextEditingController(text: productModel.stockMax.toString());
+    final stockMinController = TextEditingController(text: productModel.stockMin.toString());
+    final stockOrderController = TextEditingController(text: productModel.stockOrder.toString());
+    final wareHouseStockController = TextEditingController(text: productModel.wareHouseStock.toString());
+    final lastPurchasePriceController = TextEditingController(text: productModel.lastPurchasePrice.toString());
+    final salePriceController = TextEditingController(text: productModel.salePrice.toString());
+    final vatCodeController = TextEditingController(text: productModel.vatCode);
+    final productLocationController = TextEditingController(text: productModel.productLocation);
 
     await showDialog(
       context: context,
-      builder: (context) => Dialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        insetPadding: EdgeInsets.symmetric(horizontal: 20, vertical: 24),
-        elevation: 10,
-        child: ConstrainedBox(
-          constraints: BoxConstraints(
-            maxWidth: MediaQuery.of(context).size.width * 0.7,
-            maxHeight: MediaQuery.of(context).size.height * 0.8,
-          ),
-          child: Container(
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topLeft, end: Alignment.bottomRight,
-                colors: [Colors.grey[50]!, Colors.grey[100]!],
-              ),
-              borderRadius: BorderRadius.circular(16),
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Padding(
-                  padding: const EdgeInsets.all(24),
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setState) {
+            return Dialog(
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              insetPadding: EdgeInsets.symmetric(horizontal: 20, vertical: 24), elevation: 10,
+              child: ConstrainedBox(
+                constraints: BoxConstraints(
+                  maxWidth: MediaQuery.of(context).size.width * 0.7,
+                  maxHeight: MediaQuery.of(context).size.height * 0.8,
+                ),
+                child: Container(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight,
+                      colors: [Colors.grey[50]!, Colors.grey[100]!],
+                    ),
+                    borderRadius: BorderRadius.circular(16),
+                  ),
                   child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
                     children: [
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Text(
-                            "📦 Product Details",
-                            style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: primaryColor),
-                          ),
-                          IconButton(
-                            icon: Icon(Icons.close, color: Colors.grey),
-                            onPressed: () => Navigator.of(context).pop(),
-                          ),
-                        ],
+                      Padding(padding: const EdgeInsets.all(24),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Text(
+                                  "📦 Product Details",
+                                  style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: primaryColor),
+                                ),
+                                IconButton(
+                                  icon: Icon(isEditing ? Icons.save : Icons.edit, color: isEditing ? Colors.green : Colors.blue),
+                                  onPressed: () async {
+                                    if (isEditing) { // Create a map to track changed fields
+                                      Map<String, Map<String, dynamic>> changedFields = {};
+                                      
+                                      if (nameController.text != productModel.name) {
+                                        changedFields['Name'] = {
+                                          'old': productModel.name, 'new': nameController.text
+                                        };
+                                      }
+                                      if (descriptionController.text != productModel.description) {
+                                        changedFields['Description'] = {
+                                          'old': productModel.description, 'new': descriptionController.text
+                                        };
+                                      }
+                                      if (categoryController.text != productModel.category) {
+                                        changedFields['Category'] = {
+                                          'old': productModel.category, 'new': categoryController.text
+                                        };
+                                      }
+                                      if (subCategoryController.text != productModel.subCategory) {
+                                        changedFields['Sub Category'] = {
+                                          'old': productModel.subCategory,'new': subCategoryController.text
+                                        };
+                                      }
+                                      if (brandController.text != productModel.brand) {
+                                        changedFields['Brand'] = {
+                                          'old': productModel.brand, 'new': brandController.text
+                                        };
+                                      }
+                                      if (modelController.text != productModel.model) {
+                                        changedFields['Model'] = {
+                                          'old': productModel.model, 'new': modelController.text
+                                        };
+                                      }
+                                      if (int.tryParse(stockMaxController.text) != productModel.stockMax) {
+                                        changedFields['Stock Max'] = {
+                                          'old': productModel.stockMax.toString(),'new': stockMaxController.text
+                                        };
+                                      }
+                                      if (int.tryParse(stockMinController.text) != productModel.stockMin) {
+                                        changedFields['Stock Min'] = {
+                                          'old': productModel.stockMin.toString(), 'new': stockMinController.text
+                                        };
+                                      }
+                                      if (int.tryParse(stockOrderController.text) != productModel.stockOrder) {
+                                        changedFields['Stock Order'] = {
+                                          'old': productModel.stockOrder.toString(), 'new': stockOrderController.text
+                                        };
+                                      }
+                                      if (int.tryParse(wareHouseStockController.text) != productModel.wareHouseStock) {
+                                        changedFields['Warehouse Stock'] = {
+                                          'old': productModel.wareHouseStock.toString(), 'new': wareHouseStockController.text
+                                        };
+                                      }
+                                      if (double.tryParse(lastPurchasePriceController.text) != productModel.lastPurchasePrice) {
+                                        changedFields['Last Purchase Price'] = {
+                                          'old': productModel.lastPurchasePrice.toString(), 'new': lastPurchasePriceController.text
+                                        };
+                                      }
+                                      if (double.tryParse(salePriceController.text) != productModel.salePrice) {
+                                        changedFields['Sale Price'] = {
+                                          'old': productModel.salePrice.toString(), 'new': salePriceController.text
+                                        };
+                                      }
+                                      if (vatCodeController.text != productModel.vatCode) {
+                                        changedFields['VAT Code'] = {
+                                          'old': productModel.vatCode, 'new': vatCodeController.text
+                                        };
+                                      }
+                                      if (productLocationController.text != productModel.productLocation) {
+                                        changedFields['Product Location'] = {
+                                          'old': productModel.productLocation, 'new': productLocationController.text
+                                        };
+                                      }
+
+                                      if (changedFields.isEmpty) {
+                                        ScaffoldMessenger.of(context).showSnackBar(
+                                          SnackBar(content: Text("No changes were made to the product")),
+                                        ); return;
+                                      }
+                                      // Validate all required fields
+                                      if (nameController.text.isEmpty ||
+                                          descriptionController.text.isEmpty ||
+                                          categoryController.text.isEmpty ||
+                                          subCategoryController.text.isEmpty ||
+                                          brandController.text.isEmpty ||
+                                          modelController.text.isEmpty ||
+                                          stockMaxController.text.isEmpty ||
+                                          stockMinController.text.isEmpty ||
+                                          lastPurchasePriceController.text.isEmpty ||
+                                          vatCodeController.text.isEmpty) {
+                                        ScaffoldMessenger.of(context).showSnackBar(
+                                          SnackBar(content: Text("Please fill in all required fields")),
+                                        ); return;
+                                      }
+
+                                      int stockMax = int.tryParse(stockMaxController.text) ?? 0;
+                                      int stockMin = int.tryParse(stockMinController.text) ?? 0;
+                                      int stockOrder = int.tryParse(stockOrderController.text) ?? 0;
+                                      int wareHouseStock = int.tryParse(wareHouseStockController.text) ?? productModel.wareHouseStock;
+
+                                      if (stockMin >= stockMax) {
+                                        ScaffoldMessenger.of(context).showSnackBar(
+                                          SnackBar(content: Text("Minimum stock must be less than maximum stock")),
+                                        ); return;
+                                      }
+
+                                      if (stockOrder > stockMax) {
+                                        ScaffoldMessenger.of(context).showSnackBar(
+                                          SnackBar(content: Text("You cannot order more stock than your warehouse capacity")),
+                                        ); return;
+                                      }
+
+                                      try {
+                                        final storeNumber = await _viewModel.getUserStoreNumber();
+                                        final user = FirebaseAuth.instance.currentUser;
+                                        if (user == null) throw Exception("No user logged in");
+
+                                        final updatedProduct = ProductModel(
+                                          id: product.id,
+                                          name: nameController.text,
+                                          description: descriptionController.text,
+                                          category: categoryController.text,
+                                          subCategory: subCategoryController.text,
+                                          brand: brandController.text,
+                                          model: modelController.text,
+                                          stockMax: stockMax,
+                                          stockCurrent: productModel.stockCurrent,
+                                          stockOrder: stockOrder,
+                                          stockMin: stockMin,
+                                          wareHouseStock: wareHouseStock,
+                                          stockBreak: productModel.stockBreak,
+                                          lastPurchasePrice: double.tryParse(lastPurchasePriceController.text) ?? 0.0,
+                                          salePrice: double.tryParse(salePriceController.text) ?? 0.0,
+                                          vatCode: vatCodeController.text,
+                                          storeNumber: storeNumber,
+                                          productLocation: productLocationController.text.isNotEmpty 
+                                              ? productLocationController.text 
+                                              : 'Not Located',
+                                          createdAt: productModel.createdAt,
+                                        );
+
+                                        await _viewModel.updateProduct(product.id, updatedProduct);
+                                        StringBuffer notificationMessage = StringBuffer();
+                                        notificationMessage.write("Product - ${updatedProduct.name} had some fields updated:\n");
+                                        
+                                        changedFields.forEach((field, values) {
+                                          notificationMessage.write(
+                                            "• $field: From '${values['old']}' to '${values['new']}';  "
+                                          );
+                                        });
+                                        await _viewModel.createNotification(
+                                          message: notificationMessage.toString(),
+                                          notificationType: "Edit",
+                                          productId: product.id,
+                                          storeNumber: storeNumber,
+                                          userId: user.uid,
+                                        );
+
+                                        ScaffoldMessenger.of(context).showSnackBar(
+                                          SnackBar(content: Text("Product updated successfully!")),
+                                        );
+                                        
+                                        setState(() => isEditing = false);
+                                      } catch (e) {
+                                        print("Error updating product: $e");
+                                        ScaffoldMessenger.of(context).showSnackBar(
+                                          SnackBar(content: Text("Error updating product")),
+                                        );
+                                      }
+                                    } else {setState(() => isEditing = true);}
+                                  },
+                                ),
+                              ],
+                            ),
+                            SizedBox(height: 16),
+                            Container(height: 2,
+                              decoration: BoxDecoration(
+                                gradient: LinearGradient(
+                                  colors: [primaryColor.withOpacity(0.3), Colors.transparent],
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
-                      SizedBox(height: 16),
-                      Container(height: 2,
-                        decoration: BoxDecoration(
-                          gradient: LinearGradient(colors: [primaryColor.withOpacity(0.3), Colors.transparent]),
+                      Expanded(
+                        child: SingleChildScrollView(
+                          padding: EdgeInsets.symmetric(horizontal: 24),
+                          child: Column(
+                            children: [
+                              _buildEditableProductInfoSection(
+                                isEditing,
+                                nameController,
+                                descriptionController,
+                                categoryController,
+                                subCategoryController,
+                                brandController,
+                                modelController,
+                                highlightColor,
+                              ),
+                              SizedBox(height: 16),
+                              _buildEditableStockInfoSection(
+                                isEditing,
+                                stockMaxController,
+                                stockMinController,
+                                stockOrderController,
+                                wareHouseStockController,
+                                productModel,
+                                highlightColor,
+                              ),
+                              SizedBox(height: 16),
+                              _buildEditablePricingSection(
+                                isEditing,
+                                lastPurchasePriceController,
+                                salePriceController,
+                                highlightColor,
+                              ),
+                              SizedBox(height: 16),
+                              _buildEditableAdditionalInfoSection(
+                                isEditing,
+                                vatCodeController,
+                                productLocationController,
+                                productModel,
+                                highlightColor,
+                              ),
+                              SizedBox(height: 24),
+                            ],
+                          ),
+                        ),
+                      ),
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 24),
+                        child: Center(
+                          child: ElevatedButton(
+                            onPressed: () => Navigator.of(context).pop(),
+                            style: ElevatedButton.styleFrom(backgroundColor: primaryColor,
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                              padding: EdgeInsets.symmetric(horizontal: 32, vertical: 12),
+                            ),
+                            child: Text("Close", style: TextStyle(color: Colors.white, fontSize: 16)),
+                          ),
                         ),
                       ),
                     ],
                   ),
                 ),
-                Expanded(
-                  child: SingleChildScrollView(
-                    padding: EdgeInsets.symmetric(horizontal: 24),
-                    child: Column(
-                      children: [
-                        _buildProductInfoSection(product, highlightColor),
-                        SizedBox(height: 16),
-                        _buildStockInfoSection(product, highlightColor),
-                        SizedBox(height: 16),
-                        _buildPricingSection(product, highlightColor),
-                        SizedBox(height: 16),
-                        _buildAdditionalInfoSection(product, highlightColor),
-                        SizedBox(height: 24),
-                      ],
-                    ),
-                  ),
-                ),
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 24),
-                  child: Center(
-                    child: ElevatedButton(
-                      onPressed: () => Navigator.of(context).pop(),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: primaryColor,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        padding: EdgeInsets.symmetric(horizontal: 32, vertical: 12),
-                      ),
-                      child: Text("Close", style: TextStyle(color: Colors.white, fontSize: 16)),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
+              ),
+            );
+          },
+        );
+      },
     );
   }
 
-  Widget _buildProductInfoSection(DocumentSnapshot product, Color highlightColor) {
+  Widget _buildEditableProductInfoSection(
+    bool isEditing,
+    TextEditingController nameController,
+    TextEditingController descriptionController,
+    TextEditingController categoryController,
+    TextEditingController subCategoryController,
+    TextEditingController brandController,
+    TextEditingController modelController,
+    Color highlightColor,
+  ) {
     return Container(
       decoration: BoxDecoration(color: Colors.white,
         borderRadius: BorderRadius.circular(12),
         boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 6, offset: Offset(0, 2))],
       ),
       padding: EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _buildDetailRow(Icons.shopping_bag, "Product Name", product['name'], highlightColor),
+          _buildEditableDetailRow(
+            isEditing,
+            Icons.shopping_bag,
+            "Product Name",
+            nameController,
+            highlightColor,
+            isRequired: true,
+          ),
           Divider(height: 24, thickness: 1),
-          _buildDetailRow(Icons.description, "Description", product['description'], highlightColor),
+          _buildEditableDetailRow(
+            isEditing,
+            Icons.description,
+            "Description",
+            descriptionController,
+            highlightColor,
+            isRequired: true,
+            maxLines: 3,
+          ),
           Divider(height: 24, thickness: 1),
-          _buildDetailRow(Icons.category, "Category", product['category'], highlightColor),
+          _buildEditableDetailRow(
+            isEditing,
+            Icons.category,
+            "Category",
+            categoryController,
+            highlightColor,
+            isRequired: true,
+          ),
           Divider(height: 24, thickness: 1),
-          _buildDetailRow(Icons.subtitles, "Subcategory", product['subCategory'], highlightColor),
+          _buildEditableDetailRow(
+            isEditing,
+            Icons.subtitles,
+            "Subcategory",
+            subCategoryController,
+            highlightColor,
+            isRequired: true,
+          ),
           Divider(height: 24, thickness: 1),
-          _buildDetailRow(Icons.branding_watermark, "Brand", product['brand'], highlightColor),
+          _buildEditableDetailRow(
+            isEditing,
+            Icons.branding_watermark,
+            "Brand",
+            brandController,
+            highlightColor,
+            isRequired: true,
+          ),
           Divider(height: 24, thickness: 1),
-          _buildDetailRow(Icons.model_training, "Model", product['model'], highlightColor),
+          _buildEditableDetailRow(
+            isEditing,
+            Icons.model_training,
+            "Model",
+            modelController,
+            highlightColor,
+            isRequired: true,
+          ),
         ],
       ),
     );
   }
 
-  Widget _buildStockInfoSection(DocumentSnapshot product, Color highlightColor) {
+  Widget _buildEditableStockInfoSection(
+    bool isEditing,
+    TextEditingController stockMaxController,
+    TextEditingController stockMinController,
+    TextEditingController stockOrderController,
+    TextEditingController wareHouseStockController,
+    ProductModel productModel,
+    Color highlightColor,
+  ) {
     return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
+      decoration: BoxDecoration(color: Colors.white,
         borderRadius: BorderRadius.circular(12),
         boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 6, offset: Offset(0, 2))],
       ),
       padding: EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
               Container(
                 padding: EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: highlightColor.withOpacity(0.1), shape: BoxShape.circle,
-                ),
+                decoration: BoxDecoration(color: highlightColor.withOpacity(0.1), shape: BoxShape.circle),
                 child: Icon(Icons.inventory, size: 20, color: highlightColor),
               ),
               SizedBox(width: 16),
@@ -819,63 +998,97 @@ List<Widget> _buildTabs() {
             ],
           ),
           SizedBox(height: 16),
-          _buildStockRow("Max Stock", product['stockMax'].toString(), Colors.blue),
-          Divider(height: 16, thickness: 1),
-          _buildStockRow("Warehouse Stock", product['wareHouseStock'].toString(), Colors.green),
-          Divider(height: 16, thickness: 1),
-          _buildStockRow(
-            "Current Stock", 
-            product['stockCurrent'].toString(), 
-            product['stockCurrent'] <= product['stockMin'] ? Colors.orange : Colors.green
+          _buildEditableStockRow(
+            isEditing,
+            "Max Stock",
+            stockMaxController,
+            Colors.blue,
+            isRequired: true, isNumber: true,
           ),
           Divider(height: 16, thickness: 1),
-          _buildStockRow("Order Stock", product['stockOrder'].toString(), Colors.blue),
+          _buildEditableStockRow(
+            isEditing,
+            "Warehouse Stock",
+            wareHouseStockController,
+            Colors.green,
+            isNumber: true, isRequired: true,
+          ),
           Divider(height: 16, thickness: 1),
-          _buildStockRow("Min Stock", product['stockMin'].toString(), Colors.blue),
+          _buildStockRow(
+            "Current Stock",
+            productModel.stockCurrent.toString(),
+            productModel.stockCurrent <= productModel.stockMin ? Colors.orange : Colors.green,
+          ),
           Divider(height: 16, thickness: 1),
-          _buildStockRow("Stock Break", product['stockBreak'].toString(), Colors.red),
+          _buildEditableStockRow(
+            isEditing,
+            "Order Stock",
+            stockOrderController,
+            Colors.blue,
+            isNumber: true, isRequired: true,
+          ),
+          Divider(height: 16, thickness: 1),
+          _buildEditableStockRow(
+            isEditing,
+            "Min Stock",
+            stockMinController,
+            Colors.blue,
+            isRequired: true, isNumber: true,
+          ),
+          Divider(height: 16, thickness: 1),
+          _buildStockRow("Stock Break", productModel.stockBreak.toString(), Colors.red),
         ],
       ),
     );
   }
 
-  Widget _buildPricingSection(DocumentSnapshot product, Color highlightColor) {
+  Widget _buildEditablePricingSection(
+    bool isEditing,
+    TextEditingController lastPurchasePriceController,
+    TextEditingController salePriceController,
+    Color highlightColor,
+  ) {
     return Container(
       decoration: BoxDecoration(color: Colors.white,
         borderRadius: BorderRadius.circular(12),
         boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 6, offset: Offset(0, 2))],
       ),
       padding: EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
               Container(
                 padding: EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: highlightColor.withOpacity(0.1),
-                  shape: BoxShape.circle,
-                ),
+                decoration: BoxDecoration(color: highlightColor.withOpacity(0.1), shape: BoxShape.circle),
                 child: Icon(Icons.attach_money, size: 20, color: highlightColor),
               ),
               SizedBox(width: 16),
-              Text(
-                "Pricing Information",
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: Colors.grey[800]),
-              ),
+              Text("Pricing Information", style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: Colors.grey[800])),
             ],
           ),
           SizedBox(height: 16),
-          _buildPriceRow("Sale Price", product['salePrice']?.toString() ?? '0', Colors.green),
+          _buildEditablePriceRow(
+            isEditing,
+            "Sale Price", salePriceController,Colors.green, isNumber: true,
+          ),
           Divider(height: 16, thickness: 1),
-          _buildPriceRow("Last Purchase Price", product['lastPurchasePrice']?.toString() ?? '0', Colors.blue),
+          _buildEditablePriceRow(
+            isEditing,
+            "Last Purchase Price", lastPurchasePriceController, Colors.blue, isRequired: true, isNumber: true,
+          ),
         ],
       ),
     );
   }
 
-  Widget _buildAdditionalInfoSection(DocumentSnapshot product, Color highlightColor) {
+  Widget _buildEditableAdditionalInfoSection(
+    bool isEditing,
+    TextEditingController vatCodeController,
+    TextEditingController productLocationController,
+    ProductModel productModel,
+    Color highlightColor,
+  ) {
     return Container(
       decoration: BoxDecoration(color: Colors.white,
         borderRadius: BorderRadius.circular(12),
@@ -885,13 +1098,174 @@ List<Widget> _buildTabs() {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _buildDetailRow(Icons.confirmation_number, "VAT Code", product['vatCode'], highlightColor),
+          isEditing
+              ? TextFormField(
+                  controller: vatCodeController,
+                  decoration: InputDecoration(
+                    labelText: "VAT Code (1-4)",
+                    prefixIcon: Icon(Icons.confirmation_number, color: highlightColor),
+                    border: OutlineInputBorder(),
+                    hintText: "Enter 1, 2, 3 or 4",
+                  ),
+                  keyboardType: TextInputType.number,
+                  inputFormatters: [
+                  FilteringTextInputFormatter.allow(RegExp(r'[1-4]')), // Esta é a linha crucial!
+                  LengthLimitingTextInputFormatter(1),
+                ],
+                  validator: (value) {if (value == null || value.isEmpty) return 'VAT Code is required'; return null;},
+                )
+              : _buildDetailRow(
+                  Icons.confirmation_number,
+                  "VAT Code", vatCodeController.text, highlightColor,
+                ),
           Divider(height: 24, thickness: 1),
-          _buildDetailRow(Icons.location_on, "Product Location", product['productLocation'] ?? 'Not Located', highlightColor),
+          
+          _buildEditableDetailRow(
+            isEditing,
+            Icons.location_on,
+            "Product Location", productLocationController, highlightColor,
+          ),
           Divider(height: 24, thickness: 1),
-          _buildDetailRow(Icons.calendar_today, "Created At", _formatDate(product['createdAt']), highlightColor),
+          
+          _buildDetailRow(
+            Icons.calendar_today,
+            "Created At", _formatDate(productModel.createdAt), highlightColor,
+          ),
         ],
       ),
+    );
+  }
+
+  Widget _buildEditableDetailRow(
+    bool isEditing, IconData icon, String label,
+    TextEditingController controller,
+    Color highlightColor, {
+    bool isRequired = false,
+    bool isNumber = false,
+    int maxLines = 1,
+    int? maxLength,
+  }) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(padding: EdgeInsets.all(8),
+          decoration: BoxDecoration(color: highlightColor.withOpacity(0.1), shape: BoxShape.circle),
+          child: Icon(icon, size: 20, color: highlightColor),
+        ),
+        SizedBox(width: 16),
+        Expanded(
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                isRequired ? "$label *" : label,
+                style: TextStyle(fontSize: 14, color: Colors.grey[600], fontWeight: FontWeight.w500),
+              ),
+              SizedBox(height: 4),
+              isEditing
+                  ? TextFormField(
+                      controller: controller,
+                      keyboardType: isNumber ? TextInputType.number : TextInputType.text,
+                      maxLines: maxLines,
+                      maxLength: maxLength,
+                      decoration: InputDecoration(isDense: true,
+                        contentPadding: EdgeInsets.symmetric(vertical: 8, horizontal: 8),
+                        border: OutlineInputBorder(),
+                      ),
+                    )
+                  : Text(
+                      controller.text.isNotEmpty ? controller.text : 'Not specified',
+                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: Colors.grey[800]),
+                    ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildEditableStockRow(
+    bool isEditing,
+    String label,
+    TextEditingController controller,
+    Color color, {
+    bool isRequired = false,
+    bool isNumber = false,
+  }) {
+    return Row(
+      children: [
+        SizedBox(width: 40),
+        Expanded(
+          flex: 2,
+          child: Text(
+            isRequired ? "$label *" : label,
+            style: TextStyle(fontSize: 14, color: Colors.grey[600]),
+          ),
+        ),
+        Expanded(
+          flex: 1,
+          child: isEditing
+              ? TextFormField(
+                  controller: controller,
+                  keyboardType: isNumber ? TextInputType.number : TextInputType.text,
+                  textAlign: TextAlign.right,
+                  decoration: InputDecoration(
+                    isDense: true,
+                    contentPadding: EdgeInsets.symmetric(vertical: 8, horizontal: 8),
+                    border: OutlineInputBorder(),
+                  ),
+                )
+              : Text(
+                  controller.text,
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.bold,
+                    color: color,
+                  ),
+                  textAlign: TextAlign.right,
+                ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildEditablePriceRow(
+    bool isEditing,
+    String label,
+    TextEditingController controller,
+    Color color, {
+    bool isRequired = false,
+    bool isNumber = false,
+  }) {
+    return Row(
+      children: [
+        SizedBox(width: 40),
+        Expanded(flex: 2,
+          child: Text(
+            isRequired ? "$label *" : label,
+            style: TextStyle(fontSize: 14, color: Colors.grey[600]),
+          ),
+        ),
+        Expanded(
+          flex: 1,
+          child: isEditing
+              ? TextFormField(
+                  controller: controller,
+                  keyboardType: isNumber ? TextInputType.number : TextInputType.text,
+                  textAlign: TextAlign.right,
+                  decoration: InputDecoration(
+                    isDense: true,
+                    contentPadding: EdgeInsets.symmetric(vertical: 8, horizontal: 8),
+                    border: OutlineInputBorder(),
+                    prefixText: isNumber ? '€' : null,
+                  ),
+                )
+              : Text(
+                  "€${controller.text}",
+                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: color),
+                  textAlign: TextAlign.right,
+                ),
+        ),
+      ],
     );
   }
 
@@ -901,16 +1275,12 @@ List<Widget> _buildTabs() {
       children: [
         Container(
           padding: EdgeInsets.all(8),
-          decoration: BoxDecoration(
-            color: highlightColor.withOpacity(0.1),
-            shape: BoxShape.circle,
-          ),
+          decoration: BoxDecoration(color: highlightColor.withOpacity(0.1), shape: BoxShape.circle),
           child: Icon(icon, size: 20, color: highlightColor),
         ),
         SizedBox(width: 16),
         Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(label, style: TextStyle(fontSize: 14, color: Colors.grey[600], fontWeight: FontWeight.w500)),
               SizedBox(height: 4),
@@ -929,30 +1299,9 @@ List<Widget> _buildTabs() {
     return Row(
       children: [
         SizedBox(width: 40),
-        Expanded(flex: 2,
-          child: Text(label, style: TextStyle(fontSize: 14, color: Colors.grey[600])),
-        ),
-        Expanded(
-          flex: 1,
-          child: Text(value,
-            style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: color), textAlign: TextAlign.right,
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildPriceRow(String label, String value, Color color) {
-    return Row(
-      children: [
-        SizedBox(width: 40),
-        Expanded(flex: 2,
-          child: Text(label, style: TextStyle(fontSize: 14, color: Colors.grey[600])),
-        ),
-        Expanded(
-          flex: 1,
-          child: Text(
-            "€$value", style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: color),
+        Expanded(flex: 2, child: Text(label, style: TextStyle(fontSize: 14, color: Colors.grey[600]))),
+        Expanded(flex: 1,
+          child: Text(value, style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: color),
             textAlign: TextAlign.right,
           ),
         ),
@@ -966,148 +1315,17 @@ List<Widget> _buildTabs() {
   }
 
   Future<bool> _showDeleteConfirmationDialog(BuildContext context) async {
-    return (await showDialog<bool>(
-          context: context,
+    return (await showDialog<bool>(context: context,
           barrierDismissible: false,
           builder: (context) => AlertDialog(
             title: Text("Confirm Deletion"),
             content: Text("Are you sure you want to delete this product?"),
-            actions: _buildDeleteDialogActions(context),
+            actions: [
+              TextButton(onPressed: () => Navigator.of(context).pop(false), child: Text("No")),
+              TextButton(onPressed: () => Navigator.of(context).pop(true), child: Text("Yes", style: TextStyle(fontWeight: FontWeight.bold))),
+            ],
           ),
         )) ??
         false;
-  }
-
-  List<Widget> _buildDeleteDialogActions(BuildContext context) {
-    return [
-      TextButton(onPressed: () => Navigator.of(context).pop(false), child: Text("No")),
-      TextButton(
-        onPressed: () => Navigator.of(context).pop(true), 
-          child: Text("Yes", style: TextStyle(fontWeight: FontWeight.bold)),
-      ),
-    ];
-  }
-
-  Future<void> _editProduct(DocumentSnapshot product) async {
-    _populateFormFields(product);
-
-    await showDialog(
-      context: context,
-      builder: (_) => AlertDialog(
-        title: Text("Edit Product"),
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: _buildProductFields(),
-          ),
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.of(context).pop(), child: Text("Cancel")),
-          ElevatedButton(
-            onPressed: () async {
-              try {
-                final vatCode = _vatCodeController.text;
-
-                final storeNumber = await _viewModel.getUserStoreNumber();
-                final user = FirebaseAuth.instance.currentUser;
-                if (user == null) throw Exception("No user is logged in.");
-
-                final oldProduct = ProductModel.fromFirestore(product);
-                final updatedProduct = ProductModel(
-                  id: product.id,
-                  name: _nameController.text,
-                  description: _descriptionController.text,
-                  category: _categoryController.text,
-                  subCategory: _subCategoryController.text,
-                  brand: _brandController.text,
-                  model: _modelController.text,
-                  stockMax: int.tryParse(_stockMaxController.text) ?? 0,
-                  stockCurrent: int.tryParse(_stockCurrentController.text) ?? 0,
-                  stockOrder: int.tryParse(_stockOrderController.text) ?? 0,
-                  stockMin: int.tryParse(_stockMinController.text) ?? 0,
-                  wareHouseStock: int.tryParse(_wareHouseStockController.text) ?? 0,
-                  stockBreak: int.tryParse(_stockBreakController.text) ?? 0,
-                  lastPurchasePrice: double.tryParse(_lastPurchasePriceController.text) ?? 0.0,
-                  salePrice: double.tryParse(_salePriceController.text) ?? 0.0,
-                  vatCode: vatCode,
-                  storeNumber: storeNumber,
-                  productLocation: _productLocationController.text.isNotEmpty 
-                      ? _productLocationController.text 
-                      : 'Not Located',
-                  createdAt: oldProduct.createdAt,
-                );
-
-                final changes = _getFieldChanges(oldProduct, updatedProduct);
-                if (changes.isEmpty) {
-                  _showSnackBar("No changes detected. Modify at least one field to save.");
-                  return;
-                }
-
-                await _viewModel.updateProduct(product.id, updatedProduct);
-
-                await _viewModel.createNotification(
-                  message: "Product - ${updatedProduct.name}. The following fields were updated: ${changes.join(', ')}.",
-                  notificationType: "Edit",
-                  productId: product.id,
-                  storeNumber: storeNumber,
-                  userId: user.uid,
-                );
-
-                if (!mounted) return;
-                ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Product updated successfully!")));
-                Navigator.of(context).pop();
-              } catch (e) {
-                print("Error updating product: $e");
-                if (!mounted) return;
-                ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Error updating product.")));
-              }
-            },
-            child: Text("Save Product"),
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _populateFormFields(DocumentSnapshot product) {
-    final fields = {
-      _nameController: product['name'],
-      _descriptionController: product['description'],
-      _categoryController: product['category'],
-      _subCategoryController: product['subCategory'],
-      _brandController: product['brand'],
-      _modelController: product['model'],
-      _stockMaxController: product['stockMax'].toString(),
-      _stockCurrentController: product['stockCurrent'].toString(),
-      _stockOrderController: product['stockOrder'].toString(),
-      _stockMinController: product['stockMin'].toString(),
-      _stockBreakController: product['stockBreak'].toString(),
-      _lastPurchasePriceController: product['lastPurchasePrice'].toString(),
-      _salePriceController: product['salePrice'].toString(),
-      _vatCodeController: product['vatCode'],
-      _productLocationController: product['productLocation'] ?? 'Not Located',
-    };
-    fields.forEach((controller, value) => controller.text = value);
-  }
-
-  List<String> _getFieldChanges(ProductModel oldProduct, ProductModel newProduct) {
-    final changes = <String>[];
-    
-    if (oldProduct.name != newProduct.name) changes.add('name: "${oldProduct.name}" → "${newProduct.name}"');
-    if (oldProduct.description != newProduct.description) changes.add('description: "${oldProduct.description}" → "${newProduct.description}"');
-    if (oldProduct.category != newProduct.category) changes.add('category: "${oldProduct.category}" → "${newProduct.category}"');
-    if (oldProduct.subCategory != newProduct.subCategory) changes.add('subCategory: "${oldProduct.subCategory}" → "${newProduct.subCategory}"');
-    if (oldProduct.brand != newProduct.brand) changes.add('brand: "${oldProduct.brand}" → "${newProduct.brand}"');
-    if (oldProduct.model != newProduct.model) changes.add('model: "${oldProduct.model}" → "${newProduct.model}"');
-    if (oldProduct.stockMax != newProduct.stockMax) changes.add('stockMax: "${oldProduct.stockMax}" → "${newProduct.stockMax}"');
-    if (oldProduct.stockCurrent != newProduct.stockCurrent) changes.add('stockCurrent: "${oldProduct.stockCurrent}" → "${newProduct.stockCurrent}"');
-    if (oldProduct.stockOrder != newProduct.stockOrder) changes.add('stockOrder: "${oldProduct.stockOrder}" → "${newProduct.stockOrder}"');
-    if (oldProduct.stockMin != newProduct.stockMin) changes.add('stockMin: "${oldProduct.stockMin}" → "${newProduct.stockMin}"');
-    if (oldProduct.lastPurchasePrice != newProduct.lastPurchasePrice) changes.add('lastPurchasePrice: "${oldProduct.lastPurchasePrice}" → "${newProduct.lastPurchasePrice}"');
-    if (oldProduct.salePrice != newProduct.salePrice) changes.add('salePrice: "${oldProduct.salePrice}" → "${newProduct.salePrice}"');
-    if (oldProduct.vatCode != newProduct.vatCode) changes.add('vatCode: "${oldProduct.vatCode}" → "${newProduct.vatCode}"');
-    if (oldProduct.productLocation != newProduct.productLocation) changes.add('productLocation: "${oldProduct.productLocation}" → "${newProduct.productLocation}"');
-    
-    return changes;
   }
 }

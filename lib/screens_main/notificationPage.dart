@@ -78,8 +78,7 @@ class NotificationsViewModel {
       final userDoc = await _firestore.collection('users').doc(user.uid).get();
       return userDoc.data()?['storeNumber'] as String?;
     } catch (e) {
-      debugPrint("Error fetching store number: $e");
-      return null;
+      debugPrint("Error fetching store number: $e"); return null;
     }
   }
 
@@ -115,9 +114,7 @@ class NotificationsViewModel {
         return timestamp.toDate().isBefore(threeDaysAgo);
       }).toList();
 
-      for (final doc in expiredNotifications) {
-        await doc.reference.delete();
-      }
+      for (final doc in expiredNotifications) {await doc.reference.delete();}
     } catch (e) {
       debugPrint("Error deleting expired notifications: $e");
       // Você pode adicionar um retry ou notificar o usuário aqui
@@ -152,10 +149,7 @@ class NotificationsViewModel {
   Future<ProductModel?> getProductDetails(String productId) async {
     try {
       final doc = await _firestore.collection('products').doc(productId).get();
-      if (doc.exists) {
-        return ProductModel.fromDocument(doc);
-      }
-      return null;
+      if (doc.exists) {return ProductModel.fromDocument(doc);} return null;
     } catch (e) {
       debugPrint("Error fetching product details: $e");
       return null;
@@ -169,9 +163,7 @@ class NotificationsViewModel {
     return difference.inDays > 3;
   }
 
-  static String formatTimeElapsed(DateTime dateTime) {
-    return timeago.format(dateTime, locale: 'en');
-  }
+  static String formatTimeElapsed(DateTime dateTime) {return timeago.format(dateTime, locale: 'en');}
 }
 
 // [3. VIEW]
@@ -185,15 +177,11 @@ class NotificationsStockAlert extends StatelessWidget {
       appBar: PreferredSize(
         preferredSize: Size.fromHeight(80.0),
         child: AppBar(
-          backgroundColor: Colors.transparent,
-          elevation: 0,
+          backgroundColor: Colors.transparent, elevation: 0,
           flexibleSpace: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              const Text(
-                'Notifications',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-              ),
+              const Text('Notifications', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
               IconButton(
                 icon: const Icon(Icons.add_alert),
                 onPressed: () => _showSendNotificationModal(context), iconSize: 25.0,
@@ -240,9 +228,7 @@ class NotificationsStockAlert extends StatelessWidget {
 
                 if (snapshot.hasError) {
                   return const Center(
-                    child: Text(
-                      'Error to load notificatons.', style: TextStyle(fontSize: 18, color: Colors.white),
-                    ),
+                    child: Text('Error to load notificatons.', style: TextStyle(fontSize: 18, color: Colors.white)),
                   );
                 }
 
@@ -252,9 +238,7 @@ class NotificationsStockAlert extends StatelessWidget {
 
                 if (validNotifications.isEmpty) {
                   return const Center(
-                    child: Text(
-                      'No notifications available.', style: TextStyle(fontSize: 18, color: Colors.white),
-                    ),
+                    child: Text('No notifications available.', style: TextStyle(fontSize: 18, color: Colors.white)),
                   );
                 }
 
@@ -278,13 +262,11 @@ class NotificationsStockAlert extends StatelessWidget {
                               borderRadius: BorderRadius.circular(20.0),
                               boxShadow: [
                                 BoxShadow(
-                                  color: Colors.blue.withOpacity(0.3), blurRadius: 4,
-                                  offset: const Offset(0, 2),
+                                  color: Colors.blue.withOpacity(0.3), blurRadius: 4, offset: const Offset(0, 2),
                                 ),
                               ],
                             ),
-                            child: Text(
-                              dayLabel,
+                            child: Text(dayLabel,
                               style: const TextStyle(fontSize: 14.0, fontWeight: FontWeight.bold, color: Colors.white),
                               textAlign: TextAlign.center,
                             ),
@@ -322,9 +304,7 @@ class NotificationsStockAlert extends StatelessWidget {
                 begin: Alignment.topLeft, end: Alignment.bottomRight,
               ),
               borderRadius: BorderRadius.circular(12),
-              boxShadow: [
-                BoxShadow(color: Colors.grey.withOpacity(0.1), blurRadius: 6, offset: const Offset(0, 3)),
-              ],
+              boxShadow: [BoxShadow(color: Colors.grey.withOpacity(0.1), blurRadius: 6, offset: const Offset(0, 3))],
             ),
             child: ClipRRect(
               borderRadius: BorderRadius.circular(12),
@@ -388,7 +368,6 @@ class NotificationsStockAlert extends StatelessWidget {
       case 'Meeting': return Icons.timelapse_sharp;
       case 'Warning': return Icons.warning;
       case 'Schedule': return Icons.schedule;
-      case 'Break': return Icons.broken_image;
       default: return Icons.notification_important;
     }
   }
@@ -404,7 +383,6 @@ class NotificationsStockAlert extends StatelessWidget {
       case 'Meeting': return Color.fromARGB(255, 3, 12, 138);
       case 'Warning': return Color.fromARGB(255, 141, 128, 9);
       case 'Schedule': return Colors.black;
-      case 'Break': return const Color.fromARGB(255, 255, 0, 0); 
       default: return Colors.red;
     }
   }
@@ -455,9 +433,7 @@ class NotificationsStockAlert extends StatelessWidget {
                       DropdownMenuItem(value: 'Meeting', child: Text('Meeting')),
                     ],
                     onChanged: (value) {
-                      if (value != null) {
-                        setState(() => selectedCategory = value);
-                      }
+                      if (value != null) {setState(() => selectedCategory = value);}
                     },
                   ),
                 ],
@@ -465,10 +441,7 @@ class NotificationsStockAlert extends StatelessWidget {
             },
           ),
           actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Close'),
-            ),
+            TextButton(onPressed: () => Navigator.pop(context), child: const Text('Close')),
             TextButton(
               onPressed: () async {
                 if (messageController.text.length < 5 || selectedCategory.isEmpty) {
@@ -563,54 +536,108 @@ class NotificationsStockAlert extends StatelessWidget {
   }
 
   Future<void> _showNotificationDetails(BuildContext context, NotificationModel notification) async {
-    try {
-      final product = notification.productId != null 
-          ? await NotificationsViewModel().getProductDetails(notification.productId!)
-          : null;
+  try {
+    final product = notification.productId != null 
+        ? await NotificationsViewModel().getProductDetails(notification.productId!)
+        : null;
 
-      final notificationDate = notification.timestamp.toDate().toLocal();
-      final formattedDate = DateFormat('dd/MM/yyyy HH:mm').format(notificationDate);
+    final notificationDate = notification.timestamp.toDate().toLocal();
+    final formattedDate = DateFormat('dd/MM/yyyy HH:mm').format(notificationDate);
 
-      showDialog(
-        context: context,
-        builder: (context) {
-          return AlertDialog(
-            title: const Text("Notification Details"),
-            content: SingleChildScrollView(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  if (product != null) ...[
-                    _buildDetailRow("Product Name: ", product.name),
-                    _buildDetailRow("Brand: ", product.brand),
-                    _buildDetailRow("Model: ", product.model),
-                    _buildDetailRow("Sale Price: ", "\$${product.salePrice}"),
-                    const SizedBox(height: 8.0),
-                  ],
+    showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16.0),
+          ),
+          backgroundColor: Colors.white,
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  "Notification Details",
+                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Color(0xFF5E61F4)),
+                ),
+                SizedBox(height: 16),
+                
+                if (product != null) ...[
                   _buildDetailRow(
-                    "Notification Sent At: ", 
-                    formattedDate,
-                    style: TextStyle(color: Colors.blue[700])
+                    "Product Name:", product.name,
+                    labelStyle: TextStyle(fontWeight: FontWeight.w600),
                   ),
-                  const SizedBox(height: 12.0),
-                  _buildDetailRow("Message: ", notification.message),
+                  _buildDetailRow(
+                    "Brand:", product.brand,
+                  ),
+                  _buildDetailRow(
+                    "Model:", product.model,
+                  ),
+                  _buildDetailRow(
+                    "Price:",
+                    "\$${product.salePrice.toStringAsFixed(2)}",
+                    valueStyle: TextStyle(color: Color(0xFF4CAF50), fontWeight: FontWeight.bold),
+                  ),
+                  Divider(color: Colors.grey[300], height: 24, thickness: 1),
                 ],
-              ),
+                
+                _buildDetailRow(
+                  "Date:", formattedDate, valueStyle: TextStyle(color: const Color.fromARGB(255, 178, 31, 236)),
+                ),
+                
+                SizedBox(height: 12),
+                Text(
+                  "Message:", style: TextStyle(fontWeight: FontWeight.w600, color: Colors.grey[800]),
+                ),
+                SizedBox(height: 8),
+                Container(
+                  width: double.infinity,
+                  padding: EdgeInsets.all(12),
+                  decoration: BoxDecoration(color: Colors.grey[50],
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(
+                      color: Colors.grey[200] ?? Colors.grey,
+                      width: 1,
+                    ),
+                  ),
+                  child: Text(
+                    notification.message, style: TextStyle(fontSize: 14, color: Colors.grey[800]),
+                  ),
+                ),
+              ],
             ),
-            actions: [TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text("Close"))],
-          );
-        },
-      );
-    } catch (e) {debugPrint("Error showing notification details: $e");}
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.of(context).pop(),
+              child: Text("Close", style: TextStyle(color: Color(0xFF5E61F4))),
+            ),
+          ],
+        );
+      },
+    );
+  } catch (e) {
+    debugPrint("Error showing notification details: $e");
   }
+}
 
-  Widget _buildDetailRow(String label, String value, {TextStyle? style}) {
+  Widget _buildDetailRow(String label, String value, {TextStyle? labelStyle, TextStyle? valueStyle}) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 8.0),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(label, style: const TextStyle(fontWeight: FontWeight.bold)),
-          Expanded(child: Text(value, style: style)),
+          Text(
+            label,
+            style: labelStyle ?? TextStyle(fontWeight: FontWeight.w500, color: Colors.grey[700]),
+          ),
+          SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              value,
+              style: valueStyle ?? TextStyle(color: Colors.grey[800]),
+            ),
+          ),
         ],
       ),
     );

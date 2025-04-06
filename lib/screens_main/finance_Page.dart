@@ -6,9 +6,7 @@ import 'package:stockflow/utils/colors_utils.dart';
 
 // [1. MODEL]
 class UserModel {
-  final String id;
-  final String name;
-  final String email;
+  final String id, name, email;
   final String? adminPermission;
 
   UserModel({
@@ -30,10 +28,7 @@ class UserModel {
 }
 
 class VatModel {
-  final String vat1;
-  final String vat2;
-  final String vat3;
-  final String vat4;
+  final String vat1, vat2, vat3, vat4;
 
   VatModel({
     required this.vat1,
@@ -59,6 +54,13 @@ class VatModel {
       'VAT4': vat4,
     };
   }
+
+  bool isEqual(VatModel other) {
+    return vat1 == other.vat1 &&
+        vat2 == other.vat2 &&
+        vat3 == other.vat3 &&
+        vat4 == other.vat4;
+  }
 }
 
 // [1. VIEWMODEL]
@@ -74,8 +76,7 @@ class FinanceAndHRViewModel {
       final userDoc = await _firestore.collection('users').doc(user.uid).get();
       return userDoc.data()?['storeNumber'] as String?;
     } catch (e) {
-      debugPrint("Error fetching store number: $e");
-      return null;
+      debugPrint("Error fetching store number: $e"); return null;
     }
   }
 
@@ -103,8 +104,7 @@ class FinanceAndHRViewModel {
     try {
       await _firestore.collection('iva').doc(storeNumber).set(vat.toMap());
     } catch (e) {
-      debugPrint("Error updating VAT values: $e");
-      rethrow;
+      debugPrint("Error updating VAT values: $e"); rethrow;
     }
   }
 
@@ -113,9 +113,7 @@ class FinanceAndHRViewModel {
       await _firestore.collection('users').doc(userId).update({
         'adminPermission': currentPermission ? "" : adminStoreNumber,
       });
-    } catch (e) {
-      debugPrint("Error updating admin permission: $e"); rethrow;
-    }
+    } catch (e) {debugPrint("Error updating admin permission: $e"); rethrow;}
   }
 }
 
@@ -133,6 +131,7 @@ class _FinanceAndHumanResourcesPageState
   late final FinanceAndHRViewModel _viewModel;
   late TabController _tabController;
   late Future<String?> _storeNumberFuture;
+  late VatModel _initialVatValues;
 
   @override
   void initState() {
@@ -140,6 +139,7 @@ class _FinanceAndHumanResourcesPageState
     _viewModel = FinanceAndHRViewModel();
     _storeNumberFuture = _viewModel.getStoreNumber();
     _tabController = TabController(length: 2, vsync: this);
+    _initialVatValues = VatModel(vat1: '0', vat2: '0', vat3: '0', vat4: '0');
   }
 
   @override
@@ -161,16 +161,13 @@ class _FinanceAndHumanResourcesPageState
         child: FutureBuilder<String?>(
           future: _storeNumberFuture,
           builder: (context, snapshot) {
-            if (snapshot.connectionState == ConnectionState.waiting) {
-              return const Center(child: CircularProgressIndicator());
-            }
+            if (snapshot.connectionState == ConnectionState.waiting) {return const Center(child: CircularProgressIndicator());}
 
             if (snapshot.hasError || !snapshot.hasData || snapshot.data == null) {
               return const Center(
                 child: Text(
                   'You are not connected to any store. Please contact your Admin.',
-                  style: TextStyle(fontSize: 18, color: Colors.black),
-                ),
+                  style: TextStyle(fontSize: 18, color: Colors.black)),
               );
             }
 
@@ -182,12 +179,8 @@ class _FinanceAndHumanResourcesPageState
                 TabBar(
                   controller: _tabController,
                   tabs: const [
-                    Tab(
-                      child: Text('Human Resources', style: TextStyle(color: Colors.white)),
-                    ),
-                    Tab(
-                      child: Text('Finance', style: TextStyle(color: Colors.white)),
-                    ),
+                    Tab(child: Text('Human Resources', style: TextStyle(color: Colors.white))),
+                    Tab(child: Text('Finance', style: TextStyle(color: Colors.white))),
                   ],
                 ),
                 Expanded(
@@ -217,7 +210,7 @@ class _FinanceAndHumanResourcesPageState
 
         if (snapshot.hasError) {
           return const Center(
-            child: Text('Erro ao buscar os usuários.', style: TextStyle(fontSize: 18, color: Colors.black)),
+            child: Text('Errr to load users.', style: TextStyle(fontSize: 18, color: Colors.black)),
           );
         }
 
@@ -225,7 +218,7 @@ class _FinanceAndHumanResourcesPageState
 
         if (users.isEmpty) {
           return const Center(
-            child: Text('Nenhum usuário encontrado para esta loja.', style: TextStyle(fontSize: 18, color: Colors.black)),
+            child: Text('No users found for this store.', style: TextStyle(fontSize: 18, color: Colors.black)),
           );
         }
 
@@ -277,12 +270,12 @@ class _FinanceAndHumanResourcesPageState
           if (snapshot.hasError) {
             return const Center(
               child: Text(
-                'Error to load IVA values', style: TextStyle(fontSize: 18, color: Colors.black),
-              ),
-            );
+                'Error to load IVA values', style: TextStyle(fontSize: 18, color: Colors.black)),);
           }
 
           final vat = snapshot.data ?? VatModel(vat1: '0', vat2: '0', vat3: '0', vat4: '0');
+          _initialVatValues = vat; // Store initial values for comparison
+          
           final controllers = {
             'VAT1': TextEditingController(text: vat.vat1),
             'VAT2': TextEditingController(text: vat.vat2),
@@ -294,9 +287,7 @@ class _FinanceAndHumanResourcesPageState
             children: [
               Container(
                 padding: const EdgeInsets.all(16.0),
-                decoration: BoxDecoration(color: Colors.white,
-                  borderRadius: BorderRadius.circular(8),
-                ),
+                decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(8)),
                 child: Column(
                   children: [
                     for (var entry in controllers.entries)
@@ -308,6 +299,7 @@ class _FinanceAndHumanResourcesPageState
                             labelText: entry.key,
                             border: const OutlineInputBorder(),
                           ),
+                          keyboardType: TextInputType.number,
                         ),
                       ),
                     ElevatedButton(
@@ -318,9 +310,7 @@ class _FinanceAndHumanResourcesPageState
                 ),
               ),
               const SizedBox(height: 20),
-              Expanded(
-                child: Container(width: double.infinity, height: MediaQuery.of(context).size.height / 2),
-              ),
+              Expanded(child: Container(width: double.infinity, height: MediaQuery.of(context).size.height / 2)),
             ],
           );
         },
@@ -347,20 +337,27 @@ class _FinanceAndHumanResourcesPageState
 
   Future<void> _updateVatValues(String storeNumber, Map<String, TextEditingController> controllers) async {
     try {
-      final vat = VatModel(
+      final newVat = VatModel(
         vat1: controllers['VAT1']!.text,
         vat2: controllers['VAT2']!.text,
         vat3: controllers['VAT3']!.text,
         vat4: controllers['VAT4']!.text,
       );
-      await _viewModel.updateVatValues(storeNumber, vat);
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('VAT values updated!')),
-      );
+
+      // Check if any value has changed
+      if (newVat.isEqual(_initialVatValues)) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('No changes detected to save.')),
+        ); return;
+      }
+
+      await _viewModel.updateVatValues(storeNumber, newVat);
+      setState(() {
+        _initialVatValues = newVat; // Update initial values after successful save
+      });
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('VAT values updated!')));
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Error to update VAT values.')),
-      );
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Error to update VAT values.')));
     }
   }
 }
