@@ -76,7 +76,8 @@ class FinanceAndHRViewModel {
       final userDoc = await _firestore.collection('users').doc(user.uid).get();
       return userDoc.data()?['storeNumber'] as String?;
     } catch (e) {
-      debugPrint("Error fetching store number: $e"); return null;
+      debugPrint("Error fetching store number: $e");
+      return null;
     }
   }
 
@@ -104,7 +105,8 @@ class FinanceAndHRViewModel {
     try {
       await _firestore.collection('iva').doc(storeNumber).set(vat.toMap());
     } catch (e) {
-      debugPrint("Error updating VAT values: $e"); rethrow;
+      debugPrint("Error updating VAT values: $e");
+      rethrow;
     }
   }
 
@@ -113,7 +115,24 @@ class FinanceAndHRViewModel {
       await _firestore.collection('users').doc(userId).update({
         'adminPermission': currentPermission ? "" : adminStoreNumber,
       });
-    } catch (e) {debugPrint("Error updating admin permission: $e"); rethrow;}
+    } catch (e) {
+      debugPrint("Error updating admin permission: $e");
+      rethrow;
+    }
+  }
+
+  Future<void> updateStoreCurrency(String currencySymbol) async {
+    try {
+      final user = _auth.currentUser;
+      if (user != null) {
+        await _firestore.collection('users').doc(user.uid).update({
+          'storeCurrency': currencySymbol,
+        });
+      }
+    } catch (e) {
+      debugPrint("Error updating store currency: $e");
+      rethrow;
+    }
   }
 }
 
@@ -132,6 +151,15 @@ class _FinanceAndHumanResourcesPageState
   late TabController _tabController;
   late Future<String?> _storeNumberFuture;
   late VatModel _initialVatValues;
+
+  final Map<String, String> _currencyMap = {
+    'Euro (€)': '€',
+    'US Dollar (\$)': '\$',
+    'British Pound (£)': '£',
+    'Brazilian Real (R\$)': 'R\$',
+  };
+
+  String? _selectedCurrency;
 
   @override
   void initState() {
@@ -155,19 +183,23 @@ class _FinanceAndHumanResourcesPageState
               hexStringToColor("9546C4"),
               hexStringToColor("5E61F4"),
             ],
-            begin: Alignment.topCenter, end: Alignment.bottomCenter,
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
           ),
         ),
         child: FutureBuilder<String?>(
           future: _storeNumberFuture,
           builder: (context, snapshot) {
-            if (snapshot.connectionState == ConnectionState.waiting) {return const Center(child: CircularProgressIndicator());}
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return const Center(child: CircularProgressIndicator());
+            }
 
             if (snapshot.hasError || !snapshot.hasData || snapshot.data == null) {
               return const Center(
                 child: Text(
                   'You are not connected to any store. Please contact your Admin.',
-                  style: TextStyle(fontSize: 18, color: Colors.black)),
+                  style: TextStyle(fontSize: 18, color: Colors.black),
+                ),
               );
             }
 
@@ -210,7 +242,7 @@ class _FinanceAndHumanResourcesPageState
 
         if (snapshot.hasError) {
           return const Center(
-            child: Text('Errr to load users.', style: TextStyle(fontSize: 18, color: Colors.black)),
+            child: Text('Error loading users.', style: TextStyle(fontSize: 18, color: Colors.black)),
           );
         }
 
@@ -240,9 +272,7 @@ class _FinanceAndHumanResourcesPageState
                     const Icon(Icons.account_circle, color: Colors.purple),
                     IconButton(
                       icon: Icon(
-                        hasAdminPermission
-                            ? Icons.remove_circle_outline
-                            : Icons.admin_panel_settings,
+                        hasAdminPermission ? Icons.remove_circle_outline : Icons.admin_panel_settings,
                         color: hasAdminPermission ? Colors.red : Colors.blue,
                       ),
                       onPressed: () => _toggleAdminPermission(user.id, hasAdminPermission, storeNumber),
@@ -269,13 +299,13 @@ class _FinanceAndHumanResourcesPageState
 
           if (snapshot.hasError) {
             return const Center(
-              child: Text(
-                'Error to load IVA values', style: TextStyle(fontSize: 18, color: Colors.black)),);
+              child: Text('Error to load IVA values', style: TextStyle(fontSize: 18, color: Colors.black)),
+            );
           }
 
           final vat = snapshot.data ?? VatModel(vat1: '0', vat2: '0', vat3: '0', vat4: '0');
-          _initialVatValues = vat; // Store initial values for comparison
-          
+          _initialVatValues = vat;
+
           final controllers = {
             'VAT1': TextEditingController(text: vat.vat1),
             'VAT2': TextEditingController(text: vat.vat2),
@@ -305,6 +335,41 @@ class _FinanceAndHumanResourcesPageState
                     ElevatedButton(
                       onPressed: () => _updateVatValues(storeNumber, controllers),
                       child: const Text('Save VAT'),
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.only(top: 16.0),
+                      child: DropdownButtonFormField<String>(
+                        value: _selectedCurrency,
+                        decoration: const InputDecoration(
+                          labelText: 'Select Store Currency',
+                          border: OutlineInputBorder(),
+                          filled: true,
+                          fillColor: Colors.white,
+                        ),
+                        items: _currencyMap.entries.map((entry) {
+                          return DropdownMenuItem<String>(
+                            value: entry.value,
+                            child: Text(entry.key),
+                          );
+                        }).toList(),
+                        onChanged: (value) async {
+                          setState(() {
+                            _selectedCurrency = value;
+                          });
+                          if (value != null) {
+                            try {
+                              await _viewModel.updateStoreCurrency(value);
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(content: Text('Currency saved: $value')),
+                              );
+                            } catch (_) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(content: Text('Error saving currency.')),
+                              );
+                            }
+                          }
+                        },
+                      ),
                     ),
                   ],
                 ),
@@ -344,20 +409,24 @@ class _FinanceAndHumanResourcesPageState
         vat4: controllers['VAT4']!.text,
       );
 
-      // Check if any value has changed
       if (newVat.isEqual(_initialVatValues)) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('No changes detected to save.')),
-        ); return;
+        );
+        return;
       }
 
       await _viewModel.updateVatValues(storeNumber, newVat);
       setState(() {
-        _initialVatValues = newVat; // Update initial values after successful save
+        _initialVatValues = newVat;
       });
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('VAT values updated!')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('VAT values updated!')),
+      );
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Error to update VAT values.')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Error to update VAT values.')),
+      );
     }
   }
 }
