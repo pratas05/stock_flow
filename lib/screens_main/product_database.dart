@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/foundation.dart';
-import 'package:stockflow/utils/colors_utils.dart';
+import 'package:stockflow/reusable_widgets/colors_utils.dart';
 
 // [1. MODEL]
 class ProductModel {
@@ -286,9 +286,7 @@ class _ProductDatabasePageState extends State<ProductDatabasePage> with SingleTi
     _modelController.clear();
     _stockMaxController.clear();
     _wareHouseStockController.clear(); 
-    _stockOrderController.clear();
     _stockMinController.clear();
-    _stockBreakController.clear();
     _lastPurchasePriceController.clear();
     _vatCodeController.clear();
     _productLocationController.clear();
@@ -426,7 +424,7 @@ class _ProductDatabasePageState extends State<ProductDatabasePage> with SingleTi
       "Min Stock": '[0-9]',
       "Last Purchase Price": '[0-9]',
       "VAT Code (1, 2, 3, or 4)": r'[1-4]', 
-      "Product Location": '[a-zA-Z0-9 ]',
+      "Product Location": '[ -_a-zA-Z0-9]',
       "Sale Price": r'[0-9]',
     };
     return filters.containsKey(label)
@@ -578,7 +576,7 @@ class _ProductDatabasePageState extends State<ProductDatabasePage> with SingleTi
     );
   }
 
-Future<void> _showProductDetailsDialog(BuildContext context, DocumentSnapshot product) async {
+  Future<void> _showProductDetailsDialog(BuildContext context, DocumentSnapshot product) async {
     final Color primaryColor = Theme.of(context).primaryColor;
     final Color highlightColor = Colors.blueAccent;
     bool isEditing = false;
@@ -922,8 +920,7 @@ Future<void> _showProductDetailsDialog(BuildContext context, DocumentSnapshot pr
             "Description",
             descriptionController,
             highlightColor,
-            isRequired: true,
-            maxLines: 3,
+            isRequired: true, maxLines: 3,
           ),
           Divider(height: 24, thickness: 1),
           _buildEditableDetailRow(
@@ -1194,8 +1191,7 @@ Future<void> _showProductDetailsDialog(BuildContext context, DocumentSnapshot pr
     return Row(
       children: [
         SizedBox(width: 40),
-        Expanded(
-          flex: 2,
+        Expanded(flex: 2,
           child: Text(
             isRequired ? "$label *" : label,
             style: TextStyle(fontSize: 14, color: Colors.grey[600]),
@@ -1216,11 +1212,7 @@ Future<void> _showProductDetailsDialog(BuildContext context, DocumentSnapshot pr
                 )
               : Text(
                   controller.text,
-                  style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.bold,
-                    color: color,
-                  ),
+                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: color),
                   textAlign: TextAlign.right,
                 ),
         ),
@@ -1240,13 +1232,9 @@ Future<void> _showProductDetailsDialog(BuildContext context, DocumentSnapshot pr
       children: [
         SizedBox(width: 40),
         Expanded(flex: 2,
-          child: Text(
-            isRequired ? "$label *" : label,
-            style: TextStyle(fontSize: 14, color: Colors.grey[600]),
-          ),
+          child: Text(isRequired ? "$label *" : label,  style: TextStyle(fontSize: 14, color: Colors.grey[600])),
         ),
-        Expanded(
-          flex: 1,
+        Expanded(flex: 1,
           child: isEditing
               ? TextFormField(
                   controller: controller,
@@ -1325,7 +1313,6 @@ Future<void> _showProductDetailsDialog(BuildContext context, DocumentSnapshot pr
               TextButton(onPressed: () => Navigator.of(context).pop(true), child: Text("Yes", style: TextStyle(fontWeight: FontWeight.bold))),
             ],
           ),
-        )) ??
-        false;
+        )) ?? false;
   }
 }

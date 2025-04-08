@@ -5,7 +5,7 @@ import 'package:stockflow/google_sign.dart';
 import 'package:stockflow/screens/forgot_pw_page.dart';
 import 'package:stockflow/screens/signup_screen.dart';
 import 'package:stockflow/screens/home_screen.dart';
-import 'package:stockflow/utils/colors_utils.dart';
+import 'package:stockflow/reusable_widgets/colors_utils.dart';
 
 // [1. VIEWMODEL]
 class SignInViewModel {

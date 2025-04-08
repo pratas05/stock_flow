@@ -5,7 +5,7 @@ import 'package:stockflow/screens_main/finance_Page.dart';
 import 'package:stockflow/screens_main/z_help_page.dart';
 import 'package:stockflow/screens_main/product_database.dart';
 import 'package:stockflow/screens_main/stock_outage.dart';
-import 'package:stockflow/utils/colors_utils.dart';
+import 'package:stockflow/reusable_widgets/colors_utils.dart';
 import 'package:stockflow/screens_main/warehouse_management.dart';
 import 'package:stockflow/screens_main/buy_trade.dart';
 import '../screens_main/notificationPage.dart';

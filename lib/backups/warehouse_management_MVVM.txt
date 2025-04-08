@@ -6,22 +6,9 @@ import 'package:stockflow/utils/colors_utils.dart';
 
 // [1. MODEL]
 class WarehouseProductModel {
-  final String id;
-  final String name;
-  final String brand;
-  final String model;
-  final String category;
-  final String description;
-  final String storeNumber;
-  final double salePrice;
-  final int stockCurrent;
-  final int stockOrder;
-  final int stockMin;
-  final int stockMax;
-  final int wareHouseStock;
-  final int stockBreak;
-  final String vatCode;
-  final String subCategory;
+  final String id, name, brand, model, category, description, storeNumber, salePrice;
+  final int stockCurrent, stockOrder, stockMin, stockMax, wareHouseStock, stockBreak;
+  final String vatCode, subCategory;
   final double lastPurchasePrice;
   final Timestamp createdAt;
   final String productLocation;
@@ -104,8 +91,7 @@ class WarehouseViewModel {
 
   Future<String?> getCurrentUserStoreNumber() async {
     try {
-      final user = _auth.currentUser;
-      if (user == null) return null;
+      final user = _auth.currentUser; if (user == null) return null;
 
       final userDoc = await _firestore.collection('users').doc(user.uid).get();
       return userDoc.data()?['storeNumber'] as String?;
@@ -122,9 +108,7 @@ class WarehouseViewModel {
           .where((storeNumber) => storeNumber.isNotEmpty)
           .toSet() // Remove duplicates
           .toList();
-    } catch (e) {
-      debugPrint("Error fetching stores: $e"); return [];
-    }
+    } catch (e) {debugPrint("Error fetching stores: $e"); return [];}
   }
 
   Future<List<WarehouseProductModel>> fetchProducts(String storeNumber) async {
@@ -136,9 +120,7 @@ class WarehouseViewModel {
       return snapshot.docs
           .map((doc) => WarehouseProductModel.fromFirestore(doc))
           .toList();
-    } catch (e) {
-      debugPrint("Error fetching products: $e"); return [];
-    }
+    } catch (e) {debugPrint("Error fetching products: $e"); return [];}
   }
 
   Future<void> updateStockOrder({
@@ -243,13 +225,11 @@ class WarehouseViewModel {
           notificationType: 'Transfer',
         );
       }
-    } catch (e) {
-      debugPrint("Error transferring between warehouses: $e"); rethrow;
-    }
+    } catch (e) {debugPrint("Error transferring between warehouses: $e"); rethrow;}
   }
 
   Future<void> createNotification({
-    required String message,
+    required String message, 
     required String productId,
     required String storeNumber,
     required String userId,
@@ -263,7 +243,6 @@ class WarehouseViewModel {
       'timestamp': FieldValue.serverTimestamp(),
       'notificationType': notificationType,
     });
-
     await notificationRef.update({'notificationId': notificationRef.id});
   }
 }
@@ -289,9 +268,7 @@ class _WarehouseManagementPageState extends State<WarehouseManagementPage>
     super.initState();
     _tabController = TabController(length: 3, vsync: this);
     _searchController.addListener(() {
-      setState(() {
-        _searchText = _searchController.text;
-      });
+      setState(() {_searchText = _searchController.text;});
     });
   }
 
@@ -307,7 +284,6 @@ class _WarehouseManagementPageState extends State<WarehouseManagementPage>
       future: _viewModel.getCurrentUserStoreNumber(),
       builder: (context, AsyncSnapshot<String?> storeSnapshot) {
         if (!storeSnapshot.hasData) {return Center(child: CircularProgressIndicator());}
-
         if (storeSnapshot.data == null) {return Center(child: Text("Store number not set. Please configure it."));}
 
         return Column(
@@ -339,8 +315,7 @@ class _WarehouseManagementPageState extends State<WarehouseManagementPage>
                         child: Container(
                           width: MediaQuery.of(context).size.width * 0.6,
                           child: Card(
-                            margin: EdgeInsets.symmetric(vertical: 8.0, horizontal: 16.0),
-                            elevation: 4.0,
+                            margin: EdgeInsets.symmetric(vertical: 8.0, horizontal: 16.0), elevation: 4.0,
                             child: ListTile(
                               contentPadding: EdgeInsets.all(16.0),
                               title: Text(
@@ -378,7 +353,6 @@ class _WarehouseManagementPageState extends State<WarehouseManagementPage>
         }
 
         if (storeSnapshot.data == null) {return Center(child: Text("No store number assigned to this user."));}
-
         return Column(
           children: [
             _buildSearchBar(),
@@ -424,9 +398,7 @@ class _WarehouseManagementPageState extends State<WarehouseManagementPage>
                                   Text('Sale Price: €${product['salePrice']}'),
                                 ],
                               ),
-                              onTap: () async {
-                                await _showProductDetailsDialog(context, product);
-                              },
+                              onTap: () async {await _showProductDetailsDialog(context, product);},
                             ),
                           ),
                         ),
@@ -448,8 +420,7 @@ class _WarehouseManagementPageState extends State<WarehouseManagementPage>
         onPressed: () => _showStoreSelectionDialog(),
         child: Text("Transfer Product"),
         style: ElevatedButton.styleFrom(
-          foregroundColor: Colors.white,
-          backgroundColor: Colors.deepPurple,
+          foregroundColor: Colors.white, backgroundColor: Colors.deepPurple,
         ),
       ),
     );
@@ -730,11 +701,7 @@ class _WarehouseManagementPageState extends State<WarehouseManagementPage>
                           ),
                           IconButton(
                             icon: Icon(Icons.edit),
-                            onPressed: () {
-                              setState(() {
-                                isPriceEditable = true;
-                              });
-                            },
+                            onPressed: () {setState(() {isPriceEditable = true;});},
                           ),
                         ],
                       ),
@@ -759,30 +726,26 @@ class _WarehouseManagementPageState extends State<WarehouseManagementPage>
                       setState(() {
                         errorMessage = "You need to order more products";
                         successMessage = '';
-                      });
-                      return;
+                      }); return;
                     }
 
                     if (currentStock < stockMin && increment < stockMin) {
                       setState(() {
                         errorMessage = "You need to put more products in shop";
                         successMessage = '';
-                      });
-                      return;
+                      }); return;
                     }
 
                     if (increment <= 0) {
                       setState(() {
                         errorMessage = "You need to insert a valid amount of products";
                         successMessage = '';
-                      });
-                      return;
+                      }); return;
                     } else if (increment > wareHouseStock) {
                       setState(() {
                         errorMessage = "You cannot add more stock than the warehouse has";
                         successMessage = '';
-                      });
-                      return;
+                      }); return;
                     }
 
                     try {
@@ -794,8 +757,7 @@ class _WarehouseManagementPageState extends State<WarehouseManagementPage>
                         setState(() {
                           errorMessage = 'Store number not set. Please configure it in account settings.';
                           successMessage = '';
-                        });
-                        return;
+                        }); return;
                       }
 
                       await _viewModel.transferStockToShop(
@@ -837,8 +799,7 @@ class _WarehouseManagementPageState extends State<WarehouseManagementPage>
                         setState(() {
                           errorMessage = "The new price must be different from the current price.";
                           successMessage = '';
-                        });
-                        return;
+                        }); return;
                       }
 
                       try {
@@ -850,8 +811,7 @@ class _WarehouseManagementPageState extends State<WarehouseManagementPage>
                           setState(() {
                             errorMessage = 'Store number not set. Please configure it in account settings.';
                             successMessage = '';
-                          });
-                          return;
+                          }); return;
                         }
 
                         final oldPrice = product['salePrice'];
@@ -924,9 +884,7 @@ class _WarehouseManagementPageState extends State<WarehouseManagementPage>
                           child: Text(store),
                         ))
                     .toList(),
-                onChanged: (value) {
-                  toStore = value;
-                },
+                onChanged: (value) {toStore = value;},
               ),
             ],
           ),
@@ -979,9 +937,7 @@ class _WarehouseManagementPageState extends State<WarehouseManagementPage>
                             groupValue: selectedProduct,
                             onChanged: product.wareHouseStock > 0
                                 ? (value) {
-                                    setState(() {
-                                      selectedProduct = value;
-                                    });
+                                    setState(() {selectedProduct = value;});
                                   }
                                 : null,
                           ))
@@ -1049,9 +1005,7 @@ class _WarehouseManagementPageState extends State<WarehouseManagementPage>
                     controller: quantityController,
                     decoration: InputDecoration(labelText: "Quantity"),
                     keyboardType: TextInputType.number,
-                    onChanged: (value) {
-                      setState(() {});
-                    },
+                    onChanged: (value) {setState(() {});},
                   ),
                 ],
               ),
@@ -1107,8 +1061,7 @@ class _WarehouseManagementPageState extends State<WarehouseManagementPage>
             content: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                CircularProgressIndicator(),
-                SizedBox(height: 16),
+                CircularProgressIndicator(), SizedBox(height: 16),
                 Text("Transferring $quantity of $product..."),
               ],
             ),
@@ -1123,7 +1076,6 @@ class _WarehouseManagementPageState extends State<WarehouseManagementPage>
         quantity: quantity,
         productData: productData,
       );
-
       Navigator.of(context).pop(); // Close loading dialog
 
       ScaffoldMessenger.of(context).showSnackBar(

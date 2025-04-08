@@ -2,26 +2,13 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:stockflow/utils/colors_utils.dart';
+import 'package:stockflow/reusable_widgets/colors_utils.dart';
 
 // [1. MODEL]
 class WarehouseProductModel {
-  final String id;
-  final String name;
-  final String brand;
-  final String model;
-  final String category;
-  final String description;
-  final String storeNumber;
-  final double salePrice;
-  final int stockCurrent;
-  final int stockOrder;
-  final int stockMin;
-  final int stockMax;
-  final int wareHouseStock;
-  final int stockBreak;
-  final String vatCode;
-  final String subCategory;
+  final String id, name, brand, model, category, description, storeNumber, salePrice;
+  final int stockCurrent, stockOrder, stockMin, stockMax, wareHouseStock, stockBreak;
+  final String vatCode, subCategory;
   final double lastPurchasePrice;
   final Timestamp createdAt;
   final String productLocation;
@@ -104,8 +91,7 @@ class WarehouseViewModel {
 
   Future<String?> getCurrentUserStoreNumber() async {
     try {
-      final user = _auth.currentUser;
-      if (user == null) return null;
+      final user = _auth.currentUser; if (user == null) return null;
 
       final userDoc = await _firestore.collection('users').doc(user.uid).get();
       return userDoc.data()?['storeNumber'] as String?;
@@ -118,12 +104,13 @@ class WarehouseViewModel {
     try {
       QuerySnapshot snapshot = await _firestore.collection('users').get();
       return snapshot.docs
-          .map((doc) => doc.get('storeNumber').toString())
+          .map((doc) => doc.get('storeNumber')?.toString() ?? '')
           .where((storeNumber) => storeNumber.isNotEmpty)
           .toSet() // Remove duplicates
           .toList();
     } catch (e) {
-      debugPrint("Error fetching stores: $e"); return [];
+      debugPrint("Error fetching stores: $e");
+      return [];
     }
   }
 
@@ -136,27 +123,19 @@ class WarehouseViewModel {
       return snapshot.docs
           .map((doc) => WarehouseProductModel.fromFirestore(doc))
           .toList();
-    } catch (e) {
-      debugPrint("Error fetching products: $e"); return [];
-    }
+    } catch (e) {debugPrint("Error fetching products: $e"); return [];}
   }
 
-  Future<void> updateStockOrder({
+  // In WarehouseViewModel class
+  Future<void> transferStockToWarehouse({
     required String productId,
-    required int newStockOrder,
+    required int increment,
+    required int currentWareHouseStock,
+    required int currentShopStock,
   }) async {
     await _firestore.collection('products').doc(productId).update({
-      'stockOrder': newStockOrder,
-    });
-  }
-
-  Future<void> updateWarehouseStock({
-    required String productId,
-    required int newWareHouseStock,
-  }) async {
-    await _firestore.collection('products').doc(productId).update({
-      'wareHouseStock': newWareHouseStock,
-      'stockOrder': 0,
+      'wareHouseStock': currentWareHouseStock + increment,
+      'stockCurrent': currentShopStock - increment,
     });
   }
 
@@ -243,13 +222,11 @@ class WarehouseViewModel {
           notificationType: 'Transfer',
         );
       }
-    } catch (e) {
-      debugPrint("Error transferring between warehouses: $e"); rethrow;
-    }
+    } catch (e) {debugPrint("Error transferring between warehouses: $e"); rethrow;}
   }
 
   Future<void> createNotification({
-    required String message,
+    required String message, 
     required String productId,
     required String storeNumber,
     required String userId,
@@ -263,7 +240,6 @@ class WarehouseViewModel {
       'timestamp': FieldValue.serverTimestamp(),
       'notificationType': notificationType,
     });
-
     await notificationRef.update({'notificationId': notificationRef.id});
   }
 }
@@ -289,9 +265,7 @@ class _WarehouseManagementPageState extends State<WarehouseManagementPage>
     super.initState();
     _tabController = TabController(length: 3, vsync: this);
     _searchController.addListener(() {
-      setState(() {
-        _searchText = _searchController.text;
-      });
+      setState(() {_searchText = _searchController.text;});
     });
   }
 
@@ -300,73 +274,6 @@ class _WarehouseManagementPageState extends State<WarehouseManagementPage>
     _tabController.dispose();
     _searchController.dispose();
     super.dispose();
-  }
-
-  Widget _buildWarehouseList() {
-    return FutureBuilder<String?>(
-      future: _viewModel.getCurrentUserStoreNumber(),
-      builder: (context, AsyncSnapshot<String?> storeSnapshot) {
-        if (!storeSnapshot.hasData) {return Center(child: CircularProgressIndicator());}
-
-        if (storeSnapshot.data == null) {return Center(child: Text("Store number not set. Please configure it."));}
-
-        return Column(
-          children: [
-            _buildSearchBar(),
-            Expanded(
-              child: StreamBuilder<QuerySnapshot>(
-                stream: _viewModel._firestore
-                    .collection('products')
-                    .where('storeNumber', isEqualTo: storeSnapshot.data!)
-                    .snapshots(),
-                builder: (context, AsyncSnapshot<QuerySnapshot> productSnapshot) {
-                  if (!productSnapshot.hasData) {return Center(child: CircularProgressIndicator());}
-
-                  var filteredProducts = productSnapshot.data!.docs.where((product) {
-                    return product['name']
-                        .toString()
-                        .toLowerCase()
-                        .contains(_searchText.toLowerCase());
-                  }).toList();
-
-                  if (filteredProducts.isEmpty) {return Center(child: Text("No products found"));}
-
-                  return ListView.builder(
-                    itemCount: filteredProducts.length,
-                    itemBuilder: (context, index) {
-                      var product = filteredProducts[index];
-                      return Center(
-                        child: Container(
-                          width: MediaQuery.of(context).size.width * 0.6,
-                          child: Card(
-                            margin: EdgeInsets.symmetric(vertical: 8.0, horizontal: 16.0),
-                            elevation: 4.0,
-                            child: ListTile(
-                              contentPadding: EdgeInsets.all(16.0),
-                              title: Text(
-                                product['name'], style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
-                              ),
-                              subtitle: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text('Brand: ${product['brand']}'),
-                                  Text('Sale Price: €${product['salePrice']}'),
-                                ],
-                              ),
-                              onTap: () async {await _showWarehouseStockDialog(context, product);},
-                            ),
-                          ),
-                        ),
-                      );
-                    },
-                  );
-                },
-              ),
-            ),
-          ],
-        );
-      },
-    );
   }
 
   Widget _buildWarehouseForm() {
@@ -378,7 +285,6 @@ class _WarehouseManagementPageState extends State<WarehouseManagementPage>
         }
 
         if (storeSnapshot.data == null) {return Center(child: Text("No store number assigned to this user."));}
-
         return Column(
           children: [
             _buildSearchBar(),
@@ -424,9 +330,7 @@ class _WarehouseManagementPageState extends State<WarehouseManagementPage>
                                   Text('Sale Price: €${product['salePrice']}'),
                                 ],
                               ),
-                              onTap: () async {
-                                await _showProductDetailsDialog(context, product);
-                              },
+                              onTap: () async {await _showProductDetailsDialog(context, product);},
                             ),
                           ),
                         ),
@@ -448,8 +352,7 @@ class _WarehouseManagementPageState extends State<WarehouseManagementPage>
         onPressed: () => _showStoreSelectionDialog(),
         child: Text("Transfer Product"),
         style: ElevatedButton.styleFrom(
-          foregroundColor: Colors.white,
-          backgroundColor: Colors.deepPurple,
+          foregroundColor: Colors.white, backgroundColor: Colors.deepPurple,
         ),
       ),
     );
@@ -472,193 +375,6 @@ class _WarehouseManagementPageState extends State<WarehouseManagementPage>
           ),
         ),
       ),
-    );
-  }
-
-  Future<void> _showWarehouseStockDialog(BuildContext context, DocumentSnapshot product) async {
-    int stockOrder = product['stockOrder'];
-    int wareHouseStock = product['wareHouseStock'];
-    int stockMax = product['stockMax'];
-
-    TextEditingController orderController = TextEditingController();
-    orderController.text = stockOrder.toString();
-
-    String successMessage = '';
-    String errorMessage = '';
-    String warningMessage = '';
-    bool isOrderConfirmed = false;
-
-    await showDialog(
-      context: context,
-      builder: (BuildContext context) {
-        return StatefulBuilder(
-          builder: (context, setState) {
-            return AlertDialog(
-              title: Text('Update Stock in the warehouse - ${product['name']}'),
-              content: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  SizedBox(height: 16),
-                  Text('Stock Order: $stockOrder'),
-                  SizedBox(height: 8),
-                  Text('Warehouse Stock: $wareHouseStock'),
-                  SizedBox(height: 8),
-                  Text('Max stock allowed in the warehouse: $stockMax'),
-                  SizedBox(height: 8),
-                  TextField(
-                    controller: orderController,
-                    keyboardType: TextInputType.number,
-                    decoration: InputDecoration(
-                      labelText: 'Order Stock',
-                      hintText: 'Enter amount to order',
-                    ),
-                  ),
-                  if (warningMessage.isNotEmpty)
-                    Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 8.0),
-                      child: Text(
-                        warningMessage,
-                        style: TextStyle(color: Colors.amber, fontWeight: FontWeight.bold),
-                      ),
-                    ),
-                  if (errorMessage.isNotEmpty)
-                    Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 8.0),
-                      child: Text(
-                        errorMessage,
-                        style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold),
-                      ),
-                    ),
-                  if (successMessage.isNotEmpty)
-                    Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 8.0),
-                      child: Text(
-                        successMessage,
-                        style: TextStyle(color: Colors.green, fontWeight: FontWeight.bold),
-                      ),
-                    ),
-                ],
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () async {
-                    int orderAmount = int.tryParse(orderController.text) ?? 0;
-                    if (orderAmount == 0) {
-                      setState(() {
-                        warningMessage = 'Please enter an amount to order before confirming.';
-                        errorMessage = '';
-                        successMessage = '';
-                      });
-                    } else {
-                      int newStockOrder = stockOrder + orderAmount;
-                      int potentialTotalStock = wareHouseStock + newStockOrder;
-
-                      if (potentialTotalStock > stockMax) {
-                        setState(() {
-                          errorMessage = 'Error: Order exceeds the maximum stock limit!';
-                          warningMessage = '';
-                        });
-                      } else {
-                        try {
-                          await _viewModel.updateStockOrder(
-                            productId: product.id,
-                            newStockOrder: newStockOrder,
-                          );
-
-                          setState(() {
-                            stockOrder = newStockOrder;
-                            successMessage = 'Order Stock updated successfully!';
-                            errorMessage = '';
-                            warningMessage = '';
-                          });
-
-                          if (!isOrderConfirmed) {
-                            final user = _viewModel._auth.currentUser;
-                            if (user != null) {
-                              final storeNumber = await _viewModel.getCurrentUserStoreNumber();
-                              if (storeNumber != null) {
-                                await _viewModel.createNotification(
-                                  message: 'Were ordered $stockOrder quantity of ${product['brand']} - ${product['name']} - ${product['model']}',
-                                  productId: product.id,
-                                  storeNumber: storeNumber,
-                                  userId: user.uid,
-                                  notificationType: 'Order',
-                                );
-                                setState(() {isOrderConfirmed = true;});
-                              }
-                            }
-                          }
-                        } catch (e) {
-                          setState(() {
-                            errorMessage = 'Failed to update order: ${e.toString()}';
-                            successMessage = '';
-                            warningMessage = '';
-                          });
-                        }
-                      }
-                    }
-                  },
-                  child: Text("Confirm Order", style: TextStyle(fontWeight: FontWeight.bold)),
-                ),
-                TextButton(
-                  onPressed: () async {
-                    final user = _viewModel._auth.currentUser;
-                    if (user == null) {
-                      setState(() {errorMessage = 'User not authenticated. Please log in again.';});
-                      return;
-                    }
-
-                    try {
-                      final storeNumber = await _viewModel.getCurrentUserStoreNumber();
-                      if (storeNumber == null) {
-                        setState(() {errorMessage = 'Store number not set. Please configure it in account settings.';});
-                        return;
-                      }
-
-                      if (stockOrder > 0) {
-                        int newWareHouseStock = wareHouseStock + stockOrder;
-
-                        await _viewModel.updateWarehouseStock(
-                          productId: product.id,
-                          newWareHouseStock: newWareHouseStock,
-                        );
-
-                        await _viewModel.createNotification(
-                          message: 'Warehouse stock updated for ${product['brand']} - ${product['name']} - ${product['model']}. From $wareHouseStock to $newWareHouseStock.',
-                          productId: product.id,
-                          storeNumber: storeNumber,
-                          userId: user.uid,
-                          notificationType: 'Update',
-                        );
-
-                        setState(() {
-                          wareHouseStock = newWareHouseStock;
-                          stockOrder = 0;
-                          successMessage = 'Warehouse Stock updated successfully!';
-                          errorMessage = '';
-                          warningMessage = '';
-                        });
-                      } else {
-                        setState(() {
-                          errorMessage = 'Please confirm an order before updating stock.';
-                          warningMessage = '';
-                        });
-                      }
-                    } catch (e) {
-                      setState(() {
-                        errorMessage = 'An error occurred while updating stock or sending notification.';
-                        warningMessage = '';
-                      });
-                    }
-                  },
-                  child: Text("Update", style: TextStyle(fontWeight: FontWeight.bold)),
-                ),
-                TextButton(onPressed: () {Navigator.of(context).pop();}, child: Text('Cancel')),
-              ],
-            );
-          },
-        );
-      },
     );
   }
 
@@ -730,11 +446,7 @@ class _WarehouseManagementPageState extends State<WarehouseManagementPage>
                           ),
                           IconButton(
                             icon: Icon(Icons.edit),
-                            onPressed: () {
-                              setState(() {
-                                isPriceEditable = true;
-                              });
-                            },
+                            onPressed: () {setState(() {isPriceEditable = true;});},
                           ),
                         ],
                       ),
@@ -759,30 +471,26 @@ class _WarehouseManagementPageState extends State<WarehouseManagementPage>
                       setState(() {
                         errorMessage = "You need to order more products";
                         successMessage = '';
-                      });
-                      return;
+                      }); return;
                     }
 
                     if (currentStock < stockMin && increment < stockMin) {
                       setState(() {
                         errorMessage = "You need to put more products in shop";
                         successMessage = '';
-                      });
-                      return;
+                      }); return;
                     }
 
                     if (increment <= 0) {
                       setState(() {
                         errorMessage = "You need to insert a valid amount of products";
                         successMessage = '';
-                      });
-                      return;
+                      }); return;
                     } else if (increment > wareHouseStock) {
                       setState(() {
                         errorMessage = "You cannot add more stock than the warehouse has";
                         successMessage = '';
-                      });
-                      return;
+                      }); return;
                     }
 
                     try {
@@ -794,8 +502,7 @@ class _WarehouseManagementPageState extends State<WarehouseManagementPage>
                         setState(() {
                           errorMessage = 'Store number not set. Please configure it in account settings.';
                           successMessage = '';
-                        });
-                        return;
+                        }); return;
                       }
 
                       await _viewModel.transferStockToShop(
@@ -837,8 +544,7 @@ class _WarehouseManagementPageState extends State<WarehouseManagementPage>
                         setState(() {
                           errorMessage = "The new price must be different from the current price.";
                           successMessage = '';
-                        });
-                        return;
+                        }); return;
                       }
 
                       try {
@@ -850,8 +556,7 @@ class _WarehouseManagementPageState extends State<WarehouseManagementPage>
                           setState(() {
                             errorMessage = 'Store number not set. Please configure it in account settings.';
                             successMessage = '';
-                          });
-                          return;
+                          }); return;
                         }
 
                         final oldPrice = product['salePrice'];
@@ -894,58 +599,85 @@ class _WarehouseManagementPageState extends State<WarehouseManagementPage>
     String? currentStore = await _viewModel.getCurrentUserStoreNumber();
     if (currentStore == null) return;
 
-    List<String> stores = await _viewModel.fetchStores();
-    if (stores.isEmpty) return;
-
-    String? fromStore = currentStore;
-    String? toStore;
+    TextEditingController toStoreController = TextEditingController();
+    String? errorMessage;
+    bool isLoading = false;
 
     await showDialog(
       context: context,
       builder: (BuildContext context) {
-        return AlertDialog(
-          title: Text("Select Stores"),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              DropdownButtonFormField<String>(
-                decoration: InputDecoration(labelText: "From Store"),
-                value: fromStore,
-                items: [DropdownMenuItem(value: fromStore, child: Text(fromStore))],
-                onChanged: null,
+        return StatefulBuilder(
+          builder: (context, setState) {
+            return AlertDialog(
+              title: const Text("Transfer Between Warehouses"),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Text("From Store:"),
+                  Text(currentStore, style: const TextStyle(fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 20),
+                  TextField(
+                    controller: toStoreController,
+                    decoration: InputDecoration(
+                      labelText: "Enter Destination Store Number",
+                      errorText: errorMessage,
+                    ),
+                  ),
+                  if (isLoading) const Padding(
+                    padding: EdgeInsets.only(top: 16),
+                    child: CircularProgressIndicator(),
+                  ),
+                ],
               ),
-              DropdownButtonFormField<String>(
-                decoration: InputDecoration(labelText: "To Store"),
-                value: toStore,
-                items: stores
-                    .where((store) => store != fromStore)
-                    .map((store) => DropdownMenuItem(
-                          value: store,
-                          child: Text(store),
-                        ))
-                    .toList(),
-                onChanged: (value) {
-                  toStore = value;
-                },
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(onPressed: () => Navigator.of(context).pop(), child: Text("Back")),
-            TextButton(onPressed: () => Navigator.of(context).pop(), child: Text("Cancel")),
-            ElevatedButton(
-              onPressed: () {
-                if (toStore != null && fromStore != toStore) {
-                  Navigator.of(context).pop();
-                  _showProductSelectionDialog(fromStore, toStore!);
-                } else {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text("Please select two different stores.")),
-                  );
-                }
-              }, child: Text("Next"),
-            ),
-          ],
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  child: const Text("Cancel"),
+                ),
+                ElevatedButton(
+                  onPressed: () async {
+                    if (toStoreController.text.isEmpty) {
+                      setState(() {
+                        errorMessage = "Please enter a store number";
+                      });
+                      return;
+                    }
+
+                    if (toStoreController.text == currentStore) {
+                      setState(() {
+                        errorMessage = "Cannot transfer to the same store";
+                      });
+                      return;
+                    }
+
+                    setState(() {
+                      isLoading = true;
+                      errorMessage = null;
+                    });
+
+                    // Verificar se o storeNumber existe
+                    final stores = await _viewModel.fetchStores();
+                    final storeExists = stores.contains(toStoreController.text);
+
+                    setState(() {
+                      isLoading = false;
+                    });
+
+                    if (!storeExists) {
+                      setState(() {
+                        errorMessage = "Store number does not exist";
+                      });
+                      return;
+                    }
+
+                    Navigator.of(context).pop();
+                    _showProductSelectionDialog(currentStore, toStoreController.text);
+                  },
+                  child: const Text("Next"),
+                ),
+              ],
+            );
+          },
         );
       },
     );
@@ -979,9 +711,7 @@ class _WarehouseManagementPageState extends State<WarehouseManagementPage>
                             groupValue: selectedProduct,
                             onChanged: product.wareHouseStock > 0
                                 ? (value) {
-                                    setState(() {
-                                      selectedProduct = value;
-                                    });
+                                    setState(() {selectedProduct = value;});
                                   }
                                 : null,
                           ))
@@ -1049,9 +779,7 @@ class _WarehouseManagementPageState extends State<WarehouseManagementPage>
                     controller: quantityController,
                     decoration: InputDecoration(labelText: "Quantity"),
                     keyboardType: TextInputType.number,
-                    onChanged: (value) {
-                      setState(() {});
-                    },
+                    onChanged: (value) {setState(() {});},
                   ),
                 ],
               ),
@@ -1107,8 +835,7 @@ class _WarehouseManagementPageState extends State<WarehouseManagementPage>
             content: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                CircularProgressIndicator(),
-                SizedBox(height: 16),
+                CircularProgressIndicator(), SizedBox(height: 16),
                 Text("Transferring $quantity of $product..."),
               ],
             ),
@@ -1123,7 +850,6 @@ class _WarehouseManagementPageState extends State<WarehouseManagementPage>
         quantity: quantity,
         productData: productData,
       );
-
       Navigator.of(context).pop(); // Close loading dialog
 
       ScaffoldMessenger.of(context).showSnackBar(
@@ -1137,6 +863,229 @@ class _WarehouseManagementPageState extends State<WarehouseManagementPage>
         SnackBar(content: Text("Error occurred during the transfer: ${e.toString()}")),
       );
     }
+  }
+
+  Future<void> _showTransferToWarehouseDialog(
+    BuildContext context, DocumentSnapshot product) async {
+    TextEditingController _transferController = TextEditingController();
+    int currentShopStock = product['stockCurrent'];
+    int currentWarehouseStock = product['wareHouseStock'];
+    String errorMessage = '';
+    String successMessage = '';
+
+    await showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return StatefulBuilder(
+          builder: (context, setState) {
+            return AlertDialog(
+              title: Text('Transfer to Warehouse - ${product['name']}'),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text('Current Shop Stock: $currentShopStock'),
+                  Text('Current Warehouse Stock: $currentWarehouseStock'),
+                  SizedBox(height: 16),
+                  TextField(
+                    controller: _transferController,
+                    keyboardType: TextInputType.number,
+                    decoration: InputDecoration(
+                      labelText: 'Quantity to transfer',
+                      hintText: 'Enter amount to transfer to warehouse',
+                    ),
+                  ),
+                  if (errorMessage.isNotEmpty)
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 8.0),
+                      child: Text(
+                        errorMessage,
+                        style: TextStyle(
+                            color: Colors.red, fontWeight: FontWeight.bold),
+                      ),
+                    ),
+                  if (successMessage.isNotEmpty)
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 8.0),
+                      child: Text(
+                        successMessage,
+                        style: TextStyle(
+                            color: Colors.green, fontWeight: FontWeight.bold),
+                      ),
+                    ),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  child: Text('Cancel'),
+                ),
+                TextButton(
+                  onPressed: () async {
+                    int transferAmount =
+                        int.tryParse(_transferController.text) ?? 0;
+
+                    if (transferAmount <= 0) {
+                      setState(() {
+                        errorMessage = 'Please enter a valid amount';
+                        successMessage = '';
+                      });
+                      return;
+                    }
+
+                    if (transferAmount > currentShopStock) {
+                      setState(() {
+                        errorMessage =
+                            'Cannot transfer more than available shop stock';
+                        successMessage = '';
+                      });
+                      return;
+                    }
+
+                    try {
+                      final user = _viewModel._auth.currentUser;
+                      if (user == null) {
+                        setState(() {
+                          errorMessage = 'User not authenticated';
+                          successMessage = '';
+                        });
+                        return;
+                      }
+
+                      final storeNumber =
+                          await _viewModel.getCurrentUserStoreNumber();
+                      if (storeNumber == null) {
+                        setState(() {
+                          errorMessage = 'Store number not set';
+                          successMessage = '';
+                        });
+                        return;
+                      }
+
+                      await _viewModel.transferStockToWarehouse(
+                        productId: product.id,
+                        increment: transferAmount,
+                        currentWareHouseStock: currentWarehouseStock,
+                        currentShopStock: currentShopStock,
+                      );
+
+                      await _viewModel.createNotification(
+                        message:
+                            '$transferAmount of ${product['brand']} - ${product['name']} transferred from Shop to Warehouse',
+                        productId: product.id,
+                        storeNumber: storeNumber,
+                        userId: user.uid,
+                        notificationType: 'Transfer',
+                      );
+
+                      setState(() {
+                        currentShopStock -= transferAmount;
+                        currentWarehouseStock += transferAmount;
+                        successMessage = 'Transfer successful!';
+                        errorMessage = '';
+                      });
+                    } catch (e) {
+                      setState(() {
+                        errorMessage = 'Transfer failed: ${e.toString()}';
+                        successMessage = '';
+                      });
+                    }
+                  },
+                  child: Text('Transfer',
+                      style: TextStyle(fontWeight: FontWeight.bold)),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Widget _buildStockToWarehouse() {
+    return FutureBuilder<String?>(
+      future: _viewModel.getCurrentUserStoreNumber(),
+      builder: (context, AsyncSnapshot<String?> storeSnapshot) {
+        if (storeSnapshot.connectionState == ConnectionState.waiting) {
+          return Center(child: CircularProgressIndicator());
+        }
+        if (storeSnapshot.data == null) {
+          return Center(child: Text("Store number not set. Please configure it."));
+        }
+
+        return Column(
+          children: [
+            _buildSearchBar(),
+            Expanded(
+              child: StreamBuilder<QuerySnapshot>(
+                stream: _viewModel._firestore
+                    .collection('products')
+                    .where('storeNumber', isEqualTo: storeSnapshot.data!)
+                    .snapshots(),
+                builder: (context, AsyncSnapshot<QuerySnapshot> productSnapshot) {
+                  if (productSnapshot.connectionState == ConnectionState.waiting) {
+                    return Center(child: CircularProgressIndicator());
+                  }
+                  if (!productSnapshot.hasData || productSnapshot.data!.docs.isEmpty) {
+                    return Center(child: Text("No products found"));
+                  }
+
+                  // Filtrar localmente os produtos com stockCurrent > 0
+                  var filteredProducts = productSnapshot.data!.docs
+                      .where((product) => 
+                          (product['stockCurrent'] as int) > 0 &&
+                          product['name']
+                              .toString()
+                              .toLowerCase()
+                              .contains(_searchText.toLowerCase()))
+                      .toList();
+
+                  if (filteredProducts.isEmpty) {
+                    return Center(child: Text("No products with shop stock available"));
+                  }
+
+                  return ListView.builder(
+                    itemCount: filteredProducts.length,
+                    itemBuilder: (context, index) {
+                      var product = filteredProducts[index];
+                      return Center(
+                        child: Container(
+                          width: MediaQuery.of(context).size.width * 0.6,
+                          child: Card(
+                            margin: EdgeInsets.symmetric(
+                                vertical: 8.0, horizontal: 16.0),
+                            elevation: 4.0,
+                            child: ListTile(
+                              contentPadding: EdgeInsets.all(16.0),
+                              title: Text(
+                                product['name'],
+                                style: TextStyle(
+                                    fontWeight: FontWeight.bold, fontSize: 18),
+                              ),
+                              subtitle: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text('Brand: ${product['brand']}'),
+                                  Text('Shop Stock: ${product['stockCurrent']}'),
+                                  Text('Warehouse Stock: ${product['wareHouseStock']}'),
+                                ],
+                              ),
+                              onTap: () async {
+                                await _showTransferToWarehouseDialog(
+                                    context, product);
+                              },
+                            ),
+                          ),
+                        ),
+                      );
+                    },
+                  );
+                },
+              ),
+            ),
+          ],
+        );
+      },
+    );
   }
 
   @override
@@ -1172,7 +1121,7 @@ class _WarehouseManagementPageState extends State<WarehouseManagementPage>
             Tab(
               child: Container(
                 padding: EdgeInsets.symmetric(vertical: 5),
-                child: Text("WareHouse Stock", style: TextStyle(color: Colors.white)),
+                child: Text("Shop to WareHouse", style: TextStyle(color: Colors.white)),
               ),
             ),
             Tab(
@@ -1199,7 +1148,7 @@ class _WarehouseManagementPageState extends State<WarehouseManagementPage>
           controller: _tabController,
           children: [
             _buildWarehouseForm(),
-            _buildWarehouseList(),
+            _buildStockToWarehouse(),
             _buildTransferBetweenWarehouses(),
           ],
         ),
