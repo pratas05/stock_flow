@@ -76,8 +76,7 @@ class FinanceAndHRViewModel {
       final userDoc = await _firestore.collection('users').doc(user.uid).get();
       return userDoc.data()?['storeNumber'] as String?;
     } catch (e) {
-      debugPrint("Error fetching store number: $e");
-      return null;
+      debugPrint("Error fetching store number: $e"); return null;
     }
   }
 
@@ -105,8 +104,7 @@ class FinanceAndHRViewModel {
     try {
       await _firestore.collection('iva').doc(storeNumber).set(vat.toMap());
     } catch (e) {
-      debugPrint("Error updating VAT values: $e");
-      rethrow;
+      debugPrint("Error updating VAT values: $e"); rethrow;
     }
   }
 
@@ -343,8 +341,7 @@ class _FinanceAndHumanResourcesPageState
                         decoration: const InputDecoration(
                           labelText: 'Select Store Currency',
                           border: OutlineInputBorder(),
-                          filled: true,
-                          fillColor: Colors.white,
+                          filled: true, fillColor: Colors.white,
                         ),
                         items: _currencyMap.entries.map((entry) {
                           return DropdownMenuItem<String>(
@@ -409,17 +406,47 @@ class _FinanceAndHumanResourcesPageState
         vat4: controllers['VAT4']!.text,
       );
 
-      if (newVat.isEqual(_initialVatValues)) {
+      // Detectar mudanças
+      Map<String, String> changedFields = {};
+      if (newVat.vat1 != _initialVatValues.vat1) {
+        changedFields['VAT1'] = '${_initialVatValues.vat1} → ${newVat.vat1}';
+      }
+      if (newVat.vat2 != _initialVatValues.vat2) {
+        changedFields['VAT2'] = '${_initialVatValues.vat2} → ${newVat.vat2}';
+      }
+      if (newVat.vat3 != _initialVatValues.vat3) {
+        changedFields['VAT3'] = '${_initialVatValues.vat3} → ${newVat.vat3}';
+      }
+      if (newVat.vat4 != _initialVatValues.vat4) {
+        changedFields['VAT4'] = '${_initialVatValues.vat4} → ${newVat.vat4}';
+      }
+
+      if (changedFields.isEmpty) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('No changes detected to save.')),
-        );
-        return;
+        ); return;
       }
 
       await _viewModel.updateVatValues(storeNumber, newVat);
-      setState(() {
-        _initialVatValues = newVat;
+      setState(() {_initialVatValues = newVat;});
+
+      final messageBuffer = StringBuffer("Some VAT codes were updated:\n"); // Criar mensagem da notificação
+      changedFields.forEach((key, value) {
+        messageBuffer.write('$key: $value;  ');
       });
+
+      final userId = FirebaseAuth.instance.currentUser?.uid ?? '';
+      final notificationId = FirebaseFirestore.instance.collection('notifications').doc().id;
+
+      await FirebaseFirestore.instance.collection('notifications').doc(notificationId).set({
+        'message': messageBuffer.toString(),
+        'notificationId': notificationId,
+        'notificationType': 'Update',
+        'storeNumber': storeNumber,
+        'timestamp': FieldValue.serverTimestamp(),
+        'userId': userId,
+      });
+
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('VAT values updated!')),
       );

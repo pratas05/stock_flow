@@ -368,6 +368,7 @@ class NotificationsStockAlert extends StatelessWidget {
       case 'Meeting': return Icons.timelapse_sharp;
       case 'Warning': return Icons.warning;
       case 'Schedule': return Icons.schedule;
+      case 'Break': return Icons.insert_page_break;
       default: return Icons.notification_important;
     }
   }
@@ -383,6 +384,7 @@ class NotificationsStockAlert extends StatelessWidget {
       case 'Meeting': return Color.fromARGB(255, 3, 12, 138);
       case 'Warning': return Color.fromARGB(255, 141, 128, 9);
       case 'Schedule': return Colors.black;
+      case 'Break': return Color.fromARGB(255, 219, 14, 14);
       default: return Colors.red;
     }
   }

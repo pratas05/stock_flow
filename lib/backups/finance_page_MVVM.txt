@@ -2,13 +2,11 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:stockflow/utils/colors_utils.dart';
+import 'package:stockflow/reusable_widgets/colors_utils.dart';
 
 // [1. MODEL]
 class UserModel {
-  final String id;
-  final String name;
-  final String email;
+  final String id, name, email;
   final String? adminPermission;
 
   UserModel({
@@ -30,10 +28,7 @@ class UserModel {
 }
 
 class VatModel {
-  final String vat1;
-  final String vat2;
-  final String vat3;
-  final String vat4;
+  final String vat1, vat2, vat3, vat4;
 
   VatModel({
     required this.vat1,
@@ -121,7 +116,22 @@ class FinanceAndHRViewModel {
         'adminPermission': currentPermission ? "" : adminStoreNumber,
       });
     } catch (e) {
-      debugPrint("Error updating admin permission: $e"); rethrow;
+      debugPrint("Error updating admin permission: $e");
+      rethrow;
+    }
+  }
+
+  Future<void> updateStoreCurrency(String currencySymbol) async {
+    try {
+      final user = _auth.currentUser;
+      if (user != null) {
+        await _firestore.collection('users').doc(user.uid).update({
+          'storeCurrency': currencySymbol,
+        });
+      }
+    } catch (e) {
+      debugPrint("Error updating store currency: $e");
+      rethrow;
     }
   }
 }
@@ -141,6 +151,15 @@ class _FinanceAndHumanResourcesPageState
   late TabController _tabController;
   late Future<String?> _storeNumberFuture;
   late VatModel _initialVatValues;
+
+  final Map<String, String> _currencyMap = {
+    'Euro (€)': '€',
+    'US Dollar (\$)': '\$',
+    'British Pound (£)': '£',
+    'Brazilian Real (R\$)': 'R\$',
+  };
+
+  String? _selectedCurrency;
 
   @override
   void initState() {
@@ -164,7 +183,8 @@ class _FinanceAndHumanResourcesPageState
               hexStringToColor("9546C4"),
               hexStringToColor("5E61F4"),
             ],
-            begin: Alignment.topCenter, end: Alignment.bottomCenter,
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
           ),
         ),
         child: FutureBuilder<String?>(
@@ -178,7 +198,8 @@ class _FinanceAndHumanResourcesPageState
               return const Center(
                 child: Text(
                   'You are not connected to any store. Please contact your Admin.',
-                  style: TextStyle(fontSize: 18, color: Colors.black)),
+                  style: TextStyle(fontSize: 18, color: Colors.black),
+                ),
               );
             }
 
@@ -190,12 +211,8 @@ class _FinanceAndHumanResourcesPageState
                 TabBar(
                   controller: _tabController,
                   tabs: const [
-                    Tab(
-                      child: Text('Human Resources', style: TextStyle(color: Colors.white)),
-                    ),
-                    Tab(
-                      child: Text('Finance', style: TextStyle(color: Colors.white)),
-                    ),
+                    Tab(child: Text('Human Resources', style: TextStyle(color: Colors.white))),
+                    Tab(child: Text('Finance', style: TextStyle(color: Colors.white))),
                   ],
                 ),
                 Expanded(
@@ -225,7 +242,7 @@ class _FinanceAndHumanResourcesPageState
 
         if (snapshot.hasError) {
           return const Center(
-            child: Text('Erro ao buscar os usuários.', style: TextStyle(fontSize: 18, color: Colors.black)),
+            child: Text('Error loading users.', style: TextStyle(fontSize: 18, color: Colors.black)),
           );
         }
 
@@ -233,7 +250,7 @@ class _FinanceAndHumanResourcesPageState
 
         if (users.isEmpty) {
           return const Center(
-            child: Text('Nenhum usuário encontrado para esta loja.', style: TextStyle(fontSize: 18, color: Colors.black)),
+            child: Text('No users found for this store.', style: TextStyle(fontSize: 18, color: Colors.black)),
           );
         }
 
@@ -255,9 +272,7 @@ class _FinanceAndHumanResourcesPageState
                     const Icon(Icons.account_circle, color: Colors.purple),
                     IconButton(
                       icon: Icon(
-                        hasAdminPermission
-                            ? Icons.remove_circle_outline
-                            : Icons.admin_panel_settings,
+                        hasAdminPermission ? Icons.remove_circle_outline : Icons.admin_panel_settings,
                         color: hasAdminPermission ? Colors.red : Colors.blue,
                       ),
                       onPressed: () => _toggleAdminPermission(user.id, hasAdminPermission, storeNumber),
@@ -284,13 +299,13 @@ class _FinanceAndHumanResourcesPageState
 
           if (snapshot.hasError) {
             return const Center(
-              child: Text(
-                'Error to load IVA values', style: TextStyle(fontSize: 18, color: Colors.black)),);
+              child: Text('Error to load IVA values', style: TextStyle(fontSize: 18, color: Colors.black)),
+            );
           }
 
           final vat = snapshot.data ?? VatModel(vat1: '0', vat2: '0', vat3: '0', vat4: '0');
-          _initialVatValues = vat; // Store initial values for comparison
-          
+          _initialVatValues = vat;
+
           final controllers = {
             'VAT1': TextEditingController(text: vat.vat1),
             'VAT2': TextEditingController(text: vat.vat2),
@@ -302,10 +317,7 @@ class _FinanceAndHumanResourcesPageState
             children: [
               Container(
                 padding: const EdgeInsets.all(16.0),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(8),
-                ),
+                decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(8)),
                 child: Column(
                   children: [
                     for (var entry in controllers.entries)
@@ -324,13 +336,46 @@ class _FinanceAndHumanResourcesPageState
                       onPressed: () => _updateVatValues(storeNumber, controllers),
                       child: const Text('Save VAT'),
                     ),
+                    Padding(
+                      padding: const EdgeInsets.only(top: 16.0),
+                      child: DropdownButtonFormField<String>(
+                        value: _selectedCurrency,
+                        decoration: const InputDecoration(
+                          labelText: 'Select Store Currency',
+                          border: OutlineInputBorder(),
+                          filled: true,
+                          fillColor: Colors.white,
+                        ),
+                        items: _currencyMap.entries.map((entry) {
+                          return DropdownMenuItem<String>(
+                            value: entry.value,
+                            child: Text(entry.key),
+                          );
+                        }).toList(),
+                        onChanged: (value) async {
+                          setState(() {
+                            _selectedCurrency = value;
+                          });
+                          if (value != null) {
+                            try {
+                              await _viewModel.updateStoreCurrency(value);
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(content: Text('Currency saved: $value')),
+                              );
+                            } catch (_) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(content: Text('Error saving currency.')),
+                              );
+                            }
+                          }
+                        },
+                      ),
+                    ),
                   ],
                 ),
               ),
               const SizedBox(height: 20),
-              Expanded(
-                child: Container(width: double.infinity, height: MediaQuery.of(context).size.height / 2),
-              ),
+              Expanded(child: Container(width: double.infinity, height: MediaQuery.of(context).size.height / 2)),
             ],
           );
         },
@@ -364,8 +409,22 @@ class _FinanceAndHumanResourcesPageState
         vat4: controllers['VAT4']!.text,
       );
 
-      // Check if any value has changed
-      if (newVat.isEqual(_initialVatValues)) {
+      // Detectar mudanças
+      Map<String, String> changedFields = {};
+      if (newVat.vat1 != _initialVatValues.vat1) {
+        changedFields['VAT1'] = '${_initialVatValues.vat1} → ${newVat.vat1}';
+      }
+      if (newVat.vat2 != _initialVatValues.vat2) {
+        changedFields['VAT2'] = '${_initialVatValues.vat2} → ${newVat.vat2}';
+      }
+      if (newVat.vat3 != _initialVatValues.vat3) {
+        changedFields['VAT3'] = '${_initialVatValues.vat3} → ${newVat.vat3}';
+      }
+      if (newVat.vat4 != _initialVatValues.vat4) {
+        changedFields['VAT4'] = '${_initialVatValues.vat4} → ${newVat.vat4}';
+      }
+
+      if (changedFields.isEmpty) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('No changes detected to save.')),
         );
@@ -374,8 +433,27 @@ class _FinanceAndHumanResourcesPageState
 
       await _viewModel.updateVatValues(storeNumber, newVat);
       setState(() {
-        _initialVatValues = newVat; // Update initial values after successful save
+        _initialVatValues = newVat;
       });
+
+      // Criar mensagem da notificação
+      final messageBuffer = StringBuffer("Some VAT codes were updated:\n");
+      changedFields.forEach((key, value) {
+        messageBuffer.write('$key: $value;  ');
+      });
+
+      final userId = FirebaseAuth.instance.currentUser?.uid ?? '';
+      final notificationId = FirebaseFirestore.instance.collection('notifications').doc().id;
+
+      await FirebaseFirestore.instance.collection('notifications').doc(notificationId).set({
+        'message': messageBuffer.toString(),
+        'notificationId': notificationId,
+        'notificationType': 'Update',
+        'storeNumber': storeNumber,
+        'timestamp': FieldValue.serverTimestamp(),
+        'userId': userId,
+      });
+
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('VAT values updated!')),
       );

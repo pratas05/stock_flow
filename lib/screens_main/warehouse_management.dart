@@ -6,10 +6,10 @@ import 'package:stockflow/reusable_widgets/colors_utils.dart';
 
 // [1. MODEL]
 class WarehouseProductModel {
-  final String id, name, brand, model, category, description, storeNumber, salePrice;
+  final String id, name, brand, model, category, description, storeNumber;
   final int stockCurrent, stockOrder, stockMin, stockMax, wareHouseStock, stockBreak;
   final String vatCode, subCategory;
-  final double lastPurchasePrice;
+  final double lastPurchasePrice, salePrice;
   final Timestamp createdAt;
   final String productLocation;
 
@@ -990,8 +990,7 @@ class _WarehouseManagementPageState extends State<WarehouseManagementPage>
                       });
                     }
                   },
-                  child: Text('Transfer',
-                      style: TextStyle(fontWeight: FontWeight.bold)),
+                  child: Text('Transfer', style: TextStyle(fontWeight: FontWeight.bold)),
                 ),
               ],
             );

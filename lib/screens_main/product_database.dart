@@ -290,6 +290,7 @@ class _ProductDatabasePageState extends State<ProductDatabasePage> with SingleTi
     _lastPurchasePriceController.clear();
     _vatCodeController.clear();
     _productLocationController.clear();
+    _salePriceController.clear();
   }
 
   @override

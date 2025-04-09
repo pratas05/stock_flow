@@ -1,8 +1,9 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
-import 'package:stockflow/utils/colors_utils.dart';
+import 'package:stockflow/reusable_widgets/colors_utils.dart';
 import 'package:intl/intl.dart';
+import 'package:stockflow/reusable_widgets/privacy_policy.dart';
 import 'package:table_calendar/table_calendar.dart';
 
 // [1. MODEL]
@@ -803,7 +804,7 @@ class _AccountSettingsState extends State<AccountSettings> {
           content: SingleChildScrollView(
             child: Column(
               children: const [
-                Text('''Your terms and conditions text here'''),
+                Text(PrivacyPolicy.privacyPolicyText),
               ],
             ),
           ),
