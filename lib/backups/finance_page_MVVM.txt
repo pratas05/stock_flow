@@ -1,4 +1,3 @@
-// MVVM
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -76,7 +75,20 @@ class FinanceAndHRViewModel {
       final userDoc = await _firestore.collection('users').doc(user.uid).get();
       return userDoc.data()?['storeNumber'] as String?;
     } catch (e) {
-      debugPrint("Error fetching store number: $e");
+      debugPrint("Error fetching store number: $e"); return null;
+    }
+  }
+
+  // Adicione este método no ViewModel
+  Future<String?> getCurrentCurrency() async {
+    try {
+      final user = _auth.currentUser;
+      if (user == null) return null;
+      
+      final userDoc = await _firestore.collection('users').doc(user.uid).get();
+      return userDoc.data()?['storeCurrency'] as String?;
+    } catch (e) {
+      debugPrint("Error fetching current currency: $e");
       return null;
     }
   }
@@ -105,8 +117,7 @@ class FinanceAndHRViewModel {
     try {
       await _firestore.collection('iva').doc(storeNumber).set(vat.toMap());
     } catch (e) {
-      debugPrint("Error updating VAT values: $e");
-      rethrow;
+      debugPrint("Error updating VAT values: $e"); rethrow;
     }
   }
 
@@ -290,8 +301,11 @@ class _FinanceAndHumanResourcesPageState
   Widget _buildFinanceTab(String storeNumber) {
     return Padding(
       padding: const EdgeInsets.all(16.0),
-      child: FutureBuilder<VatModel>(
-        future: _viewModel.getVatValues(storeNumber),
+      child: FutureBuilder<(VatModel, String?)>(
+        future: Future.wait([
+          _viewModel.getVatValues(storeNumber),
+          _viewModel.getCurrentCurrency(),
+        ]).then((results) => (results[0] as VatModel, results[1] as String?)),
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
             return const Center(child: CircularProgressIndicator());
@@ -299,12 +313,14 @@ class _FinanceAndHumanResourcesPageState
 
           if (snapshot.hasError) {
             return const Center(
-              child: Text('Error to load IVA values', style: TextStyle(fontSize: 18, color: Colors.black)),
+              child: Text('Error to load financial data', style: TextStyle(fontSize: 18, color: Colors.black)),
             );
           }
 
-          final vat = snapshot.data ?? VatModel(vat1: '0', vat2: '0', vat3: '0', vat4: '0');
+          final vat = snapshot.data?.$1 ?? VatModel(vat1: '0', vat2: '0', vat3: '0', vat4: '0');
+          final currentCurrency = snapshot.data?.$2;
           _initialVatValues = vat;
+          _selectedCurrency = currentCurrency;
 
           final controllers = {
             'VAT1': TextEditingController(text: vat.vat1),
@@ -313,11 +329,14 @@ class _FinanceAndHumanResourcesPageState
             'VAT4': TextEditingController(text: vat.vat4),
           };
 
-          return Column(
+          return Column( // Seção de VAT
             children: [
               Container(
                 padding: const EdgeInsets.all(16.0),
-                decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(8)),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(8),
+                ),
                 child: Column(
                   children: [
                     for (var entry in controllers.entries)
@@ -336,44 +355,65 @@ class _FinanceAndHumanResourcesPageState
                       onPressed: () => _updateVatValues(storeNumber, controllers),
                       child: const Text('Save VAT'),
                     ),
-                    Padding(
-                      padding: const EdgeInsets.only(top: 16.0),
-                      child: DropdownButtonFormField<String>(
-                        value: _selectedCurrency,
-                        decoration: const InputDecoration(
-                          labelText: 'Select Store Currency',
-                          border: OutlineInputBorder(),
-                          filled: true,
-                          fillColor: Colors.white,
+                  ],
+                ),
+              ),
+              
+              const SizedBox(height: 20),
+              
+              Container( // Seção de Currency - Agrupando a exibição atual com o seletor
+                padding: const EdgeInsets.all(16.0),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [ // Exibição da moeda atual
+                    if (currentCurrency != null)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 8.0),
+                        child: Row(
+                          children: [
+                            const Text('Current Currency: ', style: TextStyle(fontWeight: FontWeight.bold)),
+                            Text(currentCurrency, style: const TextStyle(fontSize: 16)),
+                          ],
                         ),
-                        items: _currencyMap.entries.map((entry) {
-                          return DropdownMenuItem<String>(
-                            value: entry.value,
-                            child: Text(entry.key),
-                          );
-                        }).toList(),
-                        onChanged: (value) async {
-                          setState(() {
-                            _selectedCurrency = value;
-                          });
-                          if (value != null) {
-                            try {
-                              await _viewModel.updateStoreCurrency(value);
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(content: Text('Currency saved: $value')),
-                              );
-                            } catch (_) {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(content: Text('Error saving currency.')),
-                              );
-                            }
-                          }
-                        },
                       ),
+                    
+                    DropdownButtonFormField<String>( // Dropdown para selecionar nova moeda
+                      value: _selectedCurrency,
+                      decoration: const InputDecoration(
+                        labelText: 'Change Store Currency',
+                        border: OutlineInputBorder(),
+                        filled: true, fillColor: Color.fromARGB(255, 255, 255, 255),
+                      ),
+                      items: _currencyMap.entries.map((entry) {
+                        return DropdownMenuItem<String>(
+                          value: entry.value,
+                          child: Text(entry.key),
+                        );
+                      }).toList(),
+                      onChanged: (value) async {
+                        setState(() {_selectedCurrency = value;});
+                        if (value != null) {
+                          try {
+                            await _viewModel.updateStoreCurrency(value);
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(content: Text('Currency saved: $value')),
+                            );
+                          } catch (_) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(content: Text('Error saving currency.')),
+                            );
+                          }
+                        }
+                      },
                     ),
                   ],
                 ),
               ),
+              
               const SizedBox(height: 20),
               Expanded(child: Container(width: double.infinity, height: MediaQuery.of(context).size.height / 2)),
             ],
@@ -427,17 +467,13 @@ class _FinanceAndHumanResourcesPageState
       if (changedFields.isEmpty) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('No changes detected to save.')),
-        );
-        return;
+        ); return;
       }
 
       await _viewModel.updateVatValues(storeNumber, newVat);
-      setState(() {
-        _initialVatValues = newVat;
-      });
+      setState(() {_initialVatValues = newVat;});
 
-      // Criar mensagem da notificação
-      final messageBuffer = StringBuffer("Some VAT codes were updated:\n");
+      final messageBuffer = StringBuffer("Some VAT codes were updated:\n"); // Criar mensagem da notificação
       changedFields.forEach((key, value) {
         messageBuffer.write('$key: $value;  ');
       });

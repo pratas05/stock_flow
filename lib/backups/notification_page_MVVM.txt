@@ -4,7 +4,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
-import 'package:stockflow/utils/colors_utils.dart';
+import 'package:stockflow/reusable_widgets/colors_utils.dart';
 import 'package:timeago/timeago.dart' as timeago;
 
 // [1. MODEL]
@@ -368,6 +368,7 @@ class NotificationsStockAlert extends StatelessWidget {
       case 'Meeting': return Icons.timelapse_sharp;
       case 'Warning': return Icons.warning;
       case 'Schedule': return Icons.schedule;
+      case 'Break': return Icons.insert_page_break;
       default: return Icons.notification_important;
     }
   }
@@ -383,6 +384,7 @@ class NotificationsStockAlert extends StatelessWidget {
       case 'Meeting': return Color.fromARGB(255, 3, 12, 138);
       case 'Warning': return Color.fromARGB(255, 141, 128, 9);
       case 'Schedule': return Colors.black;
+      case 'Break': return Color.fromARGB(255, 219, 14, 14);
       default: return Colors.red;
     }
   }
