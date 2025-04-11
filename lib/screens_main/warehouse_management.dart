@@ -1,17 +1,16 @@
-//MVVM
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:stockflow/reusable_widgets/colors_utils.dart';
+import 'package:stockflow/reusable_widgets/search_controller.dart';
 
 // [1. MODEL]
 class WarehouseProductModel {
   final String id, name, brand, model, category, description, storeNumber;
+  final String vatCode, subCategory, productLocation;
   final int stockCurrent, stockOrder, stockMin, stockMax, wareHouseStock, stockBreak;
-  final String vatCode, subCategory;
   final double lastPurchasePrice, salePrice;
   final Timestamp createdAt;
-  final String productLocation;
 
   WarehouseProductModel({
     required this.id,
@@ -36,52 +35,50 @@ class WarehouseProductModel {
   });
 
   factory WarehouseProductModel.fromFirestore(DocumentSnapshot doc) {
-    Map<String, dynamic> data = doc.data() as Map<String, dynamic>;
+    final data = doc.data() as Map<String, dynamic>;
     return WarehouseProductModel(
       id: doc.id,
-      name: data['name'] ?? '',
-      brand: data['brand'] ?? '',
-      model: data['model'] ?? '',
-      category: data['category'] ?? '',
-      description: data['description'] ?? '',
-      storeNumber: data['storeNumber'] ?? '',
-      salePrice: (data['salePrice'] ?? 0.0).toDouble(),
-      stockCurrent: (data['stockCurrent'] ?? 0).toInt(),
-      stockOrder: (data['stockOrder'] ?? 0).toInt(),
-      stockMin: (data['stockMin'] ?? 0).toInt(),
-      stockMax: (data['stockMax'] ?? 0).toInt(),
-      wareHouseStock: (data['wareHouseStock'] ?? 0).toInt(),
-      stockBreak: (data['stockBreak'] ?? 0).toInt(),
-      vatCode: data['vatCode'] ?? '',
-      subCategory: data['subCategory'] ?? '',
-      lastPurchasePrice: (data['lastPurchasePrice'] ?? 0.0).toDouble(),
-      createdAt: data['createdAt'] ?? Timestamp.now(),
-      productLocation: data['productLocation'] ?? 'Not Located',
+      name: data['name']?.toString() ?? '',
+      brand: data['brand']?.toString() ?? '',
+      model: data['model']?.toString() ?? '',
+      category: data['category']?.toString() ?? '',
+      description: data['description']?.toString() ?? '',
+      storeNumber: data['storeNumber']?.toString() ?? '',
+      salePrice: (data['salePrice'] as num?)?.toDouble() ?? 0.0,
+      stockCurrent: (data['stockCurrent'] as num?)?.toInt() ?? 0,
+      stockOrder: (data['stockOrder'] as num?)?.toInt() ?? 0,
+      stockMin: (data['stockMin'] as num?)?.toInt() ?? 0,
+      stockMax: (data['stockMax'] as num?)?.toInt() ?? 0,
+      wareHouseStock: (data['wareHouseStock'] as num?)?.toInt() ?? 0,
+      stockBreak: (data['stockBreak'] as num?)?.toInt() ?? 0,
+      vatCode: data['vatCode']?.toString() ?? '',
+      subCategory: data['subCategory']?.toString() ?? '',
+      lastPurchasePrice: (data['lastPurchasePrice'] as num?)?.toDouble() ?? 0.0,
+      createdAt: data['createdAt'] as Timestamp? ?? Timestamp.now(),
+      productLocation: data['productLocation']?.toString() ?? 'Not Located',
     );
   }
 
-  Map<String, dynamic> toMap() {
-    return {
-      'name': name,
-      'brand': brand,
-      'model': model,
-      'category': category,
-      'description': description,
-      'storeNumber': storeNumber,
-      'salePrice': salePrice,
-      'stockCurrent': stockCurrent,
-      'stockOrder': stockOrder,
-      'stockMin': stockMin,
-      'stockMax': stockMax,
-      'wareHouseStock': wareHouseStock,
-      'stockBreak': stockBreak,
-      'vatCode': vatCode,
-      'subCategory': subCategory,
-      'lastPurchasePrice': lastPurchasePrice,
-      'createdAt': createdAt,
-      'productLocation': productLocation,
-    };
-  }
+  Map<String, dynamic> toMap() => {
+    'name': name,
+    'brand': brand,
+    'model': model,
+    'category': category,
+    'description': description,
+    'storeNumber': storeNumber,
+    'salePrice': salePrice,
+    'stockCurrent': stockCurrent,
+    'stockOrder': stockOrder,
+    'stockMin': stockMin,
+    'stockMax': stockMax,
+    'wareHouseStock': wareHouseStock,
+    'stockBreak': stockBreak,
+    'vatCode': vatCode,
+    'subCategory': subCategory,
+    'lastPurchasePrice': lastPurchasePrice,
+    'createdAt': createdAt,
+    'productLocation': productLocation,
+  };
 }
 
 // [2. VIEWMODEL]
@@ -108,10 +105,7 @@ class WarehouseViewModel {
           .where((storeNumber) => storeNumber.isNotEmpty)
           .toSet() // Remove duplicates
           .toList();
-    } catch (e) {
-      debugPrint("Error fetching stores: $e");
-      return [];
-    }
+    } catch (e) {debugPrint("Error fetching stores: $e"); return [];}
   }
 
   Future<List<WarehouseProductModel>> fetchProducts(String storeNumber) async {
@@ -126,8 +120,7 @@ class WarehouseViewModel {
     } catch (e) {debugPrint("Error fetching products: $e"); return [];}
   }
 
-  // In WarehouseViewModel class
-  Future<void> transferStockToWarehouse({
+  Future<void> transferStockToWarehouse({ // In WarehouseViewModel class
     required String productId,
     required int increment,
     required int currentWareHouseStock,
@@ -155,9 +148,7 @@ class WarehouseViewModel {
     required String productId,
     required double newPrice,
   }) async {
-    await _firestore.collection('products').doc(productId).update({
-      'salePrice': newPrice,
-    });
+    await _firestore.collection('products').doc(productId).update({'salePrice': newPrice});
   }
 
   Future<void> transferBetweenWarehouses({
@@ -183,8 +174,7 @@ class WarehouseViewModel {
 
       if (quantity > currentStock) throw Exception("Not enough stock available");
 
-      // Update source warehouse stock
-      await fromDoc.reference.update({'wareHouseStock': remainingStock});
+      await fromDoc.reference.update({'wareHouseStock': remainingStock}); // Update source warehouse stock
 
       // Check if product exists in destination store
       final toQuery = await _firestore
@@ -244,7 +234,7 @@ class WarehouseViewModel {
   }
 }
 
-// [3. VIEW]
+// [4. MAIN VIEW]
 class WarehouseManagementPage extends StatefulWidget {
   const WarehouseManagementPage({super.key});
 
@@ -255,8 +245,7 @@ class WarehouseManagementPage extends StatefulWidget {
 class _WarehouseManagementPageState extends State<WarehouseManagementPage>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
-  final TextEditingController _searchController = TextEditingController();
-  String _searchText = "";
+  final ValueNotifier<String> _searchNotifier = ValueNotifier<String>("");
   bool isPriceEditable = false;
   final WarehouseViewModel _viewModel = WarehouseViewModel();
 
@@ -264,15 +253,12 @@ class _WarehouseManagementPageState extends State<WarehouseManagementPage>
   void initState() {
     super.initState();
     _tabController = TabController(length: 3, vsync: this);
-    _searchController.addListener(() {
-      setState(() {_searchText = _searchController.text;});
-    });
   }
 
   @override
   void dispose() {
+    _searchNotifier.dispose();
     _tabController.dispose();
-    _searchController.dispose();
     super.dispose();
   }
 
@@ -280,14 +266,20 @@ class _WarehouseManagementPageState extends State<WarehouseManagementPage>
     return FutureBuilder<String?>(
       future: _viewModel.getCurrentUserStoreNumber(),
       builder: (context, AsyncSnapshot<String?> storeSnapshot) {
-        if (!storeSnapshot.hasData || storeSnapshot.connectionState == ConnectionState.waiting) {
+        if (storeSnapshot.data == null) {
+          return Center(child: Text("Store number not set. Please configure it."));
+        }
+        if (storeSnapshot.connectionState == ConnectionState.waiting) {
           return Center(child: CircularProgressIndicator());
         }
-
-        if (storeSnapshot.data == null) {return Center(child: Text("No store number assigned to this user."));}
+        
         return Column(
           children: [
-            _buildSearchBar(),
+            SearchControllerPage(
+              initialText: _searchNotifier.value,
+              onSearchChanged: (text) => _searchNotifier.value = text,
+              hintText: "Enter Product Name",
+            ),
             Expanded(
               child: StreamBuilder<QuerySnapshot>(
                 stream: _viewModel._firestore
@@ -295,45 +287,40 @@ class _WarehouseManagementPageState extends State<WarehouseManagementPage>
                     .where('storeNumber', isEqualTo: storeSnapshot.data!)
                     .snapshots(),
                 builder: (context, AsyncSnapshot<QuerySnapshot> snapshot) {
-                  if (!snapshot.hasData || snapshot.connectionState == ConnectionState.waiting) {
+                  if (snapshot.connectionState == ConnectionState.waiting) {
                     return Center(child: CircularProgressIndicator());
                   }
+                  if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+                    return Center(child: Text("No products available"));
+                  }
 
-                  var filteredProducts = snapshot.data!.docs.where((product) {
-                    return product['name']
-                        .toString()
-                        .toLowerCase()
-                        .contains(_searchText.toLowerCase());
-                  }).toList();
+                  return ValueListenableBuilder<String>(
+                    valueListenable: _searchNotifier,
+                    builder: (context, searchText, _) {
+                      final searchLower = searchText.toLowerCase();
+                      final filteredProducts = snapshot.data!.docs.where((product) {
+                        return product['name']
+                            .toString()
+                            .toLowerCase()
+                            .contains(searchLower);
+                      }).toList();
 
-                  if (filteredProducts.isEmpty) {return Center(child: Text("No products found"));}
-
-                  return ListView.builder(
-                    itemCount: filteredProducts.length,
-                    itemBuilder: (context, index) {
-                      var product = filteredProducts[index];
-                      return Center(
-                        child: Container(
-                          width: MediaQuery.of(context).size.width * 0.6,
-                          child: Card(
-                            margin: EdgeInsets.symmetric(vertical: 8.0, horizontal: 16.0), elevation: 4.0,
-                            child: ListTile(
-                              contentPadding: EdgeInsets.all(16.0),
-                              title: Text(
-                                product['name'],
-                                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
-                              ),
-                              subtitle: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text('Brand: ${product['brand']}'),
-                                  Text('Sale Price: €${product['salePrice']}'),
-                                ],
-                              ),
-                              onTap: () async {await _showProductDetailsDialog(context, product);},
-                            ),
+                      if (filteredProducts.isEmpty) {
+                        return Center(
+                          child: Text(
+                            searchText.isEmpty 
+                              ? "No products available" 
+                              : "No products matching '$searchText'",
                           ),
-                        ),
+                        );
+                      }
+
+                      return ListView.builder(
+                        itemCount: filteredProducts.length,
+                        itemBuilder: (context, index) {
+                          final product = filteredProducts[index];
+                          return _buildProductCard(context, product);
+                        },
                       );
                     },
                   );
@@ -346,6 +333,38 @@ class _WarehouseManagementPageState extends State<WarehouseManagementPage>
     );
   }
 
+  Widget _buildProductCard(BuildContext context, QueryDocumentSnapshot product) {
+    return Center(
+      child: Container(
+        width: MediaQuery.of(context).size.width * 0.6,
+        child: Card(
+          margin: EdgeInsets.symmetric(vertical: 8.0, horizontal: 16.0),
+          elevation: 4.0,
+          child: ListTile(
+            contentPadding: EdgeInsets.all(16.0),
+            title: Text(
+              product['name'],
+              style: TextStyle(
+                fontWeight: FontWeight.bold,
+                fontSize: 18,
+              ),
+            ),
+            subtitle: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Brand: ${product['brand']}'),
+                Text('Sale Price: €${product['salePrice']}'),
+              ],
+            ),
+            onTap: () async {
+              await _showProductDetailsDialog(context, product);
+            },
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _buildTransferBetweenWarehouses() {
     return Center(
       child: ElevatedButton(
@@ -353,26 +372,6 @@ class _WarehouseManagementPageState extends State<WarehouseManagementPage>
         child: Text("Transfer Product"),
         style: ElevatedButton.styleFrom(
           foregroundColor: Colors.white, backgroundColor: Colors.deepPurple,
-        ),
-      ),
-    );
-  }
-
-  Widget _buildSearchBar() {
-    return Padding(
-      padding: const EdgeInsets.all(16.0),
-      child: Center(
-        child: Container(
-          width: MediaQuery.of(context).size.width * 0.7,
-          child: TextField(
-            controller: _searchController,
-            decoration: InputDecoration(
-              labelText: "Search Product",
-              hintText: "Enter Product Name",
-              prefixIcon: Icon(Icons.search),
-              border: OutlineInputBorder(borderRadius: BorderRadius.circular(8.0)),
-            ),
-          ),
         ),
       ),
     );
@@ -444,19 +443,14 @@ class _WarehouseManagementPageState extends State<WarehouseManagementPage>
                               enabled: isPriceEditable,
                             ),
                           ),
-                          IconButton(
-                            icon: Icon(Icons.edit),
-                            onPressed: () {setState(() {isPriceEditable = true;});},
-                          ),
+                          IconButton(icon: Icon(Icons.edit), onPressed: () {setState(() {isPriceEditable = true;});}),
                         ],
                       ),
                     ),
                     if (successMessage.isNotEmpty)
                       Padding(
                         padding: const EdgeInsets.symmetric(vertical: 8.0),
-                        child: Text(
-                          successMessage, style: TextStyle(color: Colors.green, fontWeight: FontWeight.bold),
-                        ),
+                        child: Text(successMessage, style: TextStyle(color: Colors.green, fontWeight: FontWeight.bold)),
                       ),
                   ],
                 ),
@@ -630,10 +624,7 @@ class _WarehouseManagementPageState extends State<WarehouseManagementPage>
                 ],
               ),
               actions: [
-                TextButton(
-                  onPressed: () => Navigator.of(context).pop(),
-                  child: const Text("Cancel"),
-                ),
+                TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text("Cancel")),
                 ElevatedButton(
                   onPressed: () async {
                     if (toStoreController.text.isEmpty) {
@@ -655,8 +646,7 @@ class _WarehouseManagementPageState extends State<WarehouseManagementPage>
                       errorMessage = null;
                     });
 
-                    // Verificar se o storeNumber existe
-                    final stores = await _viewModel.fetchStores();
+                    final stores = await _viewModel.fetchStores(); // Verificar se o storeNumber existe
                     final storeExists = stores.contains(toStoreController.text);
 
                     setState(() {
@@ -666,8 +656,7 @@ class _WarehouseManagementPageState extends State<WarehouseManagementPage>
                     if (!storeExists) {
                       setState(() {
                         errorMessage = "Store number does not exist";
-                      });
-                      return;
+                      }); return;
                     }
 
                     Navigator.of(context).pop();
@@ -686,36 +675,93 @@ class _WarehouseManagementPageState extends State<WarehouseManagementPage>
   Future<void> _showProductSelectionDialog(String fromStore, String toStore) async {
     List<WarehouseProductModel> products = await _viewModel.fetchProducts(fromStore);
     if (products.isEmpty) return;
-
     String? selectedProduct;
+    String _searchText = "";
+    int _visibleProductsCount = 3; // Limite inicial de produtos visíveis
 
     await showDialog(
       context: context,
       builder: (BuildContext context) {
         return StatefulBuilder(
           builder: (BuildContext context, StateSetter setState) {
+            // Filtrar produtos com base no texto de pesquisa
+            List<WarehouseProductModel> filteredProducts = products
+                .where((product) => 
+                    product.wareHouseStock > 0 &&
+                    product.name.toLowerCase().contains(_searchText.toLowerCase()))
+                .toList();
+
+            List<WarehouseProductModel> visibleProducts = filteredProducts.take(_visibleProductsCount).toList(); // Limitar a quantidade de produtos visíveis
+
             return AlertDialog(
-              title: Text("Select Product from Store $fromStore"),
+              title: Column(
+                children: [
+                  Text("Transfer from Store $fromStore to Store $toStore"),
+                  const SizedBox(height: 8),
+                  Align(
+                    alignment: Alignment.center,
+                    child: Container(width: 520, 
+                      child: SearchControllerPage(
+                        initialText: _searchNotifier.value, 
+                        onSearchChanged: (value) {
+                          setState(() {
+                            _searchText = value;
+                            selectedProduct = null;
+                            _visibleProductsCount = 3; 
+                          });
+                        },
+                        hintText: "Search product...",
+                      ),
+                    ),
+                  ),
+                ],
+              ),
               content: SingleChildScrollView(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: products
-                      .map((product) => RadioListTile<String>(
-                            title: Text(
-                              "${product.name} (Stock: ${product.wareHouseStock})",
-                              style: TextStyle(
-                                color: product.wareHouseStock > 0 ? Colors.black : Colors.grey,
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.4),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (filteredProducts.isEmpty)
+                        Padding(
+                          padding: const EdgeInsets.all(16.0),
+                          child: Text(
+                            _searchText.isEmpty
+                                ? "No products with warehouse stock available"
+                                : "No products found matching '$_searchText'",
+                            style: TextStyle(color: Colors.grey),
+                          ),
+                        )
+                      else
+                        Column(
+                          children: [
+                            ...visibleProducts.map((product) => RadioListTile<String>(
+                              title: Text(
+                                "${product.name} (Stock: ${product.wareHouseStock})",
+                                style: TextStyle(fontWeight: FontWeight.bold,
+                                  color: product.wareHouseStock > 0 ? Colors.black : Colors.grey,
+                                ),
                               ),
-                            ),
-                            value: product.name,
-                            groupValue: selectedProduct,
-                            onChanged: product.wareHouseStock > 0
-                                ? (value) {
-                                    setState(() {selectedProduct = value;});
-                                  }
-                                : null,
-                          ))
-                      .toList(),
+                              subtitle: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text("Brand: ${product.brand}"),
+                                  Text("Model: ${product.model}"),
+                                  Text("Price: €${product.salePrice.toStringAsFixed(2)}"),
+                                ],
+                              ),
+                              value: product.name,
+                              groupValue: selectedProduct,
+                              onChanged: (value) {
+                                setState(() {
+                                  selectedProduct = value;
+                                });
+                              },
+                            )),
+                          ],
+                        ),
+                    ],
+                  ),
                 ),
               ),
               actions: [
@@ -730,7 +776,8 @@ class _WarehouseManagementPageState extends State<WarehouseManagementPage>
                 ElevatedButton(
                   onPressed: selectedProduct != null
                       ? () {
-                          final selectedProductDetails = products.firstWhere((product) => product.name == selectedProduct);
+                          final selectedProductDetails = products.firstWhere(
+                              (product) => product.name == selectedProduct);
                           Navigator.of(context).pop();
                           _showQuantityDialog(
                             fromStore,
@@ -832,8 +879,7 @@ class _WarehouseManagementPageState extends State<WarehouseManagementPage>
         builder: (BuildContext context) {
           return AlertDialog(
             title: Text("Processing Transfer"),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
+            content: Column(mainAxisSize: MainAxisSize.min,
               children: [
                 CircularProgressIndicator(), SizedBox(height: 16),
                 Text("Transferring $quantity of $product..."),
@@ -899,8 +945,7 @@ class _WarehouseManagementPageState extends State<WarehouseManagementPage>
                       padding: const EdgeInsets.symmetric(vertical: 8.0),
                       child: Text(
                         errorMessage,
-                        style: TextStyle(
-                            color: Colors.red, fontWeight: FontWeight.bold),
+                        style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold),
                       ),
                     ),
                   if (successMessage.isNotEmpty)
@@ -908,17 +953,13 @@ class _WarehouseManagementPageState extends State<WarehouseManagementPage>
                       padding: const EdgeInsets.symmetric(vertical: 8.0),
                       child: Text(
                         successMessage,
-                        style: TextStyle(
-                            color: Colors.green, fontWeight: FontWeight.bold),
+                        style: TextStyle(color: Colors.green, fontWeight: FontWeight.bold),
                       ),
                     ),
                 ],
               ),
               actions: [
-                TextButton(
-                  onPressed: () => Navigator.of(context).pop(),
-                  child: Text('Cancel'),
-                ),
+                TextButton(onPressed: () => Navigator.of(context).pop(), child: Text('Cancel')),
                 TextButton(
                   onPressed: () async {
                     int transferAmount =
@@ -928,8 +969,7 @@ class _WarehouseManagementPageState extends State<WarehouseManagementPage>
                       setState(() {
                         errorMessage = 'Please enter a valid amount';
                         successMessage = '';
-                      });
-                      return;
+                      }); return;
                     }
 
                     if (transferAmount > currentShopStock) {
@@ -937,8 +977,7 @@ class _WarehouseManagementPageState extends State<WarehouseManagementPage>
                         errorMessage =
                             'Cannot transfer more than available shop stock';
                         successMessage = '';
-                      });
-                      return;
+                      }); return;
                     }
 
                     try {
@@ -947,8 +986,7 @@ class _WarehouseManagementPageState extends State<WarehouseManagementPage>
                         setState(() {
                           errorMessage = 'User not authenticated';
                           successMessage = '';
-                        });
-                        return;
+                        }); return;
                       }
 
                       final storeNumber =
@@ -957,8 +995,7 @@ class _WarehouseManagementPageState extends State<WarehouseManagementPage>
                         setState(() {
                           errorMessage = 'Store number not set';
                           successMessage = '';
-                        });
-                        return;
+                        }); return;
                       }
 
                       await _viewModel.transferStockToWarehouse(
@@ -1004,16 +1041,20 @@ class _WarehouseManagementPageState extends State<WarehouseManagementPage>
     return FutureBuilder<String?>(
       future: _viewModel.getCurrentUserStoreNumber(),
       builder: (context, AsyncSnapshot<String?> storeSnapshot) {
-        if (storeSnapshot.connectionState == ConnectionState.waiting) {
-          return Center(child: CircularProgressIndicator());
-        }
         if (storeSnapshot.data == null) {
           return Center(child: Text("Store number not set. Please configure it."));
+        }
+        if (storeSnapshot.connectionState == ConnectionState.waiting) {
+          return Center(child: CircularProgressIndicator());
         }
 
         return Column(
           children: [
-            _buildSearchBar(),
+            SearchControllerPage(
+              initialText: _searchNotifier.value,
+              onSearchChanged: (text) => _searchNotifier.value = text,
+              hintText: "Enter Product Name",
+            ),
             Expanded(
               child: StreamBuilder<QuerySnapshot>(
                 stream: _viewModel._firestore
@@ -1028,53 +1069,50 @@ class _WarehouseManagementPageState extends State<WarehouseManagementPage>
                     return Center(child: Text("No products found"));
                   }
 
-                  // Filtrar localmente os produtos com stockCurrent > 0
-                  var filteredProducts = productSnapshot.data!.docs
-                      .where((product) => 
-                          (product['stockCurrent'] as int) > 0 &&
-                          product['name']
-                              .toString()
-                              .toLowerCase()
-                              .contains(_searchText.toLowerCase()))
-                      .toList();
+                  return ValueListenableBuilder<String>(
+                    valueListenable: _searchNotifier,
+                    builder: (context, searchText, _) {
+                      var filteredProducts = productSnapshot.data!.docs.where((product) { // Filtro em tempo real
+                        final productName = product['name'].toString().toLowerCase();
+                        final searchLower = searchText.toLowerCase();
+                        return (product['stockCurrent'] as int) > 0 &&
+                              productName.contains(searchLower);
+                      }).toList();
 
-                  if (filteredProducts.isEmpty) {
-                    return Center(child: Text("No products with shop stock available"));
-                  }
+                      if (filteredProducts.isEmpty) {
+                        return Center(child: Text("No matching products with shop stock"));
+                      }
 
-                  return ListView.builder(
-                    itemCount: filteredProducts.length,
-                    itemBuilder: (context, index) {
-                      var product = filteredProducts[index];
-                      return Center(
-                        child: Container(
-                          width: MediaQuery.of(context).size.width * 0.6,
-                          child: Card(
-                            margin: EdgeInsets.symmetric(
-                                vertical: 8.0, horizontal: 16.0),
-                            elevation: 4.0,
-                            child: ListTile(
-                              contentPadding: EdgeInsets.all(16.0),
-                              title: Text(
-                                product['name'],
-                                style: TextStyle(
-                                    fontWeight: FontWeight.bold, fontSize: 18),
+                      return ListView.builder(
+                        itemCount: filteredProducts.length,
+                        itemBuilder: (context, index) {
+                          var product = filteredProducts[index];
+                          return Center(
+                            child: Container(
+                              width: MediaQuery.of(context).size.width * 0.6,
+                              child: Card(
+                                margin: EdgeInsets.symmetric(vertical: 8.0, horizontal: 16.0), elevation: 4.0,
+                                child: ListTile(
+                                  contentPadding: EdgeInsets.all(16.0),
+                                  title: Text(
+                                    product['name'], style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
+                                  ),
+                                  subtitle: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text('Brand: ${product['brand']}'),
+                                      Text('Shop Stock: ${product['stockCurrent']}'),
+                                      Text('Warehouse Stock: ${product['wareHouseStock']}'),
+                                    ],
+                                  ),
+                                  onTap: () async {
+                                    await _showTransferToWarehouseDialog(context, product);
+                                  },
+                                ),
                               ),
-                              subtitle: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text('Brand: ${product['brand']}'),
-                                  Text('Shop Stock: ${product['stockCurrent']}'),
-                                  Text('Warehouse Stock: ${product['wareHouseStock']}'),
-                                ],
-                              ),
-                              onTap: () async {
-                                await _showTransferToWarehouseDialog(
-                                    context, product);
-                              },
                             ),
-                          ),
-                        ),
+                          );
+                        },
                       );
                     },
                   );
@@ -1111,10 +1149,7 @@ class _WarehouseManagementPageState extends State<WarehouseManagementPage>
             Tab(
               child: Container(
                 padding: EdgeInsets.symmetric(vertical: 5),
-                child: Text(
-                  "WareHouse to Shop",
-                  style: TextStyle(color: Colors.white),
-                ),
+                child: Text("WareHouse to Shop", style: TextStyle(color: Colors.white)),
               ),
             ),
             Tab(

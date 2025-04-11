@@ -2,6 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:stockflow/reusable_widgets/colors_utils.dart';
+import 'package:stockflow/reusable_widgets/search_controller.dart';
 
 // [1. MODEL]
 class Product {
@@ -76,19 +77,12 @@ class BuyTradeViewModel {
       updates['stockCurrent'] = shopStock - quantity;
     }
     
-    // Create a batch to perform both updates atomically
     final batch = _firestore.batch();
-    
-    // Update the product
     batch.update(_firestore.collection('products').doc(productId), updates);
     
-    // Create the notification
     final notificationRef = _firestore.collection('notifications').doc();
-    final location = isWarehouse ? 'warehouse' : 'shop';
-    final singularPlural = quantity > 1 ? 'were' : 'was';
-    
     batch.set(notificationRef, {
-      'message': '$quantity "$productName" $singularPlural sent from $location for Break, which means they are damaged',
+      'message': '$quantity "$productName" ${quantity > 1 ? 'were' : 'was'} sent from ${isWarehouse ? 'warehouse' : 'shop'} for Break',
       'notificationId': notificationRef.id,
       'notificationType': 'Break',
       'productId': productId,
@@ -96,7 +90,7 @@ class BuyTradeViewModel {
       'timestamp': FieldValue.serverTimestamp(),
       'userId': _auth.currentUser?.uid ?? '',
       'quantity': quantity,
-      'location': location,
+      'location': isWarehouse ? 'warehouse' : 'shop',
     });
     
     await batch.commit();
@@ -128,7 +122,6 @@ class BuyTradePage extends StatefulWidget {
 class _BuyTradePageState extends State<BuyTradePage> with SingleTickerProviderStateMixin {
   late final BuyTradeViewModel _viewModel;
   late TabController _tabController;
-  final TextEditingController _searchController = TextEditingController();
   String searchQuery = "";
   String? storeNumber;
   bool _isLoading = true;
@@ -158,7 +151,6 @@ class _BuyTradePageState extends State<BuyTradePage> with SingleTickerProviderSt
   @override
   void dispose() {
     _tabController.dispose();
-    _searchController.dispose();
     super.dispose();
   }
 
@@ -173,63 +165,13 @@ class _BuyTradePageState extends State<BuyTradePage> with SingleTickerProviderSt
   @override
   Widget build(BuildContext context) {
     if (_isLoading) {
-      return Scaffold(
-        body: Container(
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              colors: [
-                hexStringToColor("CB2B93"),
-                hexStringToColor("9546C4"),
-                hexStringToColor("5E61F4"),
-              ],
-              begin: Alignment.topLeft, end: Alignment.bottomRight,
-            ),
-          ),
-          child: Center(child: CircularProgressIndicator()),
-        ),
-      );
+      return _buildLoadingScreen();
     }
 
     return Scaffold(
-      appBar: AppBar(
-        title: Text("Buy and Trade", style: TextStyle(color: Colors.white)),
-        centerTitle: true,
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        flexibleSpace: Container(
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              colors: [
-                hexStringToColor("CB2B93"),
-                hexStringToColor("9546C4"),
-                hexStringToColor("5E61F4"),
-              ],
-              begin: Alignment.topLeft, end: Alignment.bottomRight,
-            ),
-          ),
-        ),
-        bottom: TabBar(
-          controller: _tabController,
-          indicatorColor: Colors.white,
-          labelColor: Colors.white,
-          unselectedLabelColor: Colors.white70,
-          tabs: [
-            Tab(text: "Buy"),
-            Tab(text: "Trade"),
-          ],
-        ),
-      ),
+      appBar: _buildAppBar(),
       body: Container(
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            colors: [
-              hexStringToColor("CB2B93"),
-              hexStringToColor("9546C4"),
-              hexStringToColor("5E61F4"),
-            ],
-            begin: Alignment.topLeft, end: Alignment.bottomRight,
-          ),
-        ),
+        decoration: _buildBackgroundDecoration(),
         child: TabBarView(
           controller: _tabController,
           children: [
@@ -241,102 +183,91 @@ class _BuyTradePageState extends State<BuyTradePage> with SingleTickerProviderSt
     );
   }
 
+  Widget _buildLoadingScreen() {
+    return Scaffold(
+      body: Container(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            colors: [
+              hexStringToColor("CB2B93"),
+              hexStringToColor("9546C4"),
+              hexStringToColor("5E61F4"),
+            ],
+            begin: Alignment.topLeft, 
+            end: Alignment.bottomRight,
+          ),
+        ),
+        child: const Center(child: CircularProgressIndicator()),
+      ),
+    );
+  }
+
+  AppBar _buildAppBar() {
+    return AppBar(
+      title: const Text("Buy and Trade", style: TextStyle(color: Colors.white)),
+      centerTitle: true,
+      backgroundColor: Colors.transparent,
+      elevation: 0,
+      flexibleSpace: Container(
+        decoration: _buildBackgroundDecoration(),
+      ),
+      bottom: TabBar(
+        controller: _tabController,
+        indicatorColor: Colors.white,
+        labelColor: Colors.white,
+        unselectedLabelColor: Colors.white70,
+        tabs: const [
+          Tab(text: "Buy"),
+          Tab(text: "Trade"),
+        ],
+      ),
+    );
+  }
+
+  BoxDecoration _buildBackgroundDecoration() {
+    return BoxDecoration(
+      gradient: LinearGradient(
+        colors: [
+          hexStringToColor("CB2B93"),
+          hexStringToColor("9546C4"),
+          hexStringToColor("5E61F4"),
+        ],
+        begin: Alignment.topLeft, end: Alignment.bottomRight,
+      ),
+    );
+  }
+
   Widget _buildBuyTab() {
     if (storeNumber == null) {
-      return Center(
-        child: Text(
-          "You are not connected to any Store. Please contact your Admin",
-          style: TextStyle(fontSize: 18, color: Colors.white), textAlign: TextAlign.center,
-        ),
-      );
+      return _buildNoStoreConnectedWidget();
     }
 
     return Column(
       children: [
-        Padding(
-          padding: const EdgeInsets.all(8.0),
-          child: Container(
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(8),
-              gradient: LinearGradient(
-                colors: [
-                  hexStringToColor("CB2B93"),
-                  hexStringToColor("9546C4"),
-                  hexStringToColor("5E61F4"),
-                ],
-                begin: Alignment.topLeft, end: Alignment.bottomRight,
-              ),
-            ),
-            child: TextField(
-              controller: _searchController,
-              decoration: InputDecoration(
-                labelText: "Search Product",
-                labelStyle: TextStyle(color: const Color.fromARGB(179, 53, 51, 51)),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(8),
-                  borderSide: BorderSide(color: const Color.fromARGB(255, 97, 97, 97)),
-                ),
-                enabledBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(8),
-                  borderSide: BorderSide(color: const Color.fromARGB(255, 97, 97, 97)),
-                ),
-                focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(8),
-                  borderSide: BorderSide(color: const Color.fromARGB(255, 97, 97, 97)),
-                ),
-                prefixIcon: Icon(Icons.search, color: const Color.fromARGB(255, 43, 41, 41)),
-                filled: true,
-                fillColor: Colors.transparent,
-              ),
-              style: TextStyle(color: const Color.fromARGB(255, 73, 71, 71)),
-              onChanged: (value) => setState(() => searchQuery = value),
-            ),
-          ),
+        SearchControllerPage(
+          initialText: searchQuery,
+          onSearchChanged: (value) => setState(() => searchQuery = value),
+          hintText: "Search Product",
         ),
         Expanded(
-          child: StreamBuilder<QuerySnapshot>(
-            stream: _viewModel.getProductsStream(storeNumber),
-            builder: (context, snapshot) {
-              if (!snapshot.hasData) return Center(child: CircularProgressIndicator());
-              final filteredDocs = snapshot.data!.docs.where((doc) {
-                final name = (doc['name'] as String).toLowerCase();
-                return name.contains(searchQuery.toLowerCase());
-              }).toList();
-
-              if (filteredDocs.isEmpty) return Center(child: Text("No products found.", style: TextStyle(color: Colors.white)));
-
-              return ListView.builder(
-                itemCount: filteredDocs.length,
-                itemBuilder: (context, index) {
-                  final product = Product.fromDocument(filteredDocs[index]);
-                  return Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 4.0),
-                    child: Card(
-                      color: Colors.white,
-                      elevation: 4,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                      child: ListTile(
-                        title: Text(
-                          "${product.name} - ${product.model}",
-                          style: TextStyle(fontWeight: FontWeight.bold, color: Colors.black87),
-                        ),
-                        subtitle: Text(
-                          "Price: \$${product.salePrice.toStringAsFixed(2)} | Stock: ${product.stockCurrent}",
-                          style: TextStyle(color: Colors.grey[700]),
-                        ),
-                        trailing: IconButton(
-                          icon: Icon(Icons.add_shopping_cart, 
-                              color: product.stockCurrent > 0 ? Colors.green : Colors.grey),
-                          onPressed: product.stockCurrent > 0
-                              ? () => _showBuyConfirmationDialog(product.id, product.stockCurrent)
-                              : null,
-                        ),
-                      ),
-                    ),
-                  );
-                },
-              );
-            },
+          child: _buildProductList(
+            itemBuilder: (context, product) => ListTile(
+              title: Text(
+                "${product.name} - ${product.model}",
+                style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.black87),
+              ),
+              subtitle: Text(
+                "Price: \$${product.salePrice.toStringAsFixed(2)} | Stock: ${product.stockCurrent}",
+                style: TextStyle(color: Colors.grey[700]),
+              ),
+              trailing: IconButton(
+                icon: Icon(Icons.add_shopping_cart, 
+                    color: product.stockCurrent > 0 ? Colors.green : Colors.grey),
+                onPressed: product.stockCurrent > 0
+                    ? () => _showBuyConfirmationDialog(product.id, product.stockCurrent)
+                    : null,
+              ),
+            ),
           ),
         ),
       ],
@@ -345,124 +276,107 @@ class _BuyTradePageState extends State<BuyTradePage> with SingleTickerProviderSt
 
   Widget _buildTradeTab() {
     if (storeNumber == null) {
-      return Center(
-        child: Text(
-          "You are not connected to any Store. Please contact your Admin",
-          style: TextStyle(fontSize: 18, color: Colors.white), textAlign: TextAlign.center,
-        ),
-      );
+      return _buildNoStoreConnectedWidget();
     }
 
     return Column(
       children: [
-        Padding(
-          padding: const EdgeInsets.all(8.0),
-          child: Container(
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(8),
-              gradient: LinearGradient(
-                colors: [
-                  hexStringToColor("CB2B93"),
-                  hexStringToColor("9546C4"),
-                  hexStringToColor("5E61F4"),
-                ],
-                begin: Alignment.topLeft, end: Alignment.bottomRight,
-              ),
-            ),
-            child: TextField(
-              controller: _searchController,
-              decoration: InputDecoration(
-                labelText: "Search Product",
-                labelStyle: TextStyle(color: const Color.fromARGB(179, 53, 51, 51)),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(8),
-                  borderSide: BorderSide(color: const Color.fromARGB(255, 97, 97, 97)),
-                ),
-                enabledBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(8),
-                  borderSide: BorderSide(color: const Color.fromARGB(255, 97, 97, 97)),
-                ),
-                focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(8),
-                  borderSide: BorderSide(color: const Color.fromARGB(255, 97, 97, 97)),
-                ),
-                prefixIcon: Icon(Icons.search, color: const Color.fromARGB(255, 43, 41, 41)),
-                filled: true,
-                fillColor: Colors.transparent,
-              ),
-              style: TextStyle(color: const Color.fromARGB(255, 73, 71, 71)),
-              onChanged: (value) => setState(() => searchQuery = value),
-            ),
-          ),
+        SearchControllerPage(
+          initialText: searchQuery,
+          onSearchChanged: (value) => setState(() => searchQuery = value),
+          hintText: "Search Product",
         ),
         Expanded(
-          child: StreamBuilder<QuerySnapshot>(
-            stream: _viewModel.getProductsStream(storeNumber),
-            builder: (context, snapshot) {
-              if (!snapshot.hasData) return Center(child: CircularProgressIndicator());
-              final filteredDocs = snapshot.data!.docs.where((doc) {
-                final name = (doc['name'] as String).toLowerCase();
-                return name.contains(searchQuery.toLowerCase());
-              }).toList();
-
-              if (filteredDocs.isEmpty) return Center(child: Text("No products found.", style: TextStyle(color: Colors.white)));
-
-              return ListView.builder(
-                itemCount: filteredDocs.length,
-                itemBuilder: (context, index) {
-                  final product = Product.fromDocument(filteredDocs[index]);
-                  return Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 4.0),
-                    child: Card(
-                      color: Colors.white,
-                      elevation: 4,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                      child: ListTile(
-                        title: Text(
-                          "${product.name} - ${product.model}",
-                          style: TextStyle(fontWeight: FontWeight.bold, color: Colors.black87),
-                        ),
-                        subtitle: Text(
-                          "Stock: ${product.stockCurrent} | WareHouseStock: ${product.wareHouseStock}",
-                          style: TextStyle(color: Colors.grey[700]),
-                        ),
-                        trailing: Icon(Icons.swap_horiz, color: Colors.blue),
-                        onTap: () => _showTradeOptions(product),
-                      ),
-                    ),
-                  );
-                },
-              );
-            },
+          child: _buildProductList(
+            itemBuilder: (context, product) => ListTile(
+              title: Text(
+                "${product.name} - ${product.model}",
+                style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.black87),
+              ),
+              subtitle: Text(
+                "Stock: ${product.stockCurrent} | WareHouseStock: ${product.wareHouseStock}",
+                style: TextStyle(color: Colors.grey[700]),
+              ),
+              trailing: Icon(
+                Icons.swap_horiz,
+                color: (product.stockCurrent > 0 || product.wareHouseStock > 0) 
+                    ? Colors.blue 
+                    : Colors.grey,
+              ),
+              onTap: (product.stockCurrent > 0 || product.wareHouseStock > 0)
+                  ? () => _showTradeOptions(product)
+                  : null,
+            ),
           ),
         ),
       ],
     );
   }
 
+  Widget _buildNoStoreConnectedWidget() {
+    return Center(
+      child: Text(
+        "You are not connected to any Store. Please contact your Admin",
+        style: const TextStyle(fontSize: 18, color: Colors.white), textAlign: TextAlign.center,
+      ),
+    );
+  }
+
+  Widget _buildProductList({required Widget Function(BuildContext, Product) itemBuilder}) {
+    return StreamBuilder<QuerySnapshot>(
+      stream: _viewModel.getProductsStream(storeNumber),
+      builder: (context, snapshot) {
+        if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
+        
+        final filteredDocs = snapshot.data!.docs.where((doc) {
+          final name = (doc['name'] as String).toLowerCase();
+          return name.contains(searchQuery.toLowerCase());
+        }).toList();
+
+        if (filteredDocs.isEmpty) {
+          return Center(
+            child: Text("No products found.", style: TextStyle(color: Colors.white)),
+          );
+        }
+
+        return ListView.builder(
+          itemCount: filteredDocs.length,
+          itemBuilder: (context, index) {
+            final product = Product.fromDocument(filteredDocs[index]);
+            return Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 4.0),
+              child: Card(
+                color: Colors.white,
+                elevation: 4,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                child: itemBuilder(context, product),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
   Future<void> _showBuyConfirmationDialog(String productId, int stockCurrent) async {
     if (!mounted) return;
-    final scaffoldContext = context;
-
+    
     final confirmed = await showDialog<bool>(
-      context: scaffoldContext,
+      context: context,
       builder: (dialogContext) => AlertDialog(
-        title: Text("Confirm Purchase"),
-        content: Text("Are you sure you want to purchase this product?"),
+        title: const Text("Confirm Purchase"),
+        content: const Text("Are you sure you want to purchase this product?"),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(false),
-            child: Text("Cancel"),
-          ),
+          TextButton(onPressed: () => Navigator.of(dialogContext).pop(false), child: const Text("Cancel")),
           ElevatedButton(
             onPressed: () => Navigator.of(dialogContext).pop(true),
-            child: Text("Buy", style: TextStyle(fontWeight: FontWeight.bold)),
+            child: const Text("Buy", style: TextStyle(fontWeight: FontWeight.bold)),
           ),
         ],
       ),
     );
-
     if (confirmed != true || !mounted) return;
+    
     try {
       await _viewModel.buyProduct(productId, stockCurrent);
       _showSafeSnackBar("Product purchased successfully!");
@@ -473,33 +387,21 @@ class _BuyTradePageState extends State<BuyTradePage> with SingleTickerProviderSt
 
   void _showTradeOptions(Product product) {
     if (!mounted) return;
-    final scaffoldContext = context;
-
-    if (product.wareHouseStock == 0 && product.stockCurrent == 0) {
-      _showSafeSnackBar("This product has no stock in warehouse or shop.");
-      return;
-    }
 
     showDialog(
-      context: scaffoldContext,
+      context: context,
       builder: (dialogContext) => AlertDialog(
         title: Text("Trade Options"),
         content: Text("Select an action for ${product.name} - ${product.model}."),
         actions: [
-          TextButton(onPressed: () => Navigator.of(dialogContext).pop(), child: Text("Cancel")),
+          TextButton(onPressed: () => Navigator.of(dialogContext).pop(), child: const Text("Cancel")),
           ElevatedButton(
-            onPressed: () {
-              Navigator.of(dialogContext).pop();
-              _showProductSelection(product, scaffoldContext);
-            },
-            child: Text("Trade"),
+            onPressed: () {Navigator.of(dialogContext).pop(); _showProductSelection(product, context);},
+            child: const Text("Trade"),
           ),
           ElevatedButton(
-            onPressed: () {
-              Navigator.of(dialogContext).pop();
-              _askStockTypeForBreak(product, scaffoldContext);
-            },
-            child: Text("Break"),
+            onPressed: () {Navigator.of(dialogContext).pop(); _askStockTypeForBreak(product, context);},
+            child: const Text("Break"),
           ),
         ],
       ),
@@ -511,23 +413,18 @@ class _BuyTradePageState extends State<BuyTradePage> with SingleTickerProviderSt
     int quantity = 1;
     bool isWarehouse = product.wareHouseStock > 0;
 
-    if (product.wareHouseStock == 0 && product.stockCurrent == 0) {
-      _showSafeSnackBar("This product has no stock in warehouse or shop.");
-      return;
-    }
-
     showDialog(
       context: scaffoldContext,
       builder: (dialogContext) {
         return StatefulBuilder(
           builder: (_, setState) {
             return AlertDialog(
-              title: Text("Break Product"),
+              title: const Text("Break Product"),
               content: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Text("Where was the product located?"),
-                  SizedBox(height: 10),
+                  const Text("Where was the product located?"),
+                  const SizedBox(height: 10),
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                     children: [
@@ -569,9 +466,9 @@ class _BuyTradePageState extends State<BuyTradePage> with SingleTickerProviderSt
                           width: 50, height: 50,
                           decoration: BoxDecoration(
                             shape: BoxShape.circle,
-                            color: !isWarehouse && product.stockCurrent > 0 
-                                ? Colors.blue 
-                                : Colors.grey[300],
+                            color: !isWarehouse && product.stockCurrent > 0 // Condição para verificar se o produto tem em loja
+                                ? Colors.blue // ? -> Verdadeiro (if)
+                                : Colors.grey[300], // : Falso (else)
                             border: Border.all(
                               color: !isWarehouse && product.stockCurrent > 0 
                                   ? Colors.blue 
@@ -594,20 +491,20 @@ class _BuyTradePageState extends State<BuyTradePage> with SingleTickerProviderSt
                       ),
                     ],
                   ),
-                  SizedBox(height: 20),
+                  const SizedBox(height: 20),
                   Text("Select the quantity to break for ${product.name} - ${product.model}."),
                   Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       IconButton(
-                        icon: Icon(Icons.remove),
+                        icon: const Icon(Icons.remove),
                         onPressed: quantity > 1 
                             ? () => setState(() => quantity--)
                             : null,
                       ),
                       Text('$quantity'),
                       IconButton(
-                        icon: Icon(Icons.add),
+                        icon: const Icon(Icons.add),
                         onPressed: () {
                           if (isWarehouse && quantity < product.wareHouseStock) {
                             setState(() => quantity++);
@@ -621,7 +518,7 @@ class _BuyTradePageState extends State<BuyTradePage> with SingleTickerProviderSt
                 ],
               ),
               actions: [
-                TextButton(onPressed: () => Navigator.of(dialogContext).pop(), child: Text("Cancel")),
+                TextButton(onPressed: () => Navigator.of(dialogContext).pop(), child: const Text("Cancel")),
                 ElevatedButton(
                   onPressed: () async {
                     Navigator.of(dialogContext).pop();
@@ -639,8 +536,7 @@ class _BuyTradePageState extends State<BuyTradePage> with SingleTickerProviderSt
                     } catch (e) {
                       _showSafeSnackBar("Error recording product break: $e");
                     }
-                  },
-                  child: Text("Confirm"),
+                  }, child: const Text("Confirm"),
                 ),
               ],
             );
@@ -652,45 +548,88 @@ class _BuyTradePageState extends State<BuyTradePage> with SingleTickerProviderSt
 
   void _showProductSelection(Product selectedProduct, BuildContext scaffoldContext) {
     if (!mounted) return;
-    
+
+    Product? getRandomProduct(List<Product> allProducts) { // Função para selecionar um produto aleatório
+      if (allProducts.isEmpty) return null;
+      final shuffled = List.of(allProducts)..shuffle();
+      return shuffled.first; 
+    }
+
     showDialog(
       context: scaffoldContext,
-      builder: (dialogContext) => AlertDialog(
-        title: Text("Select Product for Trade"),
-        content: StreamBuilder<QuerySnapshot>(
+      builder: (dialogContext) {
+        return StreamBuilder<QuerySnapshot>(
           stream: _viewModel.getProductsStream(storeNumber),
           builder: (context, snapshot) {
-            if (!snapshot.hasData) return Center(child: CircularProgressIndicator());
-            final products = snapshot.data!.docs
+            if (!snapshot.hasData) {
+              return const AlertDialog(
+                title: Text("Loading..."),
+                content: Center(child: CircularProgressIndicator()),
+              );
+            }
+
+            final allProducts = snapshot.data!.docs
                 .map((doc) => Product.fromDocument(doc))
                 .where((product) => product.stockCurrent > 0 && product.id != selectedProduct.id)
                 .toList();
-            if (products.isEmpty) return Text("No products available for trade.");
-            return Container(
-              width: double.maxFinite,
-              child: ListView.builder(
-                shrinkWrap: true,
-                itemCount: products.length,
-                itemBuilder: (context, index) {
-                  final product = products[index];
-                  return ListTile(
-                    title: Text("${product.name} - ${product.model}"),
-                    subtitle: Text("Stock in the shop: ${product.stockCurrent}"),
-                    onTap: () {
-                      Navigator.of(dialogContext).pop();
-                      _confirmTrade(
-                        selectedProduct: selectedProduct,
-                        tradeProduct: product,
-                        scaffoldContext: scaffoldContext,
-                      );
-                    },
-                  );
-                },
+
+            if (allProducts.isEmpty) {
+              return AlertDialog(
+                title: const Text("No Products"),
+                content: const Text("No products available for trade."),
+                actions: [TextButton(onPressed: () => Navigator.of(dialogContext).pop(), child: const Text("OK"))],
+              );
+            }
+
+            final randomProduct = getRandomProduct(allProducts);
+
+            return AlertDialog(
+              title: const Text("Select Product for Trade"),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    if (randomProduct != null) ...[
+                      const Text("Suggested product:", style: TextStyle(fontWeight: FontWeight.bold)),
+                      const SizedBox(height: 8),
+                      ListTile(
+                        title: Text("${randomProduct.name} - ${randomProduct.model}"),
+                        subtitle: Text("Shop stock: ${randomProduct.stockCurrent}"),
+                        onTap: () {
+                          Navigator.of(dialogContext).pop();
+                          _confirmTrade(
+                            selectedProduct: selectedProduct,
+                            tradeProduct: randomProduct,
+                            scaffoldContext: scaffoldContext,
+                          );
+                        },
+                      ),
+                      const Divider(),
+                    ],
+                    const Text("All available products:", style: TextStyle(fontWeight: FontWeight.bold)),
+                    const SizedBox(height: 8),
+                    ...allProducts.map((product) => ListTile(
+                          title: Text("${product.name} - ${product.model}"),
+                          subtitle: Text("Shop stock: ${product.stockCurrent}"),
+                          onTap: () {
+                            Navigator.of(dialogContext).pop();
+                            _confirmTrade(
+                              selectedProduct: selectedProduct,
+                              tradeProduct: product,
+                              scaffoldContext: scaffoldContext,
+                            );
+                          },
+                        )),
+                  ],
+                ),
               ),
+              actions: [TextButton(onPressed: () => Navigator.of(dialogContext).pop(), child: const Text("Cancel")),
+              ],
             );
           },
-        ),
-      ),
+        );
+      },
     );
   }
 
@@ -704,26 +643,26 @@ class _BuyTradePageState extends State<BuyTradePage> with SingleTickerProviderSt
     showDialog(
       context: scaffoldContext,
       builder: (dialogContext) => AlertDialog(
-        title: Text("Confirm Trade"),
+        title: const Text("Confirm Trade"),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text("You are about to trade the following:"),
-            SizedBox(height: 10),
-            Text("Product to Increase Warehouse Stock:"),
+            const Text("You are about to trade the following:"),
+            const SizedBox(height: 10),
+            const Text("Product to Increase Warehouse Stock:"),
             Text("${selectedProduct.name} - ${selectedProduct.model}", 
-                style: TextStyle(fontWeight: FontWeight.bold)),
+                style: const TextStyle(fontWeight: FontWeight.bold)),
             Text("Warehouse Stock: ${selectedProduct.wareHouseStock}"),
-            SizedBox(height: 10),
-            Divider(),
-            Text("Product to Decrease Stock from the shop:"),
+            const SizedBox(height: 10),
+            const Divider(),
+            const Text("Product to Decrease Stock from the shop:"),
             Text("${tradeProduct.name} - ${tradeProduct.model}", 
-                style: TextStyle(fontWeight: FontWeight.bold)),
+                style: const TextStyle(fontWeight: FontWeight.bold)),
             Text("Stock in the shop: ${tradeProduct.stockCurrent}"),
           ],
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.of(dialogContext).pop(), child: Text("Cancel")),
+          TextButton(onPressed: () => Navigator.of(dialogContext).pop(), child: const Text("Cancel")),
           ElevatedButton(
             onPressed: () async {
               Navigator.of(dialogContext).pop();
@@ -738,7 +677,8 @@ class _BuyTradePageState extends State<BuyTradePage> with SingleTickerProviderSt
               } catch (e) {
                 _showSafeSnackBar("Error during trade: $e");
               }
-            }, child: Text("Confirm"),
+            }, 
+            child: const Text("Confirm"),
           ),
         ],
       ),
