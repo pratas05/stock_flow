@@ -12,8 +12,27 @@ class UserData {
   final String? storeNumber;
   final String? email;
   final String? userId;
+  final String? storeName;
+  final String? storeEmail;
+  final String? userPhone;
+  final String? storeLocation;
+  final String? storePostalCode;
+  final String? storeCity;
+  final String? storeCountry;
 
-  UserData({this.name, this.storeNumber, this.email, this.userId});
+  UserData({
+    this.name,
+    this.storeNumber,
+    this.email,
+    this.userId,
+    this.storeName,
+    this.storeEmail,
+    this.userPhone,
+    this.storeLocation,
+    this.storePostalCode,
+    this.storeCity,
+    this.storeCountry,
+  });
 }
 
 // (2. VIEWMODEL)
@@ -27,27 +46,72 @@ class AccountSettingsViewModel {
 
     final snapshot = await _firestore.collection('users').doc(user.uid).get();
     if (!snapshot.exists || snapshot.data()?['storeNumber'] == null) return null;
-    
+
     return UserData(
       name: snapshot.data()?['name'],
       storeNumber: snapshot.data()?['storeNumber'],
       email: user.email,
       userId: user.uid,
+      storeName: snapshot.data()?['storeName'],
+      storeEmail: snapshot.data()?['storeEmail'],
+      userPhone: snapshot.data()?['userPhone'],
+      storeLocation: snapshot.data()?['storeLocation'],
+      storePostalCode: snapshot.data()?['storePostalCode'],
+      storeCity: snapshot.data()?['storeCity'],
+      storeCountry: snapshot.data()?['storeCountry'],
     );
   }
 
-  Future<void> saveUserSetup({required String storeNumber, required String nickname}) async {
-    final user = _auth.currentUser;
-    if (user == null) return;
+// TODO
+// Começar sem permissoes
+// Ao dar ADM tem permissões tanto para versão MOBILE quando DESKTOP
+// Limitar uso das funcionalidades para quem tem isStoreManager = false
 
-    await _firestore.collection('users').doc(user.uid).set({
-      'storeNumber': storeNumber,
-      'name': nickname,
-      'userEmail': user.email,
-      'adminPermission': storeNumber,
-      'userId': user.uid,
-    });
+
+Future<void> saveUserSetup({
+  required String storeNumber,
+  required String nickname,
+  required String storeName,
+  required String storeEmail,
+  required String userPhone,
+  required String storeLocation,
+  required String storePostalCode,
+  required String storeCity,
+  required String storeCountry,
+  bool isStoreManager = false,
+}) async {
+  final user = _auth.currentUser;
+  if (user == null) return;
+
+  if (isStoreManager) {
+    // Verificar se já existe uma loja com esse número
+    final existingStoreQuery = await _firestore
+        .collection('users')
+        .where('storeNumber', isEqualTo: storeNumber)
+        .where('isStoreManager', isEqualTo: true)
+        .get();
+
+    if (existingStoreQuery.docs.isNotEmpty) {
+      throw Exception('Já existe uma loja com o número de loja $storeNumber');
+    }
   }
+
+  await _firestore.collection('users').doc(user.uid).set({
+    'storeNumber': storeNumber,
+    'name': nickname,
+    'storeName': isStoreManager ? storeName : null,
+    'storeEmail': isStoreManager ? storeEmail : null,
+    'userPhone': isStoreManager ? userPhone : null,
+    'storeLocation': isStoreManager ? storeLocation : null,
+    'storePostalCode': isStoreManager ? storePostalCode : null,
+    'storeCity': isStoreManager ? storeCity : null,
+    'storeCountry': isStoreManager ? storeCountry : null,
+    'userEmail': user.email,
+    'adminPermission': storeNumber,
+    'userId': user.uid,
+    'isStoreManager': isStoreManager,
+  });
+}
 
   Future<void> updateNickname(String newNickname) async {
     final user = _auth.currentUser;
@@ -65,6 +129,7 @@ class AccountSettingsViewModel {
     if (user == null) return;
     await user.sendEmailVerification();
   }
+
 
   Future<Map<String, List<Map<String, dynamic>>>> getActivitiesForDate(String storeNumber, DateTime date) async {
     final activityRef = _firestore.collection('user_activity');
@@ -287,79 +352,186 @@ class _AccountSettingsState extends State<AccountSettings> {
     );
   }
 
-  Future<void> _showSetupDialog(BuildContext context) async {
-    final storeNumberController = TextEditingController();
-    final nicknameController = TextEditingController();
+Future<void> _showSetupDialog(BuildContext context) async {
+  final storeNumberController = TextEditingController();
+  final nicknameController = TextEditingController();
+  final storeNameController = TextEditingController();
+  final storeEmailController = TextEditingController();
+  final userPhoneController = TextEditingController();
+  final storeLocationController = TextEditingController();
+  final storePostalCodeController = TextEditingController();
+  final storeCityController = TextEditingController();
+  final storeCountryController = TextEditingController();
 
-    await showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) => AlertDialog(
-        title: const Text("Complete Your Setup"),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Text("Enter store number and username."),
-            const SizedBox(height: 8),
-            TextField(
-              controller: storeNumberController,
-              keyboardType: TextInputType.number,
-              decoration: const InputDecoration(labelText: "Store Number"),
+  bool isStoreManager = true;
+
+  bool dialogDismissed = false;
+  await showDialog(
+    context: context,
+    barrierDismissible: false,
+    builder: (context) {
+      return StatefulBuilder(
+        builder: (context, setState) {
+          return AlertDialog(
+            title: const Text("Complete Your Setup"),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Text("Escolha se você é gerente ou funcionário."),
+                  const SizedBox(height: 8),
+
+                  SwitchListTile(
+                    title: const Text("Sou gerente da loja"),
+                    value: isStoreManager,
+                    onChanged: (value) {
+                      setState(() => isStoreManager = value);
+                    },
+                  ),
+
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: storeNumberController,
+                    keyboardType: TextInputType.number,
+                    decoration: const InputDecoration(labelText: "Número da Loja"),
+                  ),
+                  const SizedBox(height: 8),
+
+                  TextField(
+                    controller: nicknameController,
+                    decoration: const InputDecoration(labelText: "Seu nome"),
+                  ),
+                  const SizedBox(height: 8),
+
+                  if (isStoreManager) ...[
+                    TextField(
+                      controller: storeNameController,
+                      decoration: const InputDecoration(labelText: "Nome da Loja"),
+                    ),
+                    const SizedBox(height: 8),
+
+                    TextField(
+                      controller: storeEmailController,
+                      decoration: const InputDecoration(labelText: "Email da Loja"),
+                    ),
+                    const SizedBox(height: 8),
+
+                    TextField(
+                      controller: userPhoneController,
+                      keyboardType: TextInputType.phone,
+                      decoration: const InputDecoration(labelText: "Telefone"),
+                    ),
+                    const SizedBox(height: 8),
+
+                    TextField(
+                      controller: storeLocationController,
+                      decoration: const InputDecoration(labelText: "Endereço da Loja"),
+                    ),
+                    const SizedBox(height: 8),
+
+                    TextField(
+                      controller: storePostalCodeController,
+                      keyboardType: TextInputType.number,
+                      decoration: const InputDecoration(labelText: "CEP"),
+                    ),
+                    const SizedBox(height: 8),
+
+                    TextField(
+                      controller: storeCityController,
+                      decoration: const InputDecoration(labelText: "Cidade"),
+                    ),
+                    const SizedBox(height: 8),
+
+                    TextField(
+                      controller: storeCountryController,
+                      decoration: const InputDecoration(labelText: "País"),
+                    ),
+                  ],
+                ],
+              ),
             ),
-            const SizedBox(height: 8),
-            TextField(
-              controller: nicknameController,
-              decoration: const InputDecoration(labelText: "Username"),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-              onPressed: () {
-                Navigator.pop(context);
-                setState(() => _showSetupDialogOnLoad = false);
-              },
-              child: const Text("Cancel")),
-          TextButton(
-            onPressed: () async {
-              final storeNumber = storeNumberController.text.trim();
-              final nickname = nicknameController.text.trim();
+            actions: [
+              TextButton(
+                onPressed: () {
+                  dialogDismissed = true;
+                  Navigator.pop(context);
+                  setState(() => _showSetupDialogOnLoad = false);
+                },
+                child: const Text("Cancelar"),
+              ),
+              TextButton(
+                onPressed: () async {
+                  final storeNumber = storeNumberController.text.trim();
+                  final nickname = nicknameController.text.trim();
+                  final storeName = storeNameController.text.trim();
+                  final storeEmail = storeEmailController.text.trim();
+                  final userPhone = userPhoneController.text.trim();
+                  final storeLocation = storeLocationController.text.trim();
+                  final storePostalCode = storePostalCodeController.text.trim();
+                  final storeCity = storeCityController.text.trim();
+                  final storeCountry = storeCountryController.text.trim();
 
-              if (storeNumber.isEmpty || nickname.isEmpty) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text("Please fill out all fields!")));
-                return;
-              }
+                  if (storeNumber.isEmpty || nickname.isEmpty) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text("Por favor, preencha os campos obrigatórios.")),
+                    );
+                    return;
+                  }
 
-              try {
-                await _viewModel.saveUserSetup(
-                  storeNumber: storeNumber,
-                  nickname: nickname,
-                );
+                  if (isStoreManager &&
+                      (storeName.isEmpty ||
+                       storeEmail.isEmpty ||
+                       userPhone.isEmpty ||
+                       storeLocation.isEmpty ||
+                       storePostalCode.isEmpty ||
+                       storeCity.isEmpty ||
+                       storeCountry.isEmpty)) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text("Preencha todos os dados da loja.")),
+                    );
+                    return;
+                  }
 
-                setState(() {
-                  _storeNumber = storeNumber;
-                  _nickname = nickname;
-                  _showSetupDialogOnLoad = false;
-                });
-                Navigator.pop(context);
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text("Setup completed successfully!")),
-                );
-                _loadDaysWithActivities();
-              } catch (e) {
-                Navigator.pop(context);
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text("Error: ${e.toString()}")),
-                );
-              }
-            },
-            child: const Text("Save", style: TextStyle(fontWeight: FontWeight.bold)),
-          ),
-        ],
-      ),
-    );
-  }
+                  try {
+                    await _viewModel.saveUserSetup(
+                      storeNumber: storeNumber,
+                      nickname: nickname,
+                      storeName: storeName,
+                      storeEmail: storeEmail,
+                      userPhone: userPhone,
+                      storeLocation: storeLocation,
+                      storePostalCode: storePostalCode,
+                      storeCity: storeCity,
+                      storeCountry: storeCountry,
+                      isStoreManager: isStoreManager,
+                    );
+
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text("Cadastro realizado com sucesso!")),
+                    );
+
+                    Navigator.pop(context);
+
+                    setState(() {
+                      _nickname = nickname;
+                      _storeNumber = storeNumber;
+                    });
+                  } catch (e) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text("Erro: ${e.toString()}")),
+                    );
+                  }
+                },
+                child: const Text("Salvar"),
+              ),
+            ],
+          );
+        },
+      );
+    },
+  );
+}
+
 
   Future<void> _showEditStoreNumberDialog(BuildContext context) async {
     final user = FirebaseAuth.instance.currentUser;
