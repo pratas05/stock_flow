@@ -1,9 +1,9 @@
-//MVVM
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/services.dart';
 import 'package:stockflow/reusable_widgets/colors_utils.dart';
+import 'package:stockflow/reusable_widgets/error_screen.dart';
 
 // [1. MODEL]
 class ProductModel {
@@ -155,7 +155,7 @@ class ProductDatabasePage extends StatefulWidget {
   _ProductDatabasePageState createState() => _ProductDatabasePageState();
 }
 
-class _ProductDatabasePageState extends State<ProductDatabasePage> with SingleTickerProviderStateMixin {
+class _ProductDatabasePageState extends State<ProductDatabasePage> with TickerProviderStateMixin {
   late TabController _tabController;
   final ProductViewModel _viewModel = ProductViewModel();
 
@@ -180,6 +180,9 @@ class _ProductDatabasePageState extends State<ProductDatabasePage> with SingleTi
   // Controller for search functionality
   final _searchController = TextEditingController();
   String _searchText = "";
+  String? _storeNumber;
+  bool _isStoreManager = false;
+  bool _isLoading = true;
 
   @override
   void initState() {
@@ -188,6 +191,25 @@ class _ProductDatabasePageState extends State<ProductDatabasePage> with SingleTi
     _searchController.addListener(() {
       setState(() { _searchText = _searchController.text;});
     });
+    _loadUserData();
+  }
+
+  Future<void> _loadUserData() async {
+    setState(() => _isLoading = true);
+    try {
+      final storeNumber = await _viewModel.getUserStoreNumber();
+      final userDoc = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(FirebaseAuth.instance.currentUser?.uid)
+          .get();
+      
+      setState(() {
+        _storeNumber = storeNumber;
+        _isStoreManager = userDoc.data()?['isStoreManager'] ?? false;
+      });
+    } catch (e) {
+      debugPrint("Error loading user data: $e");
+    } finally {setState(() => _isLoading = false);}
   }
 
   @override
@@ -294,15 +316,36 @@ class _ProductDatabasePageState extends State<ProductDatabasePage> with SingleTi
 
   @override
   Widget build(BuildContext context) {
+    if (_isLoading) {return Center(child: CircularProgressIndicator());}
+
+    if (_storeNumber == null || _storeNumber!.isEmpty) {
+      return ErrorScreen(
+        icon: Icons.warning_amber_rounded,
+        title: "Store Access Required",
+        message: "Your account is not associated with any store. Please contact admin.",
+      );
+    }
+
+    int tabCount = _isStoreManager ? 2 : 1; // Configurar o TabController dinamicamente com base em _isStoreManager
+    _tabController = TabController(length: tabCount, vsync: this);
+
     return Scaffold(
       appBar: AppBar(
         title: Text("Products Management", style: TextStyle(color: Colors.white)),
-        backgroundColor: Colors.transparent, elevation: 0, flexibleSpace: _buildGradientContainer(),
-        bottom: TabBar( controller: _tabController, tabs: _buildTabs()),
+        backgroundColor: Colors.transparent, elevation: 0, 
+        flexibleSpace: _buildGradientContainer(),
+        bottom: TabBar(
+          controller: _tabController,
+          tabs: _buildTabs(),  // Tabs baseadas na condição _isStoreManager
+        ),
       ),
       body: _buildGradientContainer(
-        child: TabBarView(controller: _tabController,
-          children: [_buildProductForm(), _buildProductList()],
+        child: TabBarView(
+          controller: _tabController,
+          children: [
+            if (_isStoreManager) _buildProductForm(),  // Exibe apenas se for Store Manager
+            _buildProductList(),
+          ],
         ),
       ),
     );
@@ -316,26 +359,37 @@ class _ProductDatabasePageState extends State<ProductDatabasePage> with SingleTi
             hexStringToColor("CB2B93"),
             hexStringToColor("9546C4"),
             hexStringToColor("5E61F4"),
-          ], begin: Alignment.topLeft, end: Alignment.bottomRight,
+          ],
+          begin: Alignment.topLeft, end: Alignment.bottomRight,
         ),
-      ), 
+      ),
       child: child,
     );
   }
 
   List<Widget> _buildTabs() {
-    return [
+    List<Widget> tabs = [
+      // Exibe sempre o "Edit & Search Products"
       Tab(
-        child: Padding(padding: EdgeInsets.symmetric(vertical: 5),
-          child: Text("Register Products", style: TextStyle(color: Colors.white)),
-        ),
-      ),
-      Tab(
-        child: Padding(padding: EdgeInsets.symmetric(vertical: 5),
+        child: Padding(
+          padding: EdgeInsets.symmetric(vertical: 5),
           child: Text("Edit & Search Products", style: TextStyle(color: Colors.white)),
         ),
       ),
     ];
+
+    // Se for Store Manager, adiciona a aba "Register Products"
+    if (_isStoreManager) {
+      tabs.insert(0,
+        Tab(
+          child: Padding(
+            padding: EdgeInsets.symmetric(vertical: 5),
+            child: Text("Register Products", style: TextStyle(color: Colors.white)),
+          ),
+        ),
+      );
+    }
+    return tabs;
   }
 
   Widget _buildProductForm({bool isEditing = false}) {
@@ -343,8 +397,10 @@ class _ProductDatabasePageState extends State<ProductDatabasePage> with SingleTi
       padding: EdgeInsets.all(16.0),
       child: Column(
         children: [
-          ..._buildProductFields(), SizedBox(height: 20),
-          Row(mainAxisAlignment: MainAxisAlignment.center,
+          ..._buildProductFields(),
+          const SizedBox(height: 20),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
             children: [
               if (!isEditing)
                 _buildButton("Save Product", _saveProduct, width: 140),
@@ -357,25 +413,25 @@ class _ProductDatabasePageState extends State<ProductDatabasePage> with SingleTi
   }
 
   List<Widget> _buildProductFields() {
-  return [
-    _buildTextField(_nameController, "Product Name"),
-    _buildTextField(_descriptionController, "Description", maxLength: 300),
-    _buildTextField(_categoryController, "Category"),
-    _buildTextField(_subCategoryController, "Subcategory"),
-    _buildTextField(_brandController, "Brand"),
-    _buildTextField(_modelController, "Model"),
-    _buildTextField(_stockMaxController, "Max Stock", isNumber: true),
-    _buildTextField(_stockMinController, "Min Stock", isNumber: true),
-    _buildTextField(_wareHouseStockController, "WareHouse Stock", isNumber: true),
-    _buildTextField(_stockCurrentController, "Current Stock", isNumber: true, readOnly: true),
-    _buildTextField(_stockBreakController, "Stock Break", isNumber: true, readOnly: true),
-    _buildTextField(_stockOrderController, "Order Stock (Default = 0)", isNumber: true),
-    _buildTextField(_lastPurchasePriceController, "Last Purchase Price", isNumber: true),
-    _buildTextField(_salePriceController, "Sale Price", isNumber: true,),
-    _buildTextField(_vatCodeController, "VAT Code (1, 2, 3, or 4)", isNumber: true, maxLength: 1),
-    _buildTextField(_productLocationController, "Product Location (default: Not Located)"),
-  ];
-}
+    return [
+      _buildTextField(_nameController, "Product Name"),
+      _buildTextField(_descriptionController, "Description", maxLength: 300),
+      _buildTextField(_categoryController, "Category"),
+      _buildTextField(_subCategoryController, "Subcategory"),
+      _buildTextField(_brandController, "Brand"),
+      _buildTextField(_modelController, "Model"),
+      _buildTextField(_stockMaxController, "Max Stock", isNumber: true),
+      _buildTextField(_stockMinController, "Min Stock", isNumber: true),
+      _buildTextField(_wareHouseStockController, "WareHouse Stock", isNumber: true),
+      _buildTextField(_stockCurrentController, "Current Stock", isNumber: true, readOnly: true),
+      _buildTextField(_stockBreakController, "Stock Break", isNumber: true, readOnly: true),
+      _buildTextField(_stockOrderController, "Order Stock (Default = 0)", isNumber: true),
+      _buildTextField(_lastPurchasePriceController, "Last Purchase Price", isNumber: true),
+      _buildTextField(_salePriceController, "Sale Price", isNumber: true,),
+      _buildTextField(_vatCodeController, "VAT Code (1, 2, 3, or 4)", isNumber: true, maxLength: 1),
+      _buildTextField(_productLocationController, "Product Location (default: Not Located)"),
+    ];
+  }
 
   Widget _buildButton(String label, VoidCallback onPressed, {Color? color, double? width}) {
     return Container(width: width,
@@ -534,14 +590,14 @@ class _ProductDatabasePageState extends State<ProductDatabasePage> with SingleTi
                 Row(
                   children: [
                     Icon(Icons.euro_symbol, size: 14, color: Colors.green),
-                    SizedBox(width: 4),
+                    const SizedBox(width: 4),
                     Text(
                       '${product['salePrice']}',
                       style: TextStyle(fontSize: 14, color: Colors.green, fontWeight: FontWeight.bold),
                     ),
                   ],
                 ),
-                SizedBox(height: 6),
+                const SizedBox(height: 6),
                 Row(
                   children: [
                     Icon(Icons.location_on, size: 14, color: Colors.blue),
@@ -566,12 +622,15 @@ class _ProductDatabasePageState extends State<ProductDatabasePage> with SingleTi
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        IconButton(
-          icon: Icon(Icons.delete),
-          onPressed: () async {
-            if (await _showDeleteConfirmationDialog(context)) { await _viewModel.deleteProduct(product.id);}
-          },
-        ),
+        if (_isStoreManager) // Só mostra o icon se for Admin
+          IconButton(
+            icon: Icon(Icons.delete),
+            onPressed: () async {
+              if (await _showDeleteConfirmationDialog(context)) { 
+                await _viewModel.deleteProduct(product.id);
+              }
+            },
+          ),
       ],
     );
   }
@@ -630,6 +689,7 @@ class _ProductDatabasePageState extends State<ProductDatabasePage> with SingleTi
                                   "📦 Product Details",
                                   style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: primaryColor),
                                 ),
+                                if (_isStoreManager) // Só edita se for Admin
                                 IconButton(
                                   icon: Icon(isEditing ? Icons.save : Icons.edit, color: isEditing ? Colors.green : Colors.blue),
                                   onPressed: () async {
@@ -987,7 +1047,7 @@ class _ProductDatabasePageState extends State<ProductDatabasePage> with SingleTi
                 decoration: BoxDecoration(color: highlightColor.withOpacity(0.1), shape: BoxShape.circle),
                 child: Icon(Icons.inventory, size: 20, color: highlightColor),
               ),
-              SizedBox(width: 16),
+              const SizedBox(width: 16),
               Text(
                 "Stock Information",
                 style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: Colors.grey[800]),
@@ -1064,12 +1124,12 @@ class _ProductDatabasePageState extends State<ProductDatabasePage> with SingleTi
               Text("Pricing Information", style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: Colors.grey[800])),
             ],
           ),
-          SizedBox(height: 16),
+          const SizedBox(height: 16),
           _buildEditablePriceRow(
             isEditing,
             "Sale Price", salePriceController,Colors.green, isNumber: true,
           ),
-          Divider(height: 16, thickness: 1),
+         const Divider(height: 16, thickness: 1),
           _buildEditablePriceRow(
             isEditing,
             "Last Purchase Price", lastPurchasePriceController, Colors.blue, isRequired: true, isNumber: true,
@@ -1115,7 +1175,7 @@ class _ProductDatabasePageState extends State<ProductDatabasePage> with SingleTi
                   Icons.confirmation_number,
                   "VAT Code", vatCodeController.text, highlightColor,
                 ),
-          Divider(height: 24, thickness: 1),
+          const Divider(height: 24, thickness: 1),
           
           _buildEditableDetailRow(
             isEditing,
@@ -1149,7 +1209,7 @@ class _ProductDatabasePageState extends State<ProductDatabasePage> with SingleTi
           decoration: BoxDecoration(color: highlightColor.withOpacity(0.1), shape: BoxShape.circle),
           child: Icon(icon, size: 20, color: highlightColor),
         ),
-        SizedBox(width: 16),
+        const SizedBox(width: 16),
         Expanded(
           child: Column(crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -1157,7 +1217,7 @@ class _ProductDatabasePageState extends State<ProductDatabasePage> with SingleTi
                 isRequired ? "$label *" : label,
                 style: TextStyle(fontSize: 14, color: Colors.grey[600], fontWeight: FontWeight.w500),
               ),
-              SizedBox(height: 4),
+              const SizedBox(height: 4),
               isEditing
                   ? TextFormField(
                       controller: controller,
@@ -1190,15 +1250,13 @@ class _ProductDatabasePageState extends State<ProductDatabasePage> with SingleTi
   }) {
     return Row(
       children: [
-        SizedBox(width: 40),
+        const SizedBox(width: 40),
         Expanded(flex: 2,
           child: Text(
-            isRequired ? "$label *" : label,
-            style: TextStyle(fontSize: 14, color: Colors.grey[600]),
+            isRequired ? "$label *" : label, style: TextStyle(fontSize: 14, color: Colors.grey[600]),
           ),
         ),
-        Expanded(
-          flex: 1,
+        Expanded(flex: 1,
           child: isEditing
               ? TextFormField(
                   controller: controller,
@@ -1230,7 +1288,7 @@ class _ProductDatabasePageState extends State<ProductDatabasePage> with SingleTi
   }) {
     return Row(
       children: [
-        SizedBox(width: 40),
+        const SizedBox(width: 40),
         Expanded(flex: 2,
           child: Text(isRequired ? "$label *" : label,  style: TextStyle(fontSize: 14, color: Colors.grey[600])),
         ),
@@ -1266,7 +1324,7 @@ class _ProductDatabasePageState extends State<ProductDatabasePage> with SingleTi
           decoration: BoxDecoration(color: highlightColor.withOpacity(0.1), shape: BoxShape.circle),
           child: Icon(icon, size: 20, color: highlightColor),
         ),
-        SizedBox(width: 16),
+        const SizedBox(width: 16),
         Expanded(
           child: Column(crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -1286,7 +1344,7 @@ class _ProductDatabasePageState extends State<ProductDatabasePage> with SingleTi
   Widget _buildStockRow(String label, String value, Color color) {
     return Row(
       children: [
-        SizedBox(width: 40),
+        const SizedBox(width: 40),
         Expanded(flex: 2, child: Text(label, style: TextStyle(fontSize: 14, color: Colors.grey[600]))),
         Expanded(flex: 1,
           child: Text(value, style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: color),

@@ -2,6 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:stockflow/reusable_widgets/colors_utils.dart';
+import 'package:stockflow/reusable_widgets/error_screen.dart';
 import 'package:stockflow/reusable_widgets/search_controller.dart';
 
 // [1. MODEL]
@@ -38,11 +39,11 @@ class BuyTradeViewModel {
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
-  Future<String?> getStoreNumber() async {
+  Future<Map<String, dynamic>?> getUserData() async {
     final user = _auth.currentUser;
     if (user == null) return null;
     final doc = await _firestore.collection('users').doc(user.uid).get();
-    return doc.data()?['storeNumber'];
+    return doc.data();
   }
 
   Stream<QuerySnapshot> getProductsStream(String? storeNumber) {
@@ -82,7 +83,7 @@ class BuyTradeViewModel {
     
     final notificationRef = _firestore.collection('notifications').doc();
     batch.set(notificationRef, {
-      'message': '$quantity "$productName" ${quantity > 1 ? 'were' : 'was'} sent from ${isWarehouse ? 'warehouse' : 'shop'} for Break',
+      'message': '$quantity "$productName" ${quantity > 1 ? 'were' : 'was'} sent from ${isWarehouse ? 'warehouse' : 'shop'} for Break, which means it is damaged',
       'notificationId': notificationRef.id,
       'notificationType': 'Break',
       'productId': productId,
@@ -92,7 +93,6 @@ class BuyTradeViewModel {
       'quantity': quantity,
       'location': isWarehouse ? 'warehouse' : 'shop',
     });
-    
     await batch.commit();
   }
 
@@ -125,6 +125,7 @@ class _BuyTradePageState extends State<BuyTradePage> with SingleTickerProviderSt
   String searchQuery = "";
   String? storeNumber;
   bool _isLoading = true;
+  bool _isStoreManager = false;
 
   @override
   void initState() {
@@ -136,16 +137,20 @@ class _BuyTradePageState extends State<BuyTradePage> with SingleTickerProviderSt
 
   Future<void> _initializeData() async {
     try {
-      storeNumber = await _viewModel.getStoreNumber();
+      final userData = await _viewModel.getUserData();
+      if (userData != null) {
+        setState(() {
+          storeNumber = userData['storeNumber'];
+          _isStoreManager = userData['isStoreManager'] ?? false;
+        });
+      }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text("Error fetching store number: $e")),
+          SnackBar(content: Text("Error fetching user data: $e")),
         );
       }
-    } finally {
-      if (mounted) setState(() => _isLoading = false);
-    }
+    } finally {if (mounted) setState(() => _isLoading = false);}
   }
 
   @override
@@ -164,9 +169,8 @@ class _BuyTradePageState extends State<BuyTradePage> with SingleTickerProviderSt
 
   @override
   Widget build(BuildContext context) {
-    if (_isLoading) {
-      return _buildLoadingScreen();
-    }
+    if (_isLoading) {return _buildLoadingScreen();}
+    if (!_isStoreManager) {return _buildNoPermissionsScreen();}
 
     return Scaffold(
       appBar: _buildAppBar(),
@@ -193,8 +197,7 @@ class _BuyTradePageState extends State<BuyTradePage> with SingleTickerProviderSt
               hexStringToColor("9546C4"),
               hexStringToColor("5E61F4"),
             ],
-            begin: Alignment.topLeft, 
-            end: Alignment.bottomRight,
+            begin: Alignment.topLeft, end: Alignment.bottomRight,
           ),
         ),
         child: const Center(child: CircularProgressIndicator()),
@@ -202,15 +205,36 @@ class _BuyTradePageState extends State<BuyTradePage> with SingleTickerProviderSt
     );
   }
 
+  Widget _buildNoPermissionsScreen() {
+    if (storeNumber == null || storeNumber!.isEmpty) {
+      return const ErrorScreen(
+        icon: Icons.warning_amber_rounded,
+        title: "Store Access Required",
+        message: "Your account is not associated with any store. Please contact admin.",
+      );
+    }
+
+    if (!_isStoreManager) {
+      return const ErrorScreen(
+        icon: Icons.warning_amber_rounded,
+        title: "Access Denied",
+        message: "You don't have permissions to access this page.",
+      );
+    }
+
+    return const ErrorScreen(
+      icon: Icons.error,
+      title: "Unknown Error",
+      message: "An unexpected error occurred. Please try again.",
+    );
+  }
+
   AppBar _buildAppBar() {
     return AppBar(
       title: const Text("Buy and Trade", style: TextStyle(color: Colors.white)),
       centerTitle: true,
-      backgroundColor: Colors.transparent,
-      elevation: 0,
-      flexibleSpace: Container(
-        decoration: _buildBackgroundDecoration(),
-      ),
+      backgroundColor: Colors.transparent, elevation: 0,
+      flexibleSpace: Container(decoration: _buildBackgroundDecoration()),
       bottom: TabBar(
         controller: _tabController,
         indicatorColor: Colors.white,
@@ -238,10 +262,6 @@ class _BuyTradePageState extends State<BuyTradePage> with SingleTickerProviderSt
   }
 
   Widget _buildBuyTab() {
-    if (storeNumber == null) {
-      return _buildNoStoreConnectedWidget();
-    }
-
     return Column(
       children: [
         SearchControllerPage(
@@ -275,10 +295,6 @@ class _BuyTradePageState extends State<BuyTradePage> with SingleTickerProviderSt
   }
 
   Widget _buildTradeTab() {
-    if (storeNumber == null) {
-      return _buildNoStoreConnectedWidget();
-    }
-
     return Column(
       children: [
         SearchControllerPage(
@@ -310,15 +326,6 @@ class _BuyTradePageState extends State<BuyTradePage> with SingleTickerProviderSt
           ),
         ),
       ],
-    );
-  }
-
-  Widget _buildNoStoreConnectedWidget() {
-    return Center(
-      child: Text(
-        "You are not connected to any Store. Please contact your Admin",
-        style: const TextStyle(fontSize: 18, color: Colors.white), textAlign: TextAlign.center,
-      ),
     );
   }
 
@@ -466,9 +473,9 @@ class _BuyTradePageState extends State<BuyTradePage> with SingleTickerProviderSt
                           width: 50, height: 50,
                           decoration: BoxDecoration(
                             shape: BoxShape.circle,
-                            color: !isWarehouse && product.stockCurrent > 0 // Condição para verificar se o produto tem em loja
-                                ? Colors.blue // ? -> Verdadeiro (if)
-                                : Colors.grey[300], // : Falso (else)
+                            color: !isWarehouse && product.stockCurrent > 0
+                                ? Colors.blue
+                                : Colors.grey[300],
                             border: Border.all(
                               color: !isWarehouse && product.stockCurrent > 0 
                                   ? Colors.blue 
@@ -549,12 +556,6 @@ class _BuyTradePageState extends State<BuyTradePage> with SingleTickerProviderSt
   void _showProductSelection(Product selectedProduct, BuildContext scaffoldContext) {
     if (!mounted) return;
 
-    Product? getRandomProduct(List<Product> allProducts) { // Função para selecionar um produto aleatório
-      if (allProducts.isEmpty) return null;
-      final shuffled = List.of(allProducts)..shuffle();
-      return shuffled.first; 
-    }
-
     showDialog(
       context: scaffoldContext,
       builder: (dialogContext) {
@@ -581,51 +582,64 @@ class _BuyTradePageState extends State<BuyTradePage> with SingleTickerProviderSt
               );
             }
 
-            final randomProduct = getRandomProduct(allProducts);
+            final searchController = TextEditingController();
+            List<Product> filteredProducts = [];
 
-            return AlertDialog(
-              title: const Text("Select Product for Trade"),
-              content: SingleChildScrollView(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    if (randomProduct != null) ...[
-                      const Text("Suggested product:", style: TextStyle(fontWeight: FontWeight.bold)),
-                      const SizedBox(height: 8),
-                      ListTile(
-                        title: Text("${randomProduct.name} - ${randomProduct.model}"),
-                        subtitle: Text("Shop stock: ${randomProduct.stockCurrent}"),
-                        onTap: () {
-                          Navigator.of(dialogContext).pop();
-                          _confirmTrade(
-                            selectedProduct: selectedProduct,
-                            tradeProduct: randomProduct,
-                            scaffoldContext: scaffoldContext,
-                          );
-                        },
-                      ),
-                      const Divider(),
-                    ],
-                    const Text("All available products:", style: TextStyle(fontWeight: FontWeight.bold)),
-                    const SizedBox(height: 8),
-                    ...allProducts.map((product) => ListTile(
-                          title: Text("${product.name} - ${product.model}"),
-                          subtitle: Text("Shop stock: ${product.stockCurrent}"),
-                          onTap: () {
-                            Navigator.of(dialogContext).pop();
-                            _confirmTrade(
-                              selectedProduct: selectedProduct,
-                              tradeProduct: product,
-                              scaffoldContext: scaffoldContext,
-                            );
-                          },
-                        )),
-                  ],
-                ),
-              ),
-              actions: [TextButton(onPressed: () => Navigator.of(dialogContext).pop(), child: const Text("Cancel")),
-              ],
+            return StatefulBuilder(
+              builder: (context, setState) {
+                void _filterProducts(String query) {
+                  setState(() {
+                    if (query.trim().isEmpty) {
+                      filteredProducts = [];
+                    } else {
+                      final searchLower = query.toLowerCase();
+                      filteredProducts = allProducts.where((product) {
+                        final nameLower = product.name.toLowerCase();
+                        final modelLower = product.model.toLowerCase();
+                        return nameLower.contains(searchLower) || modelLower.contains(searchLower);
+                      }).toList();
+                    }
+                  });
+                }
+
+                return AlertDialog(
+                  title: const Text("Select Product for Trade"),
+                  content: SingleChildScrollView(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        TextField(
+                          controller: searchController,
+                          decoration: const InputDecoration(
+                            labelText: "Search products",
+                            prefixIcon: Icon(Icons.search),
+                          ),
+                          onChanged: _filterProducts,
+                        ),
+                        const SizedBox(height: 16),
+                        if (filteredProducts.isNotEmpty) ...[
+                          const Text("Search results:", style: TextStyle(fontWeight: FontWeight.bold)),
+                          const SizedBox(height: 8),
+                          ...filteredProducts.map((product) => ListTile(
+                                title: Text("${product.name} - ${product.model}"),
+                                subtitle: Text("Shop stock: ${product.stockCurrent}"),
+                                onTap: () {
+                                  Navigator.of(dialogContext).pop();
+                                  _confirmTrade(
+                                    selectedProduct: selectedProduct,
+                                    tradeProduct: product,
+                                    scaffoldContext: scaffoldContext,
+                                  );
+                                },
+                              )),
+                        ] else if (searchController.text.isNotEmpty) ...[const Text("No results found.")],
+                      ],
+                    ),
+                  ),
+                  actions: [TextButton(onPressed: () => Navigator.of(dialogContext).pop(), child: const Text("Cancel"))],
+                );
+              },
             );
           },
         );
@@ -674,9 +688,7 @@ class _BuyTradePageState extends State<BuyTradePage> with SingleTickerProviderSt
                   tradedShopStock: tradeProduct.stockCurrent,
                 );
                 _showSafeSnackBar("Trade completed successfully!");
-              } catch (e) {
-                _showSafeSnackBar("Error during trade: $e");
-              }
+              } catch (e) {_showSafeSnackBar("Error during trade: $e");}
             }, 
             child: const Text("Confirm"),
           ),

@@ -2,27 +2,73 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:stockflow/reusable_widgets/colors_utils.dart';
+import 'package:stockflow/reusable_widgets/error_screen.dart';
 
-// [1. MODEL]
+// [1. MODEL] 
 class UserModel {
   final String id, name, email;
   final String? adminPermission;
+  final String? storeNumber; 
+  final bool isStoreManager;
 
   UserModel({
     required this.id,
     required this.name,
     required this.email,
     this.adminPermission,
+    this.storeNumber, 
+    required this.isStoreManager,
   });
 
   factory UserModel.fromFirestore(DocumentSnapshot doc) {
-    final data = doc.data() as Map<String, dynamic>;
-    return UserModel(
-      id: doc.id,
-      name: data['name'] ?? '',
-      email: data['userEmail'] ?? '',
-      adminPermission: data['adminPermission'],
-    );
+    try {
+      final data = doc.data();
+      
+      if (data == null || !doc.exists) {
+        return UserModel(
+          id: doc.id,
+          name: '',
+          email: '',
+          adminPermission: null,
+          storeNumber: null, 
+          isStoreManager: false,
+        );
+      }
+
+      final Map<String, dynamic> dataMap;
+      try {
+        dataMap = data as Map<String, dynamic>;
+      } catch (e) {
+        debugPrint("Error casting user data: $e");
+        return UserModel(
+          id: doc.id,
+          name: '',
+          email: '',
+          adminPermission: null,
+          storeNumber: null, 
+          isStoreManager: false,
+        );
+      }
+
+      return UserModel(
+        id: doc.id,
+        name: dataMap['name']?.toString() ?? '',
+        email: dataMap['userEmail']?.toString() ?? '',
+        storeNumber: dataMap['storeNumber']?.toString(), 
+        adminPermission: dataMap['adminPermission']?.toString(),
+        isStoreManager: dataMap['isStoreManager'] as bool? ?? false,
+      );
+    } catch (e) {
+      debugPrint("Error creating UserModel: $e");
+      return UserModel(
+        id: doc.id,
+        name: '',
+        email: '',
+        storeNumber: null, 
+        adminPermission: null,
+        isStoreManager: false,
+      );
+    }
   }
 }
 
@@ -62,24 +108,34 @@ class VatModel {
   }
 }
 
-// [1. VIEWMODEL]
+// [2. VIEWMODEL]
 class FinanceAndHRViewModel {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final FirebaseAuth _auth = FirebaseAuth.instance;
 
-  Future<String?> getStoreNumber() async {
+  Future<UserModel?> getCurrentUser() async {
     try {
       final user = _auth.currentUser;
       if (user == null) return null;
 
       final userDoc = await _firestore.collection('users').doc(user.uid).get();
-      return userDoc.data()?['storeNumber'] as String?;
+      return UserModel.fromFirestore(userDoc);
     } catch (e) {
-      debugPrint("Error fetching store number: $e"); return null;
+      debugPrint("Error fetching current user: $e");
+      return null;
     }
   }
 
-  // Adicione este método no ViewModel
+  Future<String?> getStoreNumber() async {
+    try {
+      final user = await getCurrentUser();
+      return user?.storeNumber; // Updated
+    } catch (e) {
+      debugPrint("Error fetching store number: $e");
+      return null;
+    }
+  }
+
   Future<String?> getCurrentCurrency() async {
     try {
       final user = _auth.currentUser;
@@ -103,8 +159,12 @@ class FinanceAndHRViewModel {
             .toList());
   }
 
-  Future<VatModel> getVatValues(String storeNumber) async {
+  Future<VatModel> getVatValues(String? storeNumber) async {
     try {
+      if (storeNumber == null || storeNumber.isEmpty) {
+        return VatModel(vat1: '0', vat2: '0', vat3: '0', vat4: '0');
+      }
+      
       final doc = await _firestore.collection('iva').doc(storeNumber).get();
       return VatModel.fromMap(doc.data() ?? {});
     } catch (e) {
@@ -127,8 +187,7 @@ class FinanceAndHRViewModel {
         'adminPermission': currentPermission ? "" : adminStoreNumber,
       });
     } catch (e) {
-      debugPrint("Error updating admin permission: $e");
-      rethrow;
+      debugPrint("Error updating admin permission: $e"); rethrow;
     }
   }
 
@@ -141,8 +200,7 @@ class FinanceAndHRViewModel {
         });
       }
     } catch (e) {
-      debugPrint("Error updating store currency: $e");
-      rethrow;
+      debugPrint("Error updating store currency: $e"); rethrow;
     }
   }
 }
@@ -160,8 +218,10 @@ class _FinanceAndHumanResourcesPageState
     extends State<FinanceAndHumanResourcesPage> with SingleTickerProviderStateMixin {
   late final FinanceAndHRViewModel _viewModel;
   late TabController _tabController;
-  late Future<String?> _storeNumberFuture;
+  String? _storeNumber;
   late VatModel _initialVatValues;
+  bool _isStoreManager = false;
+  bool _isLoading = true;
 
   final Map<String, String> _currencyMap = {
     'Euro (€)': '€',
@@ -176,13 +236,68 @@ class _FinanceAndHumanResourcesPageState
   void initState() {
     super.initState();
     _viewModel = FinanceAndHRViewModel();
-    _storeNumberFuture = _viewModel.getStoreNumber();
+    _loadUserData();
     _tabController = TabController(length: 2, vsync: this);
     _initialVatValues = VatModel(vat1: '0', vat2: '0', vat3: '0', vat4: '0');
   }
 
+  Future<void> _loadUserData() async {
+    setState(() => _isLoading = true);
+    try {
+      final user = await _viewModel.getCurrentUser();
+      if (user != null) {
+        setState(() {
+          _storeNumber = user.storeNumber;
+          _isStoreManager = user.isStoreManager;
+        });
+        
+        // Carrega os valores de VAT apenas se tiver storeNumber
+        if (_storeNumber != null && _storeNumber!.isNotEmpty) {
+          final vatValues = await _viewModel.getVatValues(_storeNumber);
+          setState(() => _initialVatValues = vatValues);
+        }
+      }
+    } catch (e) {
+      debugPrint("Error loading user data: $e");
+    } finally {setState(() => _isLoading = false);}
+  }
+
   @override
   Widget build(BuildContext context) {
+    if (_isLoading) {
+      return Scaffold(
+        body: Container(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              colors: [
+                hexStringToColor("CB2B93"),
+                hexStringToColor("9546C4"),
+                hexStringToColor("5E61F4"),
+              ],
+              begin: Alignment.topCenter, end: Alignment.bottomCenter,
+            ),
+          ),
+          child: const Center(child: CircularProgressIndicator()),
+        ),
+      );
+    }
+
+    if (_storeNumber == null || _storeNumber!.isEmpty) {
+      return ErrorScreen(
+        icon: Icons.warning_amber_rounded,
+        title: "Store Access Required",
+        message: "Your account is not associated with any store. Please contact admin.",
+      );
+    }
+
+    if (!_isStoreManager) {
+      return ErrorScreen(
+        icon: Icons.warning_amber_rounded,
+        title: "Access Denied",
+        message: "You don't have permissions to access this page.",
+      );
+    }
+
     return Scaffold(
       body: Container(
         width: MediaQuery.of(context).size.width,
@@ -194,50 +309,28 @@ class _FinanceAndHumanResourcesPageState
               hexStringToColor("9546C4"),
               hexStringToColor("5E61F4"),
             ],
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
+            begin: Alignment.topCenter, end: Alignment.bottomCenter,
           ),
         ),
-        child: FutureBuilder<String?>(
-          future: _storeNumberFuture,
-          builder: (context, snapshot) {
-            if (snapshot.connectionState == ConnectionState.waiting) {
-              return const Center(child: CircularProgressIndicator());
-            }
-
-            if (snapshot.hasError || !snapshot.hasData || snapshot.data == null) {
-              return const Center(
-                child: Text(
-                  'You are not connected to any store. Please contact your Admin.',
-                  style: TextStyle(fontSize: 18, color: Colors.black),
-                ),
-              );
-            }
-
-            final storeNumber = snapshot.data!;
-            final currentUserId = FirebaseAuth.instance.currentUser?.uid;
-
-            return Column(
-              children: [
-                TabBar(
-                  controller: _tabController,
-                  tabs: const [
-                    Tab(child: Text('Human Resources', style: TextStyle(color: Colors.white))),
-                    Tab(child: Text('Finance', style: TextStyle(color: Colors.white))),
-                  ],
-                ),
-                Expanded(
-                  child: TabBarView(
-                    controller: _tabController,
-                    children: [
-                      _buildHRTab(storeNumber, currentUserId),
-                      _buildFinanceTab(storeNumber),
-                    ],
-                  ),
-                ),
+        child: Column(
+          children: [
+            TabBar(
+              controller: _tabController,
+              tabs: const [
+                Tab(child: Text('Human Resources', style: TextStyle(color: Colors.white))),
+                Tab(child: Text('Finance', style: TextStyle(color: Colors.white))),
               ],
-            );
-          },
+            ),
+            Expanded(
+              child: TabBarView(
+                controller: _tabController,
+                children: [
+                  _buildHRTab(_storeNumber!, FirebaseAuth.instance.currentUser?.uid),
+                  _buildFinanceTab(_storeNumber!),
+                ],
+              ),
+            ),
+          ],
         ),
       ),
     );
@@ -329,7 +422,7 @@ class _FinanceAndHumanResourcesPageState
             'VAT4': TextEditingController(text: vat.vat4),
           };
 
-          return Column( // Seção de VAT
+          return Column(
             children: [
               Container(
                 padding: const EdgeInsets.all(16.0),
@@ -361,7 +454,7 @@ class _FinanceAndHumanResourcesPageState
               
               const SizedBox(height: 20),
               
-              Container( // Seção de Currency - Agrupando a exibição atual com o seletor
+              Container(
                 padding: const EdgeInsets.all(16.0),
                 decoration: BoxDecoration(
                   color: Colors.white,
@@ -369,7 +462,7 @@ class _FinanceAndHumanResourcesPageState
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [ // Exibição da moeda atual
+                  children: [
                     if (currentCurrency != null)
                       Padding(
                         padding: const EdgeInsets.only(bottom: 8.0),
@@ -381,12 +474,13 @@ class _FinanceAndHumanResourcesPageState
                         ),
                       ),
                     
-                    DropdownButtonFormField<String>( // Dropdown para selecionar nova moeda
+                    DropdownButtonFormField<String>(
                       value: _selectedCurrency,
                       decoration: const InputDecoration(
                         labelText: 'Change Store Currency',
                         border: OutlineInputBorder(),
-                        filled: true, fillColor: Color.fromARGB(255, 255, 255, 255),
+                        filled: true,
+                        fillColor: Color.fromARGB(255, 255, 255, 255),
                       ),
                       items: _currencyMap.entries.map((entry) {
                         return DropdownMenuItem<String>(
@@ -395,7 +489,9 @@ class _FinanceAndHumanResourcesPageState
                         );
                       }).toList(),
                       onChanged: (value) async {
-                        setState(() {_selectedCurrency = value;});
+                        setState(() {
+                          _selectedCurrency = value;
+                        });
                         if (value != null) {
                           try {
                             await _viewModel.updateStoreCurrency(value);
@@ -449,7 +545,6 @@ class _FinanceAndHumanResourcesPageState
         vat4: controllers['VAT4']!.text,
       );
 
-      // Detectar mudanças
       Map<String, String> changedFields = {};
       if (newVat.vat1 != _initialVatValues.vat1) {
         changedFields['VAT1'] = '${_initialVatValues.vat1} → ${newVat.vat1}';
@@ -473,7 +568,7 @@ class _FinanceAndHumanResourcesPageState
       await _viewModel.updateVatValues(storeNumber, newVat);
       setState(() {_initialVatValues = newVat;});
 
-      final messageBuffer = StringBuffer("Some VAT codes were updated:\n"); // Criar mensagem da notificação
+      final messageBuffer = StringBuffer("Some VAT codes were updated:\n");
       changedFields.forEach((key, value) {
         messageBuffer.write('$key: $value;  ');
       });
@@ -490,13 +585,9 @@ class _FinanceAndHumanResourcesPageState
         'userId': userId,
       });
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('VAT values updated!')),
-      );
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('VAT values updated!')));
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Error to update VAT values.')),
-      );
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Error to update VAT values.')));
     }
   }
 }

@@ -1,10 +1,10 @@
-// MVVM
 import 'dart:ui';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
 import 'package:stockflow/reusable_widgets/colors_utils.dart';
+import 'package:stockflow/reusable_widgets/error_screen.dart';
 import 'package:timeago/timeago.dart' as timeago;
 
 // [1. MODEL]
@@ -39,10 +39,7 @@ class NotificationModel {
 }
 
 class ProductModel {
-  final String id;
-  final String name;
-  final String brand;
-  final String model;
+  final String id, name, brand, model;
   final double salePrice;
 
   ProductModel({
@@ -151,8 +148,7 @@ class NotificationsViewModel {
       final doc = await _firestore.collection('products').doc(productId).get();
       if (doc.exists) {return ProductModel.fromDocument(doc);} return null;
     } catch (e) {
-      debugPrint("Error fetching product details: $e");
-      return null;
+      debugPrint("Error fetching product details: $e"); return null;
     }
   }
 
@@ -162,7 +158,6 @@ class NotificationsViewModel {
     final difference = currentTime.difference(notificationTime);
     return difference.inDays > 3;
   }
-
   static String formatTimeElapsed(DateTime dateTime) {return timeago.format(dateTime, locale: 'en');}
 }
 
@@ -172,118 +167,138 @@ class NotificationsStockAlert extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      extendBodyBehindAppBar: true,
-      appBar: PreferredSize(
-        preferredSize: Size.fromHeight(80.0),
-        child: AppBar(
-          backgroundColor: Colors.transparent, elevation: 0,
-          flexibleSpace: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              const Text('Notifications', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-              IconButton(
-                icon: const Icon(Icons.add_alert),
-                onPressed: () => _showSendNotificationModal(context), iconSize: 25.0,
-              ),
-            ],
-          ),
-        ),
-      ),
-      body: Container(
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            colors: [
-              hexStringToColor("CB2B93"),
-              hexStringToColor("9546C4"),
-              hexStringToColor("5E61F4"),
-            ],
-            begin: Alignment.topCenter, end: Alignment.bottomCenter,
-          ),
-        ),
-        child: FutureBuilder<String?>(
-          future: NotificationsViewModel().getUserStoreNumber(),
-          builder: (context, snapshot) {
-            if (snapshot.connectionState == ConnectionState.waiting) {
-              return const Center(child: CircularProgressIndicator());
-            }
+    return FutureBuilder<String?>(
+      future: NotificationsViewModel().getUserStoreNumber(),
+      builder: (context, snapshot) {
+        final storeNumber = snapshot.data;
 
-            if (snapshot.hasError || !snapshot.hasData || snapshot.data == null) {
-              return const Center(
-                child: Text(
-                  'You are not connected to any store. Please contact your Admin.', style: TextStyle(fontSize: 18, color: Color.fromARGB(255, 0, 0, 0)),
-                ),
-              );
-            }
-
-            final storeNumber = snapshot.data!;
-            NotificationsViewModel().deleteExpiredNotifications(storeNumber);
-
-            return StreamBuilder<List<NotificationModel>>(
-              stream: NotificationsViewModel().getNotificationsStream(storeNumber),
-              builder: (context, snapshot) {
-                if (snapshot.connectionState == ConnectionState.waiting) {
-                  return const Center(child: CircularProgressIndicator());
-                }
-
-                if (snapshot.hasError) {
-                  return const Center(
-                    child: Text('Error to load notificatons.', style: TextStyle(fontSize: 18, color: Colors.white)),
-                  );
-                }
-
-                final notifications = snapshot.data ?? [];
-                final validNotifications = notifications.where((n) => 
-                  !NotificationsViewModel.isNotificationExpired(n.timestamp)).toList();
-
-                if (validNotifications.isEmpty) {
-                  return const Center(
-                    child: Text('No notifications available.', style: TextStyle(fontSize: 18, color: Colors.white)),
-                  );
-                }
-
-                return ListView(
-                  children: _groupNotificationsByDay(validNotifications).entries.map((entry) {
-                    final dayLabel = entry.key;
-                    final notificationsForDay = entry.value;
-
-                    return Column(
-                      crossAxisAlignment: CrossAxisAlignment.center,
+        return Scaffold(
+          extendBodyBehindAppBar: true,
+          appBar: (snapshot.connectionState == ConnectionState.done &&
+                  snapshot.hasData &&
+                  storeNumber != null &&
+                  storeNumber.isNotEmpty)
+              ? PreferredSize(
+                  preferredSize: const Size.fromHeight(80.0),
+                  child: AppBar(
+                    backgroundColor: Colors.transparent, elevation: 0,
+                    flexibleSpace: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        Center(
-                          child: Container(
-                            margin: const EdgeInsets.symmetric(vertical: 10.0),
-                            padding: const EdgeInsets.symmetric(vertical: 8.0, horizontal: 16.0),
-                            decoration: BoxDecoration(
-                              gradient: const LinearGradient(
-                                colors: [Colors.blue, Colors.lightBlueAccent],
-                                begin: Alignment.topLeft, end: Alignment.bottomRight,
-                              ),
-                              borderRadius: BorderRadius.circular(20.0),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: Colors.blue.withOpacity(0.3), blurRadius: 4, offset: const Offset(0, 2),
+                        const Text('Notifications', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                        IconButton(
+                          icon: const Icon(Icons.add_alert),
+                          onPressed: () => _showSendNotificationModal(context), iconSize: 25.0,
+                        ),
+                      ],
+                    ),
+                  ),
+                )
+              : null,
+          body: Container(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: [
+                  hexStringToColor("CB2B93"),
+                  hexStringToColor("9546C4"),
+                  hexStringToColor("5E61F4"),
+                ],
+                begin: Alignment.topCenter, end: Alignment.bottomCenter,
+              ),
+            ),
+            child: () {
+              if (snapshot.connectionState == ConnectionState.waiting) {
+                return const Center(child: CircularProgressIndicator());
+              }
+
+              if (snapshot.hasError || storeNumber == null || storeNumber.isEmpty) {
+                return const ErrorScreen(
+                  icon: Icons.warning_amber_rounded,
+                  title: "Store Access Required",
+                  message: "Your account is not associated with any store. Please contact admin.",
+                );
+              }
+
+              NotificationsViewModel().deleteExpiredNotifications(storeNumber);
+
+              return StreamBuilder<List<NotificationModel>>(
+                stream: NotificationsViewModel().getNotificationsStream(storeNumber),
+                builder: (context, snapshot) {
+                  if (snapshot.connectionState == ConnectionState.waiting) {
+                    return const Center(child: CircularProgressIndicator());
+                  }
+
+                  if (snapshot.hasError) {
+                    return const Center(
+                      child: Text('Error to load notifications.', style: TextStyle(fontSize: 18, color: Colors.white)),
+                    );
+                  }
+
+                  final notifications = snapshot.data ?? [];
+                  final validNotifications = notifications
+                      .where((n) => !NotificationsViewModel.isNotificationExpired(n.timestamp))
+                      .toList();
+
+                  if (validNotifications.isEmpty) {
+                    return const Center(
+                      child: Text('No notifications available.', style: TextStyle(fontSize: 18, color: Colors.white)),
+                    );
+                  }
+
+                  return ListView(
+                    children: _groupNotificationsByDay(validNotifications)
+                        .entries
+                        .map((entry) {
+                      final dayLabel = entry.key;
+                      final notificationsForDay = entry.value;
+
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.center,
+                        children: [
+                          Center(
+                            child: Container(
+                              margin: const EdgeInsets.symmetric(vertical: 10.0),
+                              padding: const EdgeInsets.symmetric(
+                                  vertical: 8.0, horizontal: 16.0),
+                              decoration: BoxDecoration(
+                                gradient: const LinearGradient(
+                                  colors: [Colors.blue, Colors.lightBlueAccent],
+                                  begin: Alignment.topLeft,
+                                  end: Alignment.bottomRight,
                                 ),
-                              ],
-                            ),
-                            child: Text(dayLabel,
-                              style: const TextStyle(fontSize: 14.0, fontWeight: FontWeight.bold, color: Colors.white),
-                              textAlign: TextAlign.center,
+                                borderRadius: BorderRadius.circular(20.0),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: Colors.blue.withOpacity(0.3),
+                                    blurRadius: 4,
+                                    offset: const Offset(0, 2),
+                                  ),
+                                ],
+                              ),
+                              child: Text(
+                                dayLabel,
+                                style: const TextStyle(
+                                    fontSize: 14.0,
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.white),
+                                textAlign: TextAlign.center,
+                              ),
                             ),
                           ),
-                        ),
-                        ...notificationsForDay.map((notification) {
-                          return _buildNotificationCard(context, notification);
-                        }).toList(),
-                      ],
-                    );
-                  }).toList(),
-                );
-              },
-            );
-          },
-        ),
-      ),
+                          ...notificationsForDay
+                              .map((notification) =>
+                                  _buildNotificationCard(context, notification))
+                              .toList(),
+                        ],
+                      );
+                    }).toList(),
+                  );
+                },
+              );
+            }(),
+          ),
+        );
+      },
     );
   }
 
@@ -393,14 +408,34 @@ class NotificationsStockAlert extends StatelessWidget {
     final messageController = TextEditingController();
     String selectedCategory = '';
     
-    // Verificar o storeNumber antes de mostrar o diálogo
-    final storeNumber = await NotificationsViewModel().getUserStoreNumber();
-    if (storeNumber == null) {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('You cant send notifications because you are not connected to any store.'),
-          duration: Duration(seconds: 5),
+          content: Text('You need to be logged in to send notifications'),
+          duration: Duration(seconds: 2),
         ),
+      ); return;
+    }
+
+    // Obter os dados do usuário
+    final userDoc = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
+    final userData = userDoc.data();
+
+    // Verificar o storeNumber primeiro
+    final storeNumber = userData?['storeNumber'];
+    if (storeNumber == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('You cant send notifications because you are not connected to any store.'), 
+        duration: Duration(seconds: 2)),
+      ); return;
+    }
+
+    // Depois verificar se é storeManager
+    final isStoreManager = userData?['isStoreManager'] ?? false;
+    if (!isStoreManager) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('You do not have permission to send custom notifications'), duration: Duration(seconds: 2)),
       ); return;
     }
 
@@ -448,9 +483,7 @@ class NotificationsStockAlert extends StatelessWidget {
               onPressed: () async {
                 if (messageController.text.length < 5 || selectedCategory.isEmpty) {
                   ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('Message must have at least 5 characters and a category must be chosen.'),
-                    ),
+                    const SnackBar(content: Text('Message must have at least 5 characters and a category must be chosen.')),
                   );
                 } else {
                   try {
@@ -470,12 +503,13 @@ class NotificationsStockAlert extends StatelessWidget {
                     ScaffoldMessenger.of(context).showSnackBar(
                       SnackBar(
                         content: Text('Failed to send notification: ${e.toString()}'),
-                        duration: Duration(seconds: 5),
+                        duration: Duration(seconds: 3),
                       ),
                     );
                   }
                 }
-              }, child: const Text('Send', style: TextStyle(fontWeight: FontWeight.bold)),
+              }, 
+              child: const Text('Send', style: TextStyle(fontWeight: FontWeight.bold)),
             ),
           ],
         );
@@ -483,145 +517,138 @@ class NotificationsStockAlert extends StatelessWidget {
     );
   }
 
-  void _confirmDelete(BuildContext context, String notificationId) {
-    showDialog(
-      context: context,
-      builder: (context) {
-        return AlertDialog(
+  Future<void> _confirmDelete(BuildContext context, String notificationId) async {
+    try {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) return;
+
+      final userDoc = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .get();
+
+      final isStoreManager = userDoc.data()?['isStoreManager'] ?? false;
+
+      if (!isStoreManager) { 
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('You do not have permission to delete notifications'),
+            duration: Duration(seconds: 2),
+          ),
+        ); return;
+      }
+
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
           title: const Text("Confirm Delete"),
           content: const Text("Are you sure you want to delete this notification? This action cannot be undone."),
           actions: [
-            TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text("Cancel")),
-            TextButton(
-              onPressed: () {
-                Navigator.of(context).pop();
-                _showSecondDeleteConfirmation(context, notificationId);
-              },
-              child: const Text("Continue", style: TextStyle(fontWeight: FontWeight.bold)),
-            ),
-          ],
-        );
-      },
-    );
-  }
-
-  void _showSecondDeleteConfirmation(BuildContext context, String notificationId) {
-    showDialog(
-      context: context,
-      builder: (context) {
-        return AlertDialog(
-          title: const Text("Confirm Again"),
-          content: const Text("This is your last chance to cancel. Do you really want to delete this notification?"),
-          actions: [
-            TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text("Cancel")),
-            TextButton(
-              onPressed: () async {
-                Navigator.of(context).pop();
-                final messenger = ScaffoldMessenger.of(context);
-                try {
-                  await NotificationsViewModel().deleteNotification(notificationId);
-                  messenger.showSnackBar(
-                    const SnackBar(content: Text("Notification deleted successfully.")),
-                  );
-                } catch (e) {
-                  messenger.showSnackBar(
-                    const SnackBar(content: Text("Error deleting notification.")),
-                  );
-                }
-              },
+            TextButton(onPressed: () => Navigator.of(context).pop(false), child: const Text("Cancel")),
+            TextButton(onPressed: () => Navigator.of(context).pop(true),
               child: const Text("Delete", style: TextStyle(fontWeight: FontWeight.bold)),
             ),
           ],
-        );
-      },
-    );
+        ),
+      );
+
+      if (confirmed == true) {
+        final messenger = ScaffoldMessenger.of(context);
+        try {
+          await NotificationsViewModel().deleteNotification(notificationId);
+          messenger.showSnackBar(
+            const SnackBar(content: Text("Notification deleted successfully.")),
+          );
+        } catch (e) {
+          messenger.showSnackBar(
+            SnackBar(content: Text("Error deleting notification: $e")),
+          );
+        }
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error checking permissions: $e'), duration: const Duration(seconds: 2)),
+      );
+    }
   }
 
   Future<void> _showNotificationDetails(BuildContext context, NotificationModel notification) async {
-  try {
-    final product = notification.productId != null 
-        ? await NotificationsViewModel().getProductDetails(notification.productId!)
-        : null;
+    try {
+      final product = notification.productId != null 
+          ? await NotificationsViewModel().getProductDetails(notification.productId!)
+          : null;
 
-    final notificationDate = notification.timestamp.toDate().toLocal();
-    final formattedDate = DateFormat('dd/MM/yyyy HH:mm').format(notificationDate);
+      final notificationDate = notification.timestamp.toDate().toLocal();
+      final formattedDate = DateFormat('dd/MM/yyyy HH:mm').format(notificationDate);
 
-    showDialog(
-      context: context,
-      builder: (context) {
-        return AlertDialog(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16.0),
-          ),
-          backgroundColor: Colors.white,
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  "Notification Details",
-                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Color(0xFF5E61F4)),
-                ),
-                SizedBox(height: 16),
-                
-                if (product != null) ...[
-                  _buildDetailRow(
-                    "Product Name:", product.name,
-                    labelStyle: TextStyle(fontWeight: FontWeight.w600),
+      showDialog(
+        context: context,
+        builder: (context) {
+          return AlertDialog(
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16.0),
+            ),
+            backgroundColor: Colors.white,
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    "Notification Details",
+                    style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Color(0xFF5E61F4)),
                   ),
-                  _buildDetailRow(
-                    "Brand:", product.brand,
-                  ),
-                  _buildDetailRow(
-                    "Model:", product.model,
-                  ),
-                  _buildDetailRow(
-                    "Price:",
-                    "\$${product.salePrice.toStringAsFixed(2)}",
-                    valueStyle: TextStyle(color: Color(0xFF4CAF50), fontWeight: FontWeight.bold),
-                  ),
-                  Divider(color: Colors.grey[300], height: 24, thickness: 1),
-                ],
-                
-                _buildDetailRow(
-                  "Date:", formattedDate, valueStyle: TextStyle(color: const Color.fromARGB(255, 178, 31, 236)),
-                ),
-                
-                SizedBox(height: 12),
-                Text(
-                  "Message:", style: TextStyle(fontWeight: FontWeight.w600, color: Colors.grey[800]),
-                ),
-                SizedBox(height: 8),
-                Container(
-                  width: double.infinity,
-                  padding: EdgeInsets.all(12),
-                  decoration: BoxDecoration(color: Colors.grey[50],
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(
-                      color: Colors.grey[200] ?? Colors.grey,
-                      width: 1,
+                  const SizedBox(height: 16),
+                  
+                  if (product != null) ...[
+                    _buildDetailRow(
+                      "Product Name:", product.name,
+                      labelStyle: TextStyle(fontWeight: FontWeight.w600),
                     ),
+                    _buildDetailRow(
+                      "Brand:", product.brand,
+                    ),
+                    _buildDetailRow(
+                      "Model:", product.model,
+                    ),
+                    _buildDetailRow(
+                      "Price:",
+                      "\$${product.salePrice.toStringAsFixed(2)}",
+                      valueStyle: TextStyle(color: Color(0xFF4CAF50), fontWeight: FontWeight.bold),
+                    ),
+                    Divider(color: Colors.grey[300], height: 24, thickness: 1),
+                  ],
+                  
+                  _buildDetailRow(
+                    "Date:", formattedDate, valueStyle: TextStyle(color: const Color.fromARGB(255, 178, 31, 236)),
                   ),
-                  child: Text(
-                    notification.message, style: TextStyle(fontSize: 14, color: Colors.grey[800]),
+                  
+                  const SizedBox(height: 12),
+                  Text("Message:", style: TextStyle(fontWeight: FontWeight.w600, color: Colors.grey[800])),
+                  const SizedBox(height: 8),
+                  Container(
+                    width: double.infinity,
+                    padding: EdgeInsets.all(12),
+                    decoration: BoxDecoration(color: Colors.grey[50],
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(
+                        color: Colors.grey[200] ?? Colors.grey, width: 1,
+                      ),
+                    ),
+                    child: Text(notification.message, style: TextStyle(fontSize: 14, color: Colors.grey[800])),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
-          ),
-          actions: [
-            TextButton(onPressed: () => Navigator.of(context).pop(),
-              child: Text("Close", style: TextStyle(color: Color(0xFF5E61F4))),
-            ),
-          ],
-        );
-      },
-    );
-  } catch (e) {
-    debugPrint("Error showing notification details: $e");
+            actions: [TextButton(onPressed: () => Navigator.of(context).pop(),
+                child: Text("Close", style: TextStyle(color: Color(0xFF5E61F4))),
+              ),
+            ],
+          );
+        },
+      );
+    } catch (e) {debugPrint("Error showing notification details: $e");}
   }
-}
 
   Widget _buildDetailRow(String label, String value, {TextStyle? labelStyle, TextStyle? valueStyle}) {
     return Padding(
@@ -629,17 +656,9 @@ class NotificationsStockAlert extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            label,
-            style: labelStyle ?? TextStyle(fontWeight: FontWeight.w500, color: Colors.grey[700]),
-          ),
-          SizedBox(width: 8),
-          Expanded(
-            child: Text(
-              value,
-              style: valueStyle ?? TextStyle(color: Colors.grey[800]),
-            ),
-          ),
+          Text(label, style: labelStyle ?? TextStyle(fontWeight: FontWeight.w500, color: Colors.grey[700])),
+          const SizedBox(width: 8),
+          Expanded(child: Text(value, style: valueStyle ?? TextStyle(color: Colors.grey[800]))),
         ],
       ),
     );
@@ -676,7 +695,5 @@ class NotificationsStockAlert extends StatelessWidget {
         dateTime.day == yesterday.day;
   }
 
-  String _formatDate(DateTime dateTime) {
-    return "${dateTime.day}/${dateTime.month}/${dateTime.year}";
-  }
+  String _formatDate(DateTime dateTime) {return "${dateTime.day}/${dateTime.month}/${dateTime.year}";}
 }

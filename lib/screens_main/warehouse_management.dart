@@ -2,6 +2,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:stockflow/reusable_widgets/colors_utils.dart';
+import 'package:stockflow/reusable_widgets/error_screen.dart';
 import 'package:stockflow/reusable_widgets/search_controller.dart';
 
 // [1. MODEL]
@@ -94,6 +95,32 @@ class WarehouseViewModel {
       return userDoc.data()?['storeNumber'] as String?;
     } catch (e) {
       debugPrint("Error fetching store number: $e"); return null;
+    }
+  }
+
+  // Método que verifica se o usuário é um Store Manager
+  Future<bool> isUserStoreManager() async {
+    try {
+      // Obtendo o ID do usuário atual autenticado
+      String userId = FirebaseAuth.instance.currentUser!.uid;
+
+      // Buscando o documento do usuário na coleção 'users'
+      DocumentSnapshot userDoc = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(userId)
+          .get();
+
+      // Verificando se o documento existe e se o campo 'isStoreManager' existe e é verdadeiro
+      if (userDoc.exists && userDoc.data() != null) {
+        bool isStoreManager = userDoc.get('isStoreManager') ?? false;
+        return isStoreManager;
+      } else {
+        return false; // Retorna false se o documento não existir ou o campo não for encontrado
+      }
+    } catch (e) {
+      // Caso ocorra algum erro na consulta, imprime o erro e retorna false
+      debugPrint("Error fetching isStoreManager: $e");
+      return false;
     }
   }
 
@@ -234,7 +261,7 @@ class WarehouseViewModel {
   }
 }
 
-// [4. MAIN VIEW]
+// [3. VIEW]
 class WarehouseManagementPage extends StatefulWidget {
   const WarehouseManagementPage({super.key});
 
@@ -248,11 +275,15 @@ class _WarehouseManagementPageState extends State<WarehouseManagementPage>
   final ValueNotifier<String> _searchNotifier = ValueNotifier<String>("");
   bool isPriceEditable = false;
   final WarehouseViewModel _viewModel = WarehouseViewModel();
+  String? _storeNumber;
+  bool _isStoreManager = false;
+  bool _isLoading = true;
 
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 3, vsync: this);
+    _loadUserData(); 
   }
 
   @override
@@ -260,6 +291,26 @@ class _WarehouseManagementPageState extends State<WarehouseManagementPage>
     _searchNotifier.dispose();
     _tabController.dispose();
     super.dispose();
+  }
+
+  Future<void> _loadUserData() async {
+    setState(() => _isLoading = true);
+    try {
+      // Carregando o número da loja do usuário
+      final storeNumber = await _viewModel.getCurrentUserStoreNumber();
+      
+      // Carregando o valor de isStoreManager da tabela de usuários
+      final isStoreManager = await _viewModel.isUserStoreManager(); 
+
+      setState(() {
+        _storeNumber = storeNumber;
+        _isStoreManager = isStoreManager; 
+      });
+    } catch (e) {
+      debugPrint("Error loading user data: $e");
+    } finally {
+      setState(() => _isLoading = false);
+    }
   }
 
   Widget _buildWarehouseForm() {
@@ -1127,6 +1178,22 @@ class _WarehouseManagementPageState extends State<WarehouseManagementPage>
 
   @override
   Widget build(BuildContext context) {
+    if (_isLoading) {return Center(child: CircularProgressIndicator());}
+    if (_storeNumber == null || _storeNumber!.isEmpty) {
+      return ErrorScreen(
+        icon: Icons.warning_amber_rounded,
+        title: "Store Access Required",
+        message: "Your account is not associated with any store. Please contact admin.",
+      );
+    }
+
+    if (!_isStoreManager) {
+      return ErrorScreen(
+        icon: Icons.warning_amber_rounded,
+        title: "Access Denied",
+        message: "You don't have permissions to access this page.",
+      );
+    }
     return Scaffold(
       appBar: AppBar(
         title: Text("WareHouse Management", style: TextStyle(color: Colors.white)),

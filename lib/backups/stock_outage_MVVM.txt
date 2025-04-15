@@ -1,10 +1,10 @@
-//MVVM
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:stockflow/reusable_widgets/colors_utils.dart';
+import 'package:stockflow/reusable_widgets/error_screen.dart';
 
-// [1. MODEL]
+// [1. MODEL] 
 class ProductModel {
   final String id, name, brand, model, category, storeNumber;
   final double salePrice;
@@ -38,21 +38,26 @@ class ProductModel {
   }
 }
 
-// [2. VIEWMODEL]
+// [2. VIEWMODEL] 
 class StockBreakViewModel {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final FirebaseAuth _auth = FirebaseAuth.instance;
 
-  Future<String?> getUserStoreNumber() async {
+  Future<Map<String, dynamic>> getUserData() async {
     try {
       final user = _auth.currentUser;
-      if (user == null) return null;
+      if (user == null) return {'error': 'User not logged in'};
 
       final userDoc = await _firestore.collection('users').doc(user.uid).get();
-      return userDoc.data()?['storeNumber'] as String?;
+      if (!userDoc.exists) return {'error': 'User document not found'};
+
+      return {
+        'storeNumber': userDoc.data()?['storeNumber'],
+        'isStoreManager': userDoc.data()?['isStoreManager'] ?? false,
+      };
     } catch (e) {
-      debugPrint("Error fetching store number: $e");
-      return null;
+      debugPrint("Error fetching user data: $e");
+      return {'error': 'Error fetching user data'};
     }
   }
 
@@ -80,25 +85,15 @@ class StockBreakViewModel {
     }
   }
 
-    List<ProductModel> filterProducts({
+  List<ProductModel> filterProducts({
     required List<ProductModel> products,
     required String nameFilter,
     required String brandFilter,
     required String categoryFilter,
     required String storeNumberFilter,
     required String? priceRange,
-    required String? userStoreNumber, // Adicionar este parâmetro
+    required String userStoreNumber,
   }) {
-    // Se o userStoreNumber não estiver configurado, retornar lista vazia
-    if (userStoreNumber == null || userStoreNumber.isEmpty) {
-      return [];
-    }
-
-    // Se não houver filtros específicos, usar o storeNumber do usuário como padrão
-    final effectiveStoreFilter = storeNumberFilter.isEmpty 
-        ? userStoreNumber 
-        : storeNumberFilter;
-
     double minPrice = 0;
     double maxPrice = double.infinity;
 
@@ -115,12 +110,8 @@ class StockBreakViewModel {
     return products.where((product) {
       if (product.stockBreak < 1) return false;
       
-      // Verificar se o produto pertence ao storeNumber efetivo
-      if (product.storeNumber.toLowerCase() != effectiveStoreFilter.toLowerCase()) {
-        return false;
-      }
-
-      return product.name.toLowerCase().contains(nameFilter.toLowerCase()) &&
+      return product.storeNumber.toLowerCase() == userStoreNumber.toLowerCase() &&
+          product.name.toLowerCase().contains(nameFilter.toLowerCase()) &&
           product.brand.toLowerCase().contains(brandFilter.toLowerCase()) &&
           product.category.toLowerCase().contains(categoryFilter.toLowerCase()) &&
           product.salePrice >= minPrice &&
@@ -129,7 +120,7 @@ class StockBreakViewModel {
   }
 }
 
-// [3. VIEW]
+// [3. VIEW] 
 class StockBreakFilteredPage extends StatefulWidget {
   @override
   _StockBreakFilteredPageState createState() => _StockBreakFilteredPageState();
@@ -143,28 +134,75 @@ class _StockBreakFilteredPageState extends State<StockBreakFilteredPage> {
   String? _selectedPriceRange;
 
   late final StockBreakViewModel _viewModel;
+  bool _isLoading = true;
+  String? _storeNumber;
+  bool _isStoreManager = false;
 
   @override
   void initState() {
     super.initState();
     _viewModel = StockBreakViewModel();
-    _fetchUserStoreNumber();
+    _loadUserData();
   }
 
-  Future<void> _fetchUserStoreNumber() async {
-    final storeNumber = await _viewModel.getUserStoreNumber();
-    if (storeNumber != null) {
+  Future<void> _loadUserData() async {
+    setState(() => _isLoading = true);
+    final userData = await _viewModel.getUserData();
+    
+    if (userData.containsKey('error')) {
       setState(() {
-        _storeNumberController.text = storeNumber;
+        _isLoading = false;
       });
+      return;
     }
+
+    setState(() {
+      _storeNumber = userData['storeNumber']?.toString();
+      _isStoreManager = userData['isStoreManager'] ?? false;
+      _isLoading = false;
+      
+      if (_storeNumber != null) {
+        _storeNumberController.text = _storeNumber!;
+      }
+    });
   }
 
   @override
   Widget build(BuildContext context) {
+    if (_isLoading) {return _buildLoadingScreen();}
+
+    if (_storeNumber == null || _storeNumber!.isEmpty) {
+      return ErrorScreen(
+        icon: Icons.warning_amber_rounded,
+        title: "Store Access Required",
+        message: "Your account is not associated with any store. Please contact admin.",
+      );
+    }
+
+    return _buildMainContent();
+  }
+
+  Widget _buildLoadingScreen() {
+    return Scaffold(
+      body: Container(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            colors: [
+              hexStringToColor("CB2B93"),
+              hexStringToColor("9546C4"),
+              hexStringToColor("5E61F4"),
+            ],
+          ),
+        ),
+        child: const Center(child: CircularProgressIndicator()),
+      ),
+    );
+  }
+
+  Widget _buildMainContent() {
     return Scaffold(
       appBar: AppBar(
-        title: Text("Stock Brake Management", style: TextStyle(color: Colors.white)),
+        title: Text("Stock Break Management", style: TextStyle(color: Colors.white)),
         backgroundColor: Colors.transparent,
         elevation: 0,
         flexibleSpace: Container(
@@ -216,7 +254,7 @@ class _StockBreakFilteredPageState extends State<StockBreakFilteredPage> {
               _buildTextField(_nameController, 'Name'),
               _buildTextField(_brandController, 'Brand'),
               _buildTextField(_categoryController, 'Category'),
-              _buildTextField(_storeNumberController, 'Filter by store number', enabled: false),
+              _buildTextField(_storeNumberController, 'Store Number', enabled: false),
               Row(
                 children: [
                   Expanded(child: _buildDropdown()),
@@ -254,60 +292,52 @@ class _StockBreakFilteredPageState extends State<StockBreakFilteredPage> {
           return Center(child: Text('No products found.'));
         }
 
-        return FutureBuilder<String?>(
-          future: _viewModel.getUserStoreNumber(),
-          builder: (context, storeNumberSnapshot) {
-            if (storeNumberSnapshot.connectionState == ConnectionState.waiting) {
-              return Center(child: CircularProgressIndicator());
-            }
+        final filteredProducts = _viewModel.filterProducts(
+          products: snapshot.data!,
+          nameFilter: _nameController.text,
+          brandFilter: _brandController.text,
+          categoryFilter: _categoryController.text,
+          storeNumberFilter: _storeNumberController.text,
+          priceRange: _selectedPriceRange,
+          userStoreNumber: _storeNumber!,
+        );
 
-            final storeNumber = storeNumberSnapshot.data;
-            
-            // Se não houver storeNumber configurado
-            if (storeNumber == null || storeNumber.isEmpty) {
-              return Center(
-                child: Text('Your account is not associated with any store. Please contact admin.', style: TextStyle(fontSize: 18, color: Color.fromARGB(255, 0, 0, 0))),
-              );
-            }
+        if (filteredProducts.isEmpty) {
+          return Center(child: Text('No products found matching your criteria.'));
+        }
 
-            final filteredProducts = _viewModel.filterProducts(
-              products: snapshot.data!,
-              nameFilter: _nameController.text,
-              brandFilter: _brandController.text,
-              categoryFilter: _categoryController.text,
-              storeNumberFilter: _storeNumberController.text,
-              priceRange: _selectedPriceRange,
-              userStoreNumber: storeNumber,
-            );
-
-            if (filteredProducts.isEmpty) {
-              return Center(child: Text('No products found matching your criteria.'));
-            }
-
-            return ListView.builder(
-              itemCount: filteredProducts.length,
-              itemBuilder: (context, index) {
-                final product = filteredProducts[index];
-                return Card(
-                  margin: EdgeInsets.symmetric(vertical: 8, horizontal: 16),
-                  child: ListTile(
-                    title: Text(
-                      product.name, 
-                      style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
-                    ),
-                    subtitle: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text("Brand: ${product.brand.isNotEmpty ? product.brand : "Without brand"}"),
-                        Text("Model: ${product.model.isNotEmpty ? product.model : "Without model"}"),
-                        Text("Category: ${product.category.isNotEmpty ? product.category : "Without category"}"),
-                        Text("Stock Break: ${product.stockBreak}"),
-                      ],
-                    ),
-                    onTap: () => _showProductDetailsDialog(context, product),
-                  ),
-                );
-              },
+        return ListView.builder(
+          itemCount: filteredProducts.length,
+          itemBuilder: (context, index) {
+            final product = filteredProducts[index];
+            return Card(
+              margin: EdgeInsets.symmetric(vertical: 8, horizontal: 16),
+              child: ListTile(
+                title: Text(
+                  product.name, 
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
+                ),
+                subtitle: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text("Brand: ${product.brand.isNotEmpty ? product.brand : "Without brand"}"),
+                    Text("Model: ${product.model.isNotEmpty ? product.model : "Without model"}"),
+                    Text("Category: ${product.category.isNotEmpty ? product.category : "Without category"}"),
+                    Text("Stock Break: ${product.stockBreak}"),
+                  ],
+                ),
+                onTap: () {
+                  if (_isStoreManager) {
+                    // Apenas os Store Managers podem modificar as quantidades
+                    _showProductDetailsDialog(context, product);
+                  } else {
+                    // Para os demais usuários, não faz nada
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text('You don\'t have permission to modify the stock.'), duration: Duration(seconds: 2)),
+                    );
+                  }
+                },
+              ),
             );
           },
         );
@@ -338,7 +368,7 @@ class _StockBreakFilteredPageState extends State<StockBreakFilteredPage> {
       hint: Text("Select Price Range"),
       items: [
         DropdownMenuItem<String>(
-          value: null, // Opção para limpar o filtro
+          value: null,
           child: Text("All Prices"),
         ),
         ...['0-100', '100-200', '200-300', '300-400',
