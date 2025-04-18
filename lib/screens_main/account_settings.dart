@@ -109,6 +109,15 @@ class AccountSettingsViewModel {
     });
   }
 
+  Future<void> updateStoreNumber(String newStoreNumber) async {
+    final user = _auth.currentUser;
+    if (user == null) return;
+
+    await _firestore.collection('users').doc(user.uid).update({
+      'storeNumber': newStoreNumber,
+    });
+  }
+
   Future<void> updateNickname(String newNickname) async {
     final user = _auth.currentUser;
     if (user == null) return;
@@ -299,7 +308,7 @@ class _AccountSettingsState extends State<AccountSettings> {
 
   Future<void> _showCalendarDialog(BuildContext context) async {
     if (_isStoreManager == false) {_showNoPermissionSnackBar(); return;}
-    
+
     await showDialog(
       context: context,
       builder: (context) => AccountSettingsWidgets.calendarDialog(
@@ -321,7 +330,9 @@ class _AccountSettingsState extends State<AccountSettings> {
 
   void _showNoPermissionSnackBar() {
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('You do not have permission to access this feature.'), duration: Duration(seconds: 2)),
+      const SnackBar(
+        content: Text('You do not have permission to access this feature.'),
+        duration: Duration(seconds: 2)),
     );
   }
 
@@ -339,7 +350,8 @@ class _AccountSettingsState extends State<AccountSettings> {
           date: date,
           activitiesByUser: activitiesByUser,
           onBackPressed: () {
-            Navigator.pop(context); _showCalendarDialog(context);
+            Navigator.pop(context);
+            _showCalendarDialog(context);
           },
         ),
       );
@@ -347,7 +359,7 @@ class _AccountSettingsState extends State<AccountSettings> {
       setState(() => _isLoading = false);
       _showDialog(context, 'Error', 'Failed to load activities: ${e.toString()}');
     }
-}
+  }
 
   void _showSetupSnackBar(BuildContext context) {
     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Please complete your setup first")));
@@ -367,7 +379,7 @@ class _AccountSettingsState extends State<AccountSettings> {
     bool isStoreManager = true;
 
     // ignore: unused_local_variable
-    bool dialogDismissed = false; 
+    bool dialogDismissed = false;
     await showDialog(
       context: context,
       barrierDismissible: false,
@@ -382,13 +394,11 @@ class _AccountSettingsState extends State<AccountSettings> {
                   children: [
                     const Text("Choose if you are an admin or an employee."),
                     const SizedBox(height: 8),
-
                     SwitchListTile(
                       title: const Text("I'm the store manager"),
                       value: isStoreManager,
                       onChanged: (value) {setState(() => isStoreManager = value);},
                     ),
-
                     const SizedBox(height: 8),
                     TextField(
                       controller: storeNumberController,
@@ -396,52 +406,44 @@ class _AccountSettingsState extends State<AccountSettings> {
                       decoration: const InputDecoration(labelText: "Store Number"),
                     ),
                     const SizedBox(height: 8),
-
                     TextField(
                       controller: nicknameController,
                       decoration: const InputDecoration(labelText: "Your Name"),
                     ),
                     const SizedBox(height: 8),
-
                     if (isStoreManager) ...[
                       TextField(
                         controller: storeNameController,
                         decoration: const InputDecoration(labelText: "Store Name"),
                       ),
                       const SizedBox(height: 8),
-
                       TextField(
                         controller: storeEmailController,
                         decoration: const InputDecoration(labelText: "Store Email"),
                       ),
                       const SizedBox(height: 8),
-
                       TextField(
                         controller: userPhoneController,
                         keyboardType: TextInputType.phone,
                         decoration: const InputDecoration(labelText: "Phone Number"),
                       ),
                       const SizedBox(height: 8),
-
                       TextField(
                         controller: storeLocationController,
                         decoration: const InputDecoration(labelText: "Store Adrress"),
                       ),
                       const SizedBox(height: 8),
-
                       TextField(
                         controller: storePostalCodeController,
                         keyboardType: TextInputType.number,
                         decoration: const InputDecoration(labelText: "Postal Code"),
                       ),
                       const SizedBox(height: 8),
-
                       TextField(
                         controller: storeCityController,
                         decoration: const InputDecoration(labelText: "City"),
                       ),
                       const SizedBox(height: 8),
-
                       TextField(
                         controller: storeCountryController,
                         decoration: const InputDecoration(labelText: "Country"),
@@ -473,18 +475,17 @@ class _AccountSettingsState extends State<AccountSettings> {
 
                     if (storeNumber.isEmpty || nickname.isEmpty) {
                       ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text("Please fill in the required fields.")),
-                      ); return;
+                      const SnackBar(content: Text("Please fill in the required fields."))); return;
                     }
 
                     if (isStoreManager &&
                         (storeName.isEmpty ||
-                        storeEmail.isEmpty ||
-                        userPhone.isEmpty ||
-                        storeLocation.isEmpty ||
-                        storePostalCode.isEmpty ||
-                        storeCity.isEmpty ||
-                        storeCountry.isEmpty)) {
+                            storeEmail.isEmpty ||
+                            userPhone.isEmpty ||
+                            storeLocation.isEmpty ||
+                            storePostalCode.isEmpty ||
+                            storeCity.isEmpty ||
+                            storeCountry.isEmpty)) {
                       ScaffoldMessenger.of(context).showSnackBar(
                         const SnackBar(content: Text("Fill in all store details.")),
                       ); return;
@@ -513,6 +514,7 @@ class _AccountSettingsState extends State<AccountSettings> {
                       setState(() {
                         _nickname = nickname;
                         _storeNumber = storeNumber;
+                        _isStoreManager = isStoreManager;
                       });
                     } catch (e) {
                       ScaffoldMessenger.of(context).showSnackBar(
@@ -520,9 +522,9 @@ class _AccountSettingsState extends State<AccountSettings> {
                       );
                     }
                   },
-                  child: const Text("Save", style: TextStyle(fontWeight: FontWeight.bold),
-                ),
-             )],
+                  child: const Text("Save",style: TextStyle(fontWeight: FontWeight.bold)),
+                )
+              ],
             );
           },
         );
@@ -533,26 +535,81 @@ class _AccountSettingsState extends State<AccountSettings> {
   Future<void> _showEditStoreNumberDialog(BuildContext context) async {
     final user = FirebaseAuth.instance.currentUser;
     final storeNumberController = TextEditingController(text: _storeNumber);
+    String? errorMessage;
+    bool isSaving = false;
 
     await showDialog(
       context: context,
       builder: (context) {
-        return AlertDialog(
-          title: const Text("Store Number"),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              if (user != null) Text("Email: ${user.email ?? 'N/A'}"),
-              const SizedBox(height: 8.0),
-              TextFormField(
-                controller: storeNumberController,
-                enabled: false,
-                decoration: const InputDecoration(labelText: "Store Number"),
-                style: const TextStyle(color: Colors.black),
+        return StatefulBuilder(
+          builder: (context, setState) {
+            return AlertDialog(
+              title: const Text("Store Number"),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (user != null) Text("Email: ${user.email ?? 'N/A'}"),
+                  const SizedBox(height: 8.0),
+                  TextFormField(
+                    controller: storeNumberController,
+                    enabled: !_isStoreManager, // Desabilita se for manager
+                    decoration: InputDecoration(
+                      labelText: "Store Number",
+                      errorText: errorMessage,
+                    ),
+                    style: const TextStyle(color: Colors.black),
+                  ),
+                  if (!_isStoreManager)
+                    const Padding(
+                      padding: EdgeInsets.only(top: 8.0),
+                      child: Text(
+                        "You can change your store number",
+                        style: TextStyle(color: Colors.grey, fontSize: 12),
+                      ),
+                    ),
+                ],
               ),
-            ],
-          ),
-          actions: [TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text("Close"))],
+              actions: [TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text("Close")),
+                if (!_isStoreManager)
+                  TextButton(
+                    onPressed: isSaving
+                        ? null
+                        : () async {
+                            final newStoreNumber = storeNumberController.text.trim();
+                            if (newStoreNumber.isEmpty || newStoreNumber == _storeNumber) {
+                              setState(() => errorMessage = newStoreNumber.isEmpty
+                                  ? "Store number cannot be empty"
+                                  : "Store number must be different");
+                              return;
+                            }
+
+                            setState(() {
+                              isSaving = true;
+                              errorMessage = null;
+                            });
+
+                            try {
+                              await _viewModel.updateStoreNumber(newStoreNumber);
+                              setState(() {
+                                _storeNumber = newStoreNumber;
+                              });
+                              Navigator.of(context).pop();
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(content: Text("Store number updated successfully")),
+                              );
+                            } catch (e) {
+                              setState(() => errorMessage = "Error: ${e.toString()}");
+                            } finally {
+                              setState(() => isSaving = false);
+                            }
+                          },
+                    child: isSaving
+                        ? const CircularProgressIndicator()
+                        : const Text("Save", style: TextStyle(fontWeight: FontWeight.bold)),
+                  ),
+              ],
+            );
+          },
         );
       },
     );
@@ -596,7 +653,7 @@ class _AccountSettingsState extends State<AccountSettings> {
               ),
               actions: [
                 if (!isSaving)
-                  TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text("Cancel")),
+                TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text("Cancel")),
                 TextButton(
                   onPressed: isSaving
                       ? null
@@ -643,8 +700,8 @@ class _AccountSettingsState extends State<AccountSettings> {
         content: const Text("Are you sure you want to reset your password?"),
         actions: [
           TextButton(onPressed: () => Navigator.pop(context, false), child: const Text("No")),
-          TextButton(onPressed: () => Navigator.pop(context, true),
-              child: const Text('Yes, Send Email', style: TextStyle(fontWeight: FontWeight.bold))),
+          TextButton(onPressed: () => Navigator.pop(context, true), child: const Text('Yes, Send Email',
+            style: TextStyle(fontWeight: FontWeight.bold))),
         ],
       ),
     );

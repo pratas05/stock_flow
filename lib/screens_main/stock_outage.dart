@@ -203,8 +203,7 @@ class _StockBreakFilteredPageState extends State<StockBreakFilteredPage> {
     return Scaffold(
       appBar: AppBar(
         title: Text("Stock Break Management", style: TextStyle(color: Colors.white)),
-        backgroundColor: Colors.transparent,
-        elevation: 0,
+        backgroundColor: Colors.transparent, elevation: 0,
         flexibleSpace: Container(
           decoration: BoxDecoration(
             gradient: LinearGradient(
@@ -302,9 +301,7 @@ class _StockBreakFilteredPageState extends State<StockBreakFilteredPage> {
           userStoreNumber: _storeNumber!,
         );
 
-        if (filteredProducts.isEmpty) {
-          return Center(child: Text('No products found matching your criteria.'));
-        }
+        if (filteredProducts.isEmpty) {return Center(child: Text('No products found matching the filters.'));}
 
         return ListView.builder(
           itemCount: filteredProducts.length,
