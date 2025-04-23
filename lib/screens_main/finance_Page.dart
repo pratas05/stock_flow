@@ -2,13 +2,14 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:stockflow/reusable_widgets/colors_utils.dart';
+import 'package:stockflow/reusable_widgets/custom_snackbar.dart';
 import 'package:stockflow/reusable_widgets/error_screen.dart';
 
-// [1. MODEL] 
+// [1. MODEL]
 class UserModel {
   final String id, name, email;
   final String? adminPermission;
-  final String? storeNumber; 
+  final String? storeNumber;
   final bool isStoreManager;
 
   UserModel({
@@ -16,21 +17,21 @@ class UserModel {
     required this.name,
     required this.email,
     this.adminPermission,
-    this.storeNumber, 
+    this.storeNumber,
     required this.isStoreManager,
   });
 
   factory UserModel.fromFirestore(DocumentSnapshot doc) {
     try {
       final data = doc.data();
-      
+
       if (data == null || !doc.exists) {
         return UserModel(
           id: doc.id,
           name: '',
           email: '',
           adminPermission: null,
-          storeNumber: null, 
+          storeNumber: null,
           isStoreManager: false,
         );
       }
@@ -45,7 +46,7 @@ class UserModel {
           name: '',
           email: '',
           adminPermission: null,
-          storeNumber: null, 
+          storeNumber: null,
           isStoreManager: false,
         );
       }
@@ -54,7 +55,7 @@ class UserModel {
         id: doc.id,
         name: dataMap['name']?.toString() ?? '',
         email: dataMap['userEmail']?.toString() ?? '',
-        storeNumber: dataMap['storeNumber']?.toString(), 
+        storeNumber: dataMap['storeNumber']?.toString(),
         adminPermission: dataMap['adminPermission']?.toString(),
         isStoreManager: dataMap['isStoreManager'] as bool? ?? false,
       );
@@ -64,7 +65,7 @@ class UserModel {
         id: doc.id,
         name: '',
         email: '',
-        storeNumber: null, 
+        storeNumber: null,
         adminPermission: null,
         isStoreManager: false,
       );
@@ -140,7 +141,7 @@ class FinanceAndHRViewModel {
     try {
       final user = _auth.currentUser;
       if (user == null) return null;
-      
+
       final userDoc = await _firestore.collection('users').doc(user.uid).get();
       return userDoc.data()?['storeCurrency'] as String?;
     } catch (e) {
@@ -154,9 +155,8 @@ class FinanceAndHRViewModel {
         .collection('users')
         .where('storeNumber', isEqualTo: storeNumber)
         .snapshots()
-        .map((snapshot) => snapshot.docs
-            .map((doc) => UserModel.fromFirestore(doc))
-            .toList());
+        .map((snapshot) =>
+            snapshot.docs.map((doc) => UserModel.fromFirestore(doc)).toList());
   }
 
   Future<VatModel> getVatValues(String? storeNumber) async {
@@ -164,7 +164,7 @@ class FinanceAndHRViewModel {
       if (storeNumber == null || storeNumber.isEmpty) {
         return VatModel(vat1: '0', vat2: '0', vat3: '0', vat4: '0');
       }
-      
+
       final doc = await _firestore.collection('iva').doc(storeNumber).get();
       return VatModel.fromMap(doc.data() ?? {});
     } catch (e) {
@@ -177,17 +177,20 @@ class FinanceAndHRViewModel {
     try {
       await _firestore.collection('iva').doc(storeNumber).set(vat.toMap());
     } catch (e) {
-      debugPrint("Error updating VAT values: $e"); rethrow;
+      debugPrint("Error updating VAT values: $e");
+      rethrow;
     }
   }
 
-  Future<void> toggleAdminPermission(String userId, bool currentPermission, String adminStoreNumber) async {
+  Future<void> toggleAdminPermission(
+      String userId, bool currentPermission, String adminStoreNumber) async {
     try {
       await _firestore.collection('users').doc(userId).update({
         'adminPermission': currentPermission ? "" : adminStoreNumber,
       });
     } catch (e) {
-      debugPrint("Error updating admin permission: $e"); rethrow;
+      debugPrint("Error updating admin permission: $e");
+      rethrow;
     }
   }
 
@@ -200,7 +203,8 @@ class FinanceAndHRViewModel {
         });
       }
     } catch (e) {
-      debugPrint("Error updating store currency: $e"); rethrow;
+      debugPrint("Error updating store currency: $e");
+      rethrow;
     }
   }
 }
@@ -215,7 +219,8 @@ class FinanceAndHumanResourcesPage extends StatefulWidget {
 }
 
 class _FinanceAndHumanResourcesPageState
-    extends State<FinanceAndHumanResourcesPage> with SingleTickerProviderStateMixin {
+    extends State<FinanceAndHumanResourcesPage>
+    with SingleTickerProviderStateMixin {
   late final FinanceAndHRViewModel _viewModel;
   late TabController _tabController;
   String? _storeNumber;
@@ -250,8 +255,7 @@ class _FinanceAndHumanResourcesPageState
           _storeNumber = user.storeNumber;
           _isStoreManager = user.isStoreManager;
         });
-        
-        // Carrega os valores de VAT apenas se tiver storeNumber
+
         if (_storeNumber != null && _storeNumber!.isNotEmpty) {
           final vatValues = await _viewModel.getVatValues(_storeNumber);
           setState(() => _initialVatValues = vatValues);
@@ -259,7 +263,9 @@ class _FinanceAndHumanResourcesPageState
       }
     } catch (e) {
       debugPrint("Error loading user data: $e");
-    } finally {setState(() => _isLoading = false);}
+    } finally {
+      setState(() => _isLoading = false);
+    }
   }
 
   @override
@@ -274,7 +280,8 @@ class _FinanceAndHumanResourcesPageState
                 hexStringToColor("9546C4"),
                 hexStringToColor("5E61F4"),
               ],
-              begin: Alignment.topCenter, end: Alignment.bottomCenter,
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
             ),
           ),
           child: const Center(child: CircularProgressIndicator()),
@@ -286,7 +293,8 @@ class _FinanceAndHumanResourcesPageState
       return ErrorScreen(
         icon: Icons.warning_amber_rounded,
         title: "Store Access Required",
-        message: "Your account is not associated with any store. Please contact admin.",
+        message:
+            "Your account is not associated with any store. Please contact admin.",
       );
     }
 
@@ -299,6 +307,37 @@ class _FinanceAndHumanResourcesPageState
     }
 
     return Scaffold(
+      appBar: AppBar(
+        title: const Text(
+          'Finance & Human Resources',
+          style: TextStyle(color: Colors.white),
+        ),
+        centerTitle: true,
+        flexibleSpace: Container(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              colors: [
+                hexStringToColor("CB2B93"),
+                hexStringToColor("9546C4"),
+                hexStringToColor("5E61F4"),
+              ],
+              begin: Alignment.centerLeft, end: Alignment.centerRight,
+            ),
+          ),
+        ),
+        bottom: TabBar(
+          controller: _tabController,
+          indicatorColor: Colors.white,
+          labelColor: Colors.white, // cor do texto selecionado
+          unselectedLabelColor:
+              Colors.white70, // cor do texto não selecionado (mais suave)
+          labelStyle: const TextStyle(fontWeight: FontWeight.bold),
+          tabs: const [
+            Tab(text: 'Human Resources'),
+            Tab(text: 'Finance'),
+          ],
+        ),
+      ),
       body: Container(
         width: MediaQuery.of(context).size.width,
         height: MediaQuery.of(context).size.height,
@@ -312,24 +351,11 @@ class _FinanceAndHumanResourcesPageState
             begin: Alignment.topCenter, end: Alignment.bottomCenter,
           ),
         ),
-        child: Column(
+        child: TabBarView(
+          controller: _tabController,
           children: [
-            TabBar(
-              controller: _tabController,
-              tabs: const [
-                Tab(child: Text('Human Resources', style: TextStyle(color: Colors.white))),
-                Tab(child: Text('Finance', style: TextStyle(color: Colors.white))),
-              ],
-            ),
-            Expanded(
-              child: TabBarView(
-                controller: _tabController,
-                children: [
-                  _buildHRTab(_storeNumber!, FirebaseAuth.instance.currentUser?.uid),
-                  _buildFinanceTab(_storeNumber!),
-                ],
-              ),
-            ),
+            _buildHRTab(_storeNumber!, FirebaseAuth.instance.currentUser?.uid),
+            _buildFinanceTab(_storeNumber!),
           ],
         ),
       ),
@@ -346,42 +372,53 @@ class _FinanceAndHumanResourcesPageState
 
         if (snapshot.hasError) {
           return const Center(
-            child: Text('Error loading users.', style: TextStyle(fontSize: 18, color: Colors.black)),
-          );
+              child: Text('Error loading users.',
+                  style: TextStyle(fontSize: 18, color: Colors.white)));
         }
 
-        final users = snapshot.data?.where((user) => user.id != currentUserId).toList() ?? [];
+        final users =
+            snapshot.data?.where((user) => user.id != currentUserId).toList() ??
+                [];
 
         if (users.isEmpty) {
           return const Center(
-            child: Text('No users found for this store.', style: TextStyle(fontSize: 18, color: Colors.black)),
+            child: Text('No users found for this store.',
+                style: TextStyle(fontSize: 18, color: Colors.white)),
           );
         }
 
         return ListView.builder(
+          padding: const EdgeInsets.all(16.0),
           itemCount: users.length,
           itemBuilder: (context, index) {
             final user = users[index];
-            final hasAdminPermission = user.adminPermission?.isNotEmpty ?? false;
+            final hasAdminPermission =
+                user.adminPermission?.isNotEmpty ?? false;
 
             return Card(
-              margin: const EdgeInsets.symmetric(vertical: 8.0, horizontal: 16.0),
+              margin: const EdgeInsets.only(bottom: 16.0),
               elevation: 5,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12.0),
+              ),
               child: ListTile(
-                title: Text(user.name),
+                contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 16.0, vertical: 12.0),
+                title: Text(user.name,
+                    style: const TextStyle(fontWeight: FontWeight.bold)),
                 subtitle: Text(user.email),
-                trailing: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Icon(Icons.account_circle, color: Colors.purple),
-                    IconButton(
-                      icon: Icon(
-                        hasAdminPermission ? Icons.remove_circle_outline : Icons.admin_panel_settings,
-                        color: hasAdminPermission ? Colors.red : Colors.blue,
-                      ),
-                      onPressed: () => _toggleAdminPermission(user.id, hasAdminPermission, storeNumber),
-                    ),
-                  ],
+                leading:
+                    const Icon(Icons.person, size: 32, color: Colors.purple),
+                trailing: IconButton(
+                  icon: Icon(
+                    hasAdminPermission
+                        ? Icons.admin_panel_settings
+                        : Icons.person_outline,
+                    color: hasAdminPermission ? Colors.blue : Colors.grey,
+                    size: 32,
+                  ),
+                  onPressed: () => _toggleAdminPermission(
+                      user.id, hasAdminPermission, storeNumber),
                 ),
               ),
             );
@@ -406,11 +443,13 @@ class _FinanceAndHumanResourcesPageState
 
           if (snapshot.hasError) {
             return const Center(
-              child: Text('Error to load financial data', style: TextStyle(fontSize: 18, color: Colors.black)),
+              child: Text('Error to load financial data',
+                  style: TextStyle(fontSize: 18, color: Colors.white)),
             );
           }
 
-          final vat = snapshot.data?.$1 ?? VatModel(vat1: '0', vat2: '0', vat3: '0', vat4: '0');
+          final vat = snapshot.data?.$1 ??
+              VatModel(vat1: '0', vat2: '0', vat3: '0', vat4: '0');
           final currentCurrency = snapshot.data?.$2;
           _initialVatValues = vat;
           _selectedCurrency = currentCurrency;
@@ -422,121 +461,173 @@ class _FinanceAndHumanResourcesPageState
             'VAT4': TextEditingController(text: vat.vat4),
           };
 
-          return Column(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(16.0),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Column(
-                  children: [
-                    for (var entry in controllers.entries)
-                      Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 4.0),
-                        child: TextField(
-                          controller: entry.value,
-                          decoration: InputDecoration(
-                            labelText: entry.key,
-                            border: const OutlineInputBorder(),
+          return SingleChildScrollView(
+            child: Column(
+              children: [
+                // VAT Section
+                Card(
+                  elevation: 8,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12.0),
+                  ),
+                  child: Padding(
+                    padding: const EdgeInsets.all(16.0),
+                    child: Column(
+                      children: [
+                        const Text(
+                          'VAT Configuration',
+                          style: TextStyle(
+                              fontSize: 18, fontWeight: FontWeight.bold),
+                        ),
+                        const SizedBox(height: 16),
+                        for (var entry in controllers.entries)
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 12.0),
+                            child: TextField(
+                              controller: entry.value,
+                              decoration: InputDecoration(
+                                labelText: entry.key,
+                                border: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(8.0),
+                                ),
+                                filled: true,
+                                fillColor: Colors.grey[100],
+                              ),
+                              keyboardType: TextInputType.number,
+                            ),
                           ),
-                          keyboardType: TextInputType.number,
+                        ElevatedButton(
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor:
+                                const Color.fromARGB(255, 179, 67, 199),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(8.0),
+                            ),
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 32, vertical: 12),
+                          ),
+                          onPressed: () =>
+                              _updateVatValues(storeNumber, controllers),
+                          child: const Text('Save',
+                              style: TextStyle(
+                                  color: Color.fromARGB(255, 255, 255, 255))),
                         ),
-                      ),
-                    ElevatedButton(
-                      onPressed: () => _updateVatValues(storeNumber, controllers),
-                      child: const Text('Save VAT'),
+                      ],
                     ),
-                  ],
+                  ),
                 ),
-              ),
-              
-              const SizedBox(height: 20),
-              
-              Container(
-                padding: const EdgeInsets.all(16.0),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    if (currentCurrency != null)
-                      Padding(
-                        padding: const EdgeInsets.only(bottom: 8.0),
-                        child: Row(
-                          children: [
-                            const Text('Current Currency: ', style: TextStyle(fontWeight: FontWeight.bold)),
-                            Text(currentCurrency, style: const TextStyle(fontSize: 16)),
-                          ],
+
+                const SizedBox(height: 24),
+
+                // Currency Section
+                Card(
+                  elevation: 8,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12.0),
+                  ),
+                  child: Padding(
+                    padding: const EdgeInsets.all(16.0),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'Store Currency',
+                          style: TextStyle(
+                              fontSize: 18, fontWeight: FontWeight.bold),
                         ),
-                      ),
-                    
-                    DropdownButtonFormField<String>(
-                      value: _selectedCurrency,
-                      decoration: const InputDecoration(
-                        labelText: 'Change Store Currency',
-                        border: OutlineInputBorder(),
-                        filled: true,
-                        fillColor: Color.fromARGB(255, 255, 255, 255),
-                      ),
-                      items: _currencyMap.entries.map((entry) {
-                        return DropdownMenuItem<String>(
-                          value: entry.value,
-                          child: Text(entry.key),
-                        );
-                      }).toList(),
-                      onChanged: (value) async {
-                        setState(() {
-                          _selectedCurrency = value;
-                        });
-                        if (value != null) {
-                          try {
-                            await _viewModel.updateStoreCurrency(value);
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(content: Text('Currency saved: $value')),
+                        const SizedBox(height: 8),
+                        if (currentCurrency != null)
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 12.0),
+                            child: RichText(
+                              text: TextSpan(
+                                style: const TextStyle(
+                                    fontSize: 16, color: Colors.black87),
+                                children: [
+                                  const TextSpan(
+                                      text: 'Current Currency: ',
+                                      style: TextStyle(
+                                          fontWeight: FontWeight.bold)),
+                                  TextSpan(text: currentCurrency),
+                                ],
+                              ),
+                            ),
+                          ),
+                        DropdownButtonFormField<String>(
+                          value: _selectedCurrency,
+                          decoration: InputDecoration(
+                            labelText: 'Select New Currency',
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(8.0),
+                            ),
+                            filled: true,
+                            fillColor: Colors.grey[100],
+                          ),
+                          items: _currencyMap.entries.map((entry) {
+                            return DropdownMenuItem<String>(
+                              value: entry.value,
+                              child: Text(entry.key),
                             );
-                          } catch (_) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(content: Text('Error saving currency.')),
-                            );
-                          }
-                        }
-                      },
+                          }).toList(),
+                          onChanged: (value) async {
+                            setState(() {
+                              _selectedCurrency = value;
+                            });
+                            if (value != null) {
+                              try {
+                                await _viewModel.updateStoreCurrency(value);
+                                CustomSnackbar.show(
+                                  context: context,
+                                  message: 'Currency saved: $value',
+                                );
+                              } catch (_) {
+                                CustomSnackbar.show(
+                                  context: context,
+                                  message: 'Error saving currency.',
+                                );
+                              }
+                            }
+                          },
+                        ),
+                      ],
                     ),
-                  ],
+                  ),
                 ),
-              ),
-              
-              const SizedBox(height: 20),
-              Expanded(child: Container(width: double.infinity, height: MediaQuery.of(context).size.height / 2)),
-            ],
+              ],
+            ),
           );
         },
       ),
     );
   }
 
-  Future<void> _toggleAdminPermission(String userId, bool currentPermission, String storeNumber) async {
+  Future<void> _toggleAdminPermission(
+      String userId, bool currentPermission, String storeNumber) async {
     try {
-      await _viewModel.toggleAdminPermission(userId, currentPermission, storeNumber);
+      await _viewModel.toggleAdminPermission(
+          userId, currentPermission, storeNumber);
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(currentPermission
               ? 'Admin permission removed!'
               : 'Admin permission granted!'),
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(8.0),
+          ),
         ),
       );
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Error updating admin permissions.')),
+      CustomSnackbar.show(
+        context: context,
+        message: 'Error updating admin permission.',
       );
+      debugPrint("Error updating admin permission: $e");
     }
   }
 
-  Future<void> _updateVatValues(String storeNumber, Map<String, TextEditingController> controllers) async {
+  Future<void> _updateVatValues(String storeNumber,
+      Map<String, TextEditingController> controllers) async {
     try {
       final newVat = VatModel(
         vat1: controllers['VAT1']!.text,
@@ -560,23 +651,31 @@ class _FinanceAndHumanResourcesPageState
       }
 
       if (changedFields.isEmpty) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('No changes detected to save.')),
-        ); return;
+        CustomSnackbar.show(
+          context: context,
+          message: 'No changes detected in VAT values.',
+        );
+        return;
       }
 
       await _viewModel.updateVatValues(storeNumber, newVat);
-      setState(() {_initialVatValues = newVat;});
+      setState(() {
+        _initialVatValues = newVat;
+      });
 
-      final messageBuffer = StringBuffer("Some VAT codes were updated:\n");
+      final messageBuffer = StringBuffer("VAT codes updated:\n");
       changedFields.forEach((key, value) {
-        messageBuffer.write('$key: $value;  ');
+        messageBuffer.write('$key: $value   ');
       });
 
       final userId = FirebaseAuth.instance.currentUser?.uid ?? '';
-      final notificationId = FirebaseFirestore.instance.collection('notifications').doc().id;
+      final notificationId =
+          FirebaseFirestore.instance.collection('notifications').doc().id;
 
-      await FirebaseFirestore.instance.collection('notifications').doc(notificationId).set({
+      await FirebaseFirestore.instance
+          .collection('notifications')
+          .doc(notificationId)
+          .set({
         'message': messageBuffer.toString(),
         'notificationId': notificationId,
         'notificationType': 'Update',
@@ -585,9 +684,15 @@ class _FinanceAndHumanResourcesPageState
         'userId': userId,
       });
 
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('VAT values updated!')));
+      CustomSnackbar.show(
+        context: context,
+        message: 'VAT values updated successfully.', backgroundColor: Colors.green
+      );
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Error to update VAT values.')));
+      CustomSnackbar.show(
+        context: context,
+        message: 'Error updating VAT values.', backgroundColor: Colors.red
+      );
     }
   }
 }

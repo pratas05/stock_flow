@@ -154,12 +154,12 @@ class ProductsStockPage extends StatelessWidget {
               FeatureSection(
                 title: '4. Product List',
                 description: 'The filtered products will appear below the filters. Each product will show: '
-                    'Name of the product, Brand of the product, Sale Price, and Current Stock available. Scroll through the list to find the product you\'re looking for.',
+                    'Name of the product, Brand of the product, Base Price, and Current Stock available. Scroll through the list to find the product you\'re looking for.',
               ),
               FeatureSection(
                 title: '5. Product Details',
                 description: 'If you\'re interested in a specific product, simply tap on it to view more detailed information. '
-                    'A pop-up will show: Brand, Model, Category, Description of the product, Sale Price, and how much stock is available.',
+                    'A pop-up will show: Brand, Model, Category, Description of the product, Base Price, and how much stock is available.',
               ),
               SizedBox(height: 20),
 

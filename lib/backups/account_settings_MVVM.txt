@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:stockflow/reusable_widgets/account_settings_style.dart';
 import 'package:stockflow/reusable_widgets/colors_utils.dart';
 import 'package:intl/intl.dart';
+import 'package:stockflow/reusable_widgets/custom_snackbar.dart';
 import 'package:stockflow/reusable_widgets/privacy_policy.dart';
 
 // (1. MODEL)
@@ -329,10 +330,9 @@ class _AccountSettingsState extends State<AccountSettings> {
   }
 
   void _showNoPermissionSnackBar() {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('You do not have permission to access this feature.'),
-        duration: Duration(seconds: 2)),
+    CustomSnackbar.show(
+      context: context,
+      message: "You don't have permission to view activities.",
     );
   }
 
@@ -362,7 +362,7 @@ class _AccountSettingsState extends State<AccountSettings> {
   }
 
   void _showSetupSnackBar(BuildContext context) {
-    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Please complete your setup first")));
+    CustomSnackbar.show(context: context, message: "Please complete your setup first.", backgroundColor: Colors.red);
   }
 
   Future<void> _showSetupDialog(BuildContext context) async {
@@ -474,8 +474,10 @@ class _AccountSettingsState extends State<AccountSettings> {
                     final storeCountry = storeCountryController.text.trim();
 
                     if (storeNumber.isEmpty || nickname.isEmpty) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text("Please fill in the required fields."))); return;
+                    CustomSnackbar.show(
+                      context: context,
+                      message: "Store number and name cannot be empty.",
+                    ); return;
                     }
 
                     if (isStoreManager &&
@@ -486,10 +488,11 @@ class _AccountSettingsState extends State<AccountSettings> {
                             storePostalCode.isEmpty ||
                             storeCity.isEmpty ||
                             storeCountry.isEmpty)) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text("Fill in all store details.")),
-                      ); return;
-                    }
+                            CustomSnackbar.show(
+                              context: context,
+                              message: "Fill in all store details",
+                            ); return;
+                          } 
 
                     try {
                       await _viewModel.saveUserSetup(
@@ -505,8 +508,9 @@ class _AccountSettingsState extends State<AccountSettings> {
                         isStoreManager: isStoreManager,
                       );
 
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text("Registration completed successfully!")),
+                      CustomSnackbar.show(
+                        context: context,
+                        message: "Setup completed successfully",
                       );
 
                       Navigator.pop(context);
@@ -517,8 +521,9 @@ class _AccountSettingsState extends State<AccountSettings> {
                         _isStoreManager = isStoreManager;
                       });
                     } catch (e) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(content: Text("Error: ${e.toString()}")),
+                      CustomSnackbar.show(
+                        context: context,
+                        message: "Error: ${e.toString()}",
                       );
                     }
                   },
@@ -594,8 +599,9 @@ class _AccountSettingsState extends State<AccountSettings> {
                                 _storeNumber = newStoreNumber;
                               });
                               Navigator.of(context).pop();
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(content: Text("Store number updated successfully")),
+                              CustomSnackbar.show(
+                                context: context,
+                                message: "Store number updated successfully",
                               );
                             } catch (e) {
                               setState(() => errorMessage = "Error: ${e.toString()}");
@@ -620,8 +626,9 @@ class _AccountSettingsState extends State<AccountSettings> {
     if (user == null) return;
 
     if (_storeNumber == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Please complete your setup first")),
+      CustomSnackbar.show(
+        context: context,
+        message: "Please complete your setup first.",
       );
       _showSetupDialog(context); return;
     }
@@ -728,7 +735,10 @@ class _AccountSettingsState extends State<AccountSettings> {
           ),
         );
       } catch (e) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Error sending email: ${e.toString()}")));
+        CustomSnackbar.show(
+          context: context,
+          message: "Failed to send password reset email: ${e.toString()}",
+        );
       }
     }
   }

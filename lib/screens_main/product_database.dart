@@ -1,16 +1,19 @@
+import 'dart:async';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/services.dart';
 import 'package:stockflow/reusable_widgets/colors_utils.dart';
+import 'package:stockflow/reusable_widgets/custom_snackbar.dart';
 import 'package:stockflow/reusable_widgets/error_screen.dart';
+import 'package:stockflow/reusable_widgets/vat_manager.dart';
 
 // [1. MODEL]
 class ProductModel {
   final String? id;
   final String name, description, category, subCategory, brand, model, vatCode, storeNumber, productLocation;
   final int stockMax, stockCurrent, stockOrder, stockMin, wareHouseStock, stockBreak;
-  final double lastPurchasePrice, salePrice;
+  final double lastPurchasePrice, basePrice, vatPrice;
   final Timestamp createdAt;
 
   ProductModel({
@@ -28,8 +31,9 @@ class ProductModel {
     required this.wareHouseStock,
     required this.stockBreak,
     required this.lastPurchasePrice,
-    required this.salePrice,
+    required this.basePrice,
     required this.vatCode,
+    required this.vatPrice,
     required this.storeNumber,
     required this.productLocation,
     required this.createdAt,
@@ -52,8 +56,9 @@ class ProductModel {
       wareHouseStock: data['wareHouseStock'] ?? 0,
       stockBreak: data['stockBreak'] ?? 0,
       lastPurchasePrice: data['lastPurchasePrice']?.toDouble() ?? 0.0,
-      salePrice: data['salePrice']?.toDouble() ?? 0.0,
+      basePrice: data['basePrice']?.toDouble() ?? 0.0,
       vatCode: data['vatCode'] ?? '',
+      vatPrice: data['vatPrice']?.toDouble() ?? 0.0,
       storeNumber: data['storeNumber'] ?? '',
       productLocation: data['productLocation'] ?? 'Not Located',
       createdAt: data['createdAt'] ?? Timestamp.now(),
@@ -75,8 +80,9 @@ class ProductModel {
       'wareHouseStock': wareHouseStock,
       'stockBreak': stockBreak,
       'lastPurchasePrice': lastPurchasePrice,
-      'salePrice': salePrice,
+      'basePrice': basePrice,
       'vatCode': vatCode,
+      'vatPrice': vatPrice,
       'storeNumber': storeNumber,
       'productLocation': productLocation,
       'createdAt': createdAt,
@@ -104,8 +110,75 @@ class ProductViewModel {
     }
   }
 
+  Future<double> _getVatRate(String vatCode, String storeNumber) async {
+    try {
+      final doc = await _firestore
+          .collection('iva')
+          .doc(storeNumber)
+          .get();
+
+      if (!doc.exists) return 0.0;
+
+      final data = doc.data() ?? {};
+      final rateKeys = [
+        'VAT$vatCode', 'vat$vatCode', 'IVA$vatCode'
+      ];
+
+      for (final key in rateKeys) {
+        if (data.containsKey(key)) {
+          final rateValue = data[key];
+          final double rate = rateValue is int ? rateValue.toDouble() :
+                          rateValue is double ? rateValue :
+                          rateValue is String ? double.tryParse(rateValue) ?? 0.0 :
+                          0.0;
+          return rate / 100;
+        }
+      }
+      return 0.0;
+    } catch (e) {
+      print('Error getting VAT rate: $e');
+      return 0.0;
+    }
+  }
+
+  Future<void> updateProductsVatPrices(String storeNumber, String vatCode, double newRate) async {
+  try {
+    // Busca todos os produtos com este VAT code
+    final products = await _firestore
+        .collection('products')
+        .where('storeNumber', isEqualTo: storeNumber)
+        .where('vatCode', isEqualTo: vatCode)
+        .get();
+
+    // Atualiza cada produto
+    for (final productDoc in products.docs) {
+      final productData = productDoc.data();
+      final basePrice = productData['basePrice']?.toDouble() ?? 0.0;
+      final newVatPrice = basePrice * (1 + newRate);
+
+      await productDoc.reference.update({
+        'vatPrice': newVatPrice,
+      });
+    }
+  } catch (e) {
+    print('Error updating products VAT prices: $e');
+    throw e;
+  }
+}
+
   Future<void> updateProduct(String productId, ProductModel product) async {
-    await _firestore.collection('products').doc(productId).update(product.toMap());
+    try {
+      final storeNumber = await getUserStoreNumber();
+      final vatRate = await _getVatRate(product.vatCode, storeNumber);
+      
+      final updatedProduct = product.toMap();
+      updatedProduct['vatPrice'] = product.basePrice * (1 + vatRate);
+      
+      await _firestore.collection('products').doc(productId).update(updatedProduct);
+    } catch (e) {
+      print("Error updating product: $e");
+      throw e;
+    }
   }
 
   Future<void> deleteProduct(String productId) async {
@@ -158,6 +231,7 @@ class ProductDatabasePage extends StatefulWidget {
 class _ProductDatabasePageState extends State<ProductDatabasePage> with TickerProviderStateMixin {
   late TabController _tabController;
   final ProductViewModel _viewModel = ProductViewModel();
+  final VatMonitorService _vatMonitor = VatMonitorService();
 
   // Controllers for product registration
   final _nameController = TextEditingController();
@@ -173,7 +247,7 @@ class _ProductDatabasePageState extends State<ProductDatabasePage> with TickerPr
   final _stockMinController = TextEditingController();
   final _stockBreakController = TextEditingController(text: "0");
   final _lastPurchasePriceController = TextEditingController();
-  final _salePriceController = TextEditingController(); 
+  final _basePriceController = TextEditingController(); 
   final _vatCodeController = TextEditingController();
   final _productLocationController = TextEditingController();
 
@@ -207,6 +281,11 @@ class _ProductDatabasePageState extends State<ProductDatabasePage> with TickerPr
         _storeNumber = storeNumber;
         _isStoreManager = userDoc.data()?['isStoreManager'] ?? false;
       });
+      
+      // Inicia o monitoramento do VAT após obter o storeNumber
+      if (_storeNumber != null && _storeNumber!.isNotEmpty) {
+        _vatMonitor.startMonitoring(_storeNumber!);
+      }
     } catch (e) {
       debugPrint("Error loading user data: $e");
     } finally {setState(() => _isLoading = false);}
@@ -214,12 +293,14 @@ class _ProductDatabasePageState extends State<ProductDatabasePage> with TickerPr
 
   @override
   void dispose() {
+    _vatMonitor.stopMonitoring();
     _tabController.dispose();
     _searchController.dispose();
     super.dispose();
   }
 
-  Future<void> _saveProduct() async {  // Validate all required fields
+  Future<void> _saveProduct() async {
+    // Validate all required fields
     final requiredFields = {
       "Product Name": _nameController.text,
       "Description": _descriptionController.text,
@@ -239,47 +320,100 @@ class _ProductDatabasePageState extends State<ProductDatabasePage> with TickerPr
         .toList();
 
     if (emptyFields.isNotEmpty) {
-      _showSnackBar("Please fill all required fields: ${emptyFields.join(', ')}"); return;
+      _showSnackBar("Please fill all required fields: ${emptyFields.join(', ')}");
+      return;
     }
 
+    // Validate VAT Code
     final vatCode = _vatCodeController.text;
+    if (!['1', '2', '3', '4'].contains(vatCode)) {
+      _showSnackBar("VAT Code must be 1, 2, 3 or 4");
+      return;
+    }
 
-    int stockMax = int.tryParse(_stockMaxController.text) ?? 0; // Will be 0 if empty
-    int stockMin = int.tryParse(_stockMinController.text) ?? 0; // Will be 0 if empty
-    int stockOrder = int.tryParse(_stockOrderController.text) ?? 0; // Will be 0 if empty
+    // Parse numeric values
+    final stockMax = int.tryParse(_stockMaxController.text) ?? 0;
+    final stockMin = int.tryParse(_stockMinController.text) ?? 0;
+    final stockOrder = int.tryParse(_stockOrderController.text) ?? 0;
+    final wareHouseStock = _wareHouseStockController.text.isEmpty
+        ? 0
+        : int.tryParse(_wareHouseStockController.text) ?? 0;
+    final lastPurchasePrice = double.tryParse(_lastPurchasePriceController.text) ?? 0.0;
+    final basePrice = double.tryParse(_basePriceController.text) ?? 0.0;
 
-    if (stockMin >= stockMax) return _showSnackBar("Stock Min must be less than Stock Max");
-    if (stockOrder > stockMax) return _showSnackBar("You cannot order more stock than your warehouse is capable of");
+    // Validate stock values
+    if (stockMin >= stockMax) {
+      _showSnackBar("Stock Min must be less than Stock Max");
+      return;
+    }
+    if (stockOrder > stockMax) {
+      _showSnackBar("You cannot order more stock than your warehouse capacity");
+      return;
+    }
+    if (wareHouseStock > stockMax) {
+      _showSnackBar("Warehouse Stock cannot exceed Max Stock");
+      return;
+    }
+    if (lastPurchasePrice > basePrice) {
+      _showSnackBar("Last Purchase Price cannot exceed Base Price");
+      return;
+    }
+    if (basePrice <= 0) {
+      _showSnackBar("Base Price must be greater than 0");
+      return;
+    }
 
     try {
       final storeNumber = await _viewModel.getUserStoreNumber();
       final user = FirebaseAuth.instance.currentUser;
-      if (user == null) return _showSnackBar("No user is logged in.");
+      if (user == null) {
+        _showSnackBar("No user is logged in.");
+        return;
+      }
+
+      // Get VAT rate with proper error handling
+      double vatRate;
+      try {
+        vatRate = await _viewModel._getVatRate(vatCode, storeNumber);
+        // print('Retrieved VAT rate: ${vatRate * 100}%'); // Mostra em percentagem
+      } catch (e) {
+        print('Error getting VAT rate: $e');
+        _showSnackBar("Error calculating VAT. Using default rate 0%");
+        vatRate = 0.0;
+      }
+
+      // Calculate VAT price with rounding to 2 decimal places
+      final double vatPrice = double.parse((basePrice * (1 + vatRate)).toStringAsFixed(2));
+      // print('Calculated prices - Base: $basePrice, With VAT: $vatPrice');
 
       final product = ProductModel(
-        name: _nameController.text,
-        description: _descriptionController.text,
-        category: _categoryController.text,
-        subCategory: _subCategoryController.text,
-        brand: _brandController.text,
-        model: _modelController.text,
+        name: _nameController.text.trim(),
+        description: _descriptionController.text.trim(),
+        category: _categoryController.text.trim(),
+        subCategory: _subCategoryController.text.trim(),
+        brand: _brandController.text.trim(),
+        model: _modelController.text.trim(),
         stockMax: stockMax,
         stockCurrent: int.tryParse(_stockCurrentController.text) ?? 0,
         stockOrder: stockOrder,
         stockMin: stockMin,
-        wareHouseStock: _wareHouseStockController.text.isEmpty ? 0 
-          : int.tryParse(_wareHouseStockController.text) ?? 0,
+        wareHouseStock: wareHouseStock,
         stockBreak: 0,
-        lastPurchasePrice: double.tryParse(_lastPurchasePriceController.text) ?? 0.0,
-        salePrice: double.tryParse(_salePriceController.text) ?? 0.0,
+        lastPurchasePrice: lastPurchasePrice,
+        basePrice: basePrice,
+        vatPrice: vatPrice, // Já arredondado para 2 casas decimais
         vatCode: vatCode,
         storeNumber: storeNumber,
-        productLocation: _productLocationController.text.isNotEmpty ? _productLocationController.text 
+        productLocation: _productLocationController.text.trim().isNotEmpty
+            ? _productLocationController.text.trim()
             : 'Not Located',
         createdAt: Timestamp.now(),
       );
 
+      // Save product
       final DocumentReference productRef = await _viewModel.saveProduct(product);
+      
+      // Create notification with formatted prices
       await _viewModel.createNotification(
         message: "A new product was created: ${_brandController.text} - ${_nameController.text} - ${_modelController.text}.",
         notificationType: "Create",
@@ -288,14 +422,18 @@ class _ProductDatabasePageState extends State<ProductDatabasePage> with TickerPr
         userId: user.uid,
       );
 
-      _showSnackBar("Product saved successfully!"); _clearFields();
-    } catch (e) {print("$e");
-      _showSnackBar("Error saving product.");
+      _showSnackBar("Product saved successfully!");
+      _clearFields();
+    } catch (e) {
+      print("Error in _saveProduct: ${e.toString()}");
+      _showSnackBar("Error saving product: ${e.toString()}");
     }
   }
 
   void _showSnackBar(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+    CustomSnackbar.show(
+      context: context, message: message,
+    );
   }
 
   void _clearFields() {
@@ -311,7 +449,7 @@ class _ProductDatabasePageState extends State<ProductDatabasePage> with TickerPr
     _lastPurchasePriceController.clear();
     _vatCodeController.clear();
     _productLocationController.clear();
-    _salePriceController.clear();
+    _basePriceController.clear();
   }
 
   @override
@@ -427,7 +565,7 @@ class _ProductDatabasePageState extends State<ProductDatabasePage> with TickerPr
       _buildTextField(_stockBreakController, "Stock Break", isNumber: true, readOnly: true),
       _buildTextField(_stockOrderController, "Order Stock (Default = 0)", isNumber: true),
       _buildTextField(_lastPurchasePriceController, "Last Purchase Price", isNumber: true),
-      _buildTextField(_salePriceController, "Sale Price", isNumber: true,),
+      _buildTextField(_basePriceController, "Base Price", isNumber: true,),
       _buildTextField(_vatCodeController, "VAT Code (1, 2, 3, or 4)", isNumber: true, maxLength: 1),
       _buildTextField(_productLocationController, "Product Location (default: Not Located)"),
     ];
@@ -481,7 +619,7 @@ class _ProductDatabasePageState extends State<ProductDatabasePage> with TickerPr
       "Last Purchase Price": '[0-9]',
       "VAT Code (1, 2, 3, or 4)": r'[1-4]', 
       "Product Location": '[ -_a-zA-Z0-9]',
-      "Sale Price": r'[0-9]',
+      "Base Price": r'[0-9]',
     };
     return filters.containsKey(label)
         ? [FilteringTextInputFormatter.allow(RegExp(filters[label]!))]
@@ -592,7 +730,7 @@ class _ProductDatabasePageState extends State<ProductDatabasePage> with TickerPr
                     Icon(Icons.euro_symbol, size: 14, color: Colors.green),
                     const SizedBox(width: 4),
                     Text(
-                      '${product['salePrice']}',
+                      '${product['vatPrice'].toStringAsFixed(2)}',
                       style: TextStyle(fontSize: 14, color: Colors.green, fontWeight: FontWeight.bold),
                     ),
                   ],
@@ -622,12 +760,16 @@ class _ProductDatabasePageState extends State<ProductDatabasePage> with TickerPr
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        if (_isStoreManager) // Só mostra o icon se for Admin
+        if (_isStoreManager)
           IconButton(
-            icon: Icon(Icons.delete),
+            icon: Icon(Icons.delete, color: Colors.red),
             onPressed: () async {
-              if (await _showDeleteConfirmationDialog(context)) { 
-                await _viewModel.deleteProduct(product.id);
+              final productName = product['name'] ?? 'this product';
+              if (await _showDeleteConfirmationDialog(context, productName)) {
+                if (await _showSecondConfirmationDialog(context, productName)) {
+                  await _viewModel.deleteProduct(product.id);
+                  _showSnackBar("'$productName' was permanently deleted");
+                }
               }
             },
           ),
@@ -652,7 +794,7 @@ class _ProductDatabasePageState extends State<ProductDatabasePage> with TickerPr
     final stockOrderController = TextEditingController(text: productModel.stockOrder.toString());
     final wareHouseStockController = TextEditingController(text: productModel.wareHouseStock.toString());
     final lastPurchasePriceController = TextEditingController(text: productModel.lastPurchasePrice.toString());
-    final salePriceController = TextEditingController(text: productModel.salePrice.toString());
+    final basePriceController = TextEditingController(text: productModel.basePrice.toString());
     final vatCodeController = TextEditingController(text: productModel.vatCode);
     final productLocationController = TextEditingController(text: productModel.productLocation);
 
@@ -751,9 +893,9 @@ class _ProductDatabasePageState extends State<ProductDatabasePage> with TickerPr
                                           'old': productModel.lastPurchasePrice.toString(), 'new': lastPurchasePriceController.text
                                         };
                                       }
-                                      if (double.tryParse(salePriceController.text) != productModel.salePrice) {
-                                        changedFields['Sale Price'] = {
-                                          'old': productModel.salePrice.toString(), 'new': salePriceController.text
+                                      if (double.tryParse(basePriceController.text) != productModel.basePrice) {
+                                        changedFields['Base Price'] = {
+                                          'old': productModel.basePrice.toString(), 'new': basePriceController.text
                                         };
                                       }
                                       if (vatCodeController.text != productModel.vatCode) {
@@ -768,9 +910,7 @@ class _ProductDatabasePageState extends State<ProductDatabasePage> with TickerPr
                                       }
 
                                       if (changedFields.isEmpty) {
-                                        ScaffoldMessenger.of(context).showSnackBar(
-                                          SnackBar(content: Text("No changes were made to the product")),
-                                        ); return;
+                                        CustomSnackbar.show(context: context, message: 'No changes were made to the product'); return;
                                       }
                                       // Validate all required fields
                                       if (nameController.text.isEmpty ||
@@ -783,9 +923,7 @@ class _ProductDatabasePageState extends State<ProductDatabasePage> with TickerPr
                                           stockMinController.text.isEmpty ||
                                           lastPurchasePriceController.text.isEmpty ||
                                           vatCodeController.text.isEmpty) {
-                                        ScaffoldMessenger.of(context).showSnackBar(
-                                          SnackBar(content: Text("Please fill in all required fields")),
-                                        ); return;
+                                        CustomSnackbar.show(context: context, message: 'Please fill in all required fields'); return;
                                       }
 
                                       int stockMax = int.tryParse(stockMaxController.text) ?? 0;
@@ -794,21 +932,23 @@ class _ProductDatabasePageState extends State<ProductDatabasePage> with TickerPr
                                       int wareHouseStock = int.tryParse(wareHouseStockController.text) ?? productModel.wareHouseStock;
 
                                       if (stockMin >= stockMax) {
-                                        ScaffoldMessenger.of(context).showSnackBar(
-                                          SnackBar(content: Text("Minimum stock must be less than maximum stock")),
-                                        ); return;
+                                        CustomSnackbar.show(context: context, message: 'Minimum stock must be less than maximum stock'); return;
                                       }
 
                                       if (stockOrder > stockMax) {
-                                        ScaffoldMessenger.of(context).showSnackBar(
-                                          SnackBar(content: Text("You cannot order more stock than your warehouse capacity")),
-                                        ); return;
+                                        CustomSnackbar.show(context: context, message: 'You cannot order more stock than your warehouse capacity'); return;
                                       }
 
                                       try {
                                         final storeNumber = await _viewModel.getUserStoreNumber();
                                         final user = FirebaseAuth.instance.currentUser;
                                         if (user == null) throw Exception("No user logged in");
+
+                                        // Get current VAT rate and calculate new vatPrice
+                                        final vatRate = await _viewModel._getVatRate(
+                                        vatCodeController.text, storeNumber);
+                                        final basePrice = double.tryParse(basePriceController.text) ?? 0.0;
+                                        final vatPrice = basePrice * (1 + vatRate);
 
                                         final updatedProduct = ProductModel(
                                           id: product.id,
@@ -825,8 +965,9 @@ class _ProductDatabasePageState extends State<ProductDatabasePage> with TickerPr
                                           wareHouseStock: wareHouseStock,
                                           stockBreak: productModel.stockBreak,
                                           lastPurchasePrice: double.tryParse(lastPurchasePriceController.text) ?? 0.0,
-                                          salePrice: double.tryParse(salePriceController.text) ?? 0.0,
+                                          basePrice: double.tryParse(basePriceController.text) ?? 0.0,
                                           vatCode: vatCodeController.text,
+                                          vatPrice: vatPrice,
                                           storeNumber: storeNumber,
                                           productLocation: productLocationController.text.isNotEmpty 
                                               ? productLocationController.text 
@@ -851,16 +992,14 @@ class _ProductDatabasePageState extends State<ProductDatabasePage> with TickerPr
                                           userId: user.uid,
                                         );
 
-                                        ScaffoldMessenger.of(context).showSnackBar(
-                                          SnackBar(content: Text("Product updated successfully!")),
+                                        CustomSnackbar.show(
+                                          context: context, message: "Product updated successfully!",
                                         );
                                         
                                         setState(() => isEditing = false);
                                       } catch (e) {
                                         print("Error updating product: $e");
-                                        ScaffoldMessenger.of(context).showSnackBar(
-                                          SnackBar(content: Text("Error updating product")),
-                                        );
+                                        CustomSnackbar.show(context: context, message: 'Error updating product');
                                       }
                                     } else {setState(() => isEditing = true);}
                                   },
@@ -907,8 +1046,9 @@ class _ProductDatabasePageState extends State<ProductDatabasePage> with TickerPr
                               _buildEditablePricingSection(
                                 isEditing,
                                 lastPurchasePriceController,
-                                salePriceController,
+                                basePriceController,
                                 highlightColor,
+                                productModel,
                               ),
                               SizedBox(height: 16),
                               _buildEditableAdditionalInfoSection(
@@ -1102,8 +1242,9 @@ class _ProductDatabasePageState extends State<ProductDatabasePage> with TickerPr
   Widget _buildEditablePricingSection(
     bool isEditing,
     TextEditingController lastPurchasePriceController,
-    TextEditingController salePriceController,
+    TextEditingController basePriceController,
     Color highlightColor,
+    ProductModel product,
   ) {
     return Container(
       decoration: BoxDecoration(color: Colors.white,
@@ -1127,8 +1268,15 @@ class _ProductDatabasePageState extends State<ProductDatabasePage> with TickerPr
           const SizedBox(height: 16),
           _buildEditablePriceRow(
             isEditing,
-            "Sale Price", salePriceController,Colors.green, isNumber: true,
+            "Base Price", basePriceController,Colors.green, isNumber: true,
           ),
+          
+          _buildPriceRow(
+            "Price with VAT (${product.vatCode})",
+            "€${product.vatPrice.toStringAsFixed(2)}",
+            Colors.purple,
+          ),
+
          const Divider(height: 16, thickness: 1),
           _buildEditablePriceRow(
             isEditing,
@@ -1138,6 +1286,21 @@ class _ProductDatabasePageState extends State<ProductDatabasePage> with TickerPr
       ),
     );
   }
+
+  Widget _buildPriceRow(String label, String value, Color color) {
+  return Row(
+    children: [
+      const SizedBox(width: 40),
+      Expanded(flex: 2, child: Text(label, style: TextStyle(fontSize: 14, color: Colors.grey[600]))),
+      Expanded(flex: 1,
+        child: Text(
+          value, style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: color),
+          textAlign: TextAlign.right,
+        ),
+      ),
+    ],
+  );
+}
 
   Widget _buildEditableAdditionalInfoSection(
     bool isEditing,
@@ -1360,7 +1523,7 @@ class _ProductDatabasePageState extends State<ProductDatabasePage> with TickerPr
     return '${date.day}/${date.month}/${date.year} ${date.hour}:${date.minute.toString().padLeft(2, '0')}';
   }
 
-  Future<bool> _showDeleteConfirmationDialog(BuildContext context) async {
+  Future<bool> _showDeleteConfirmationDialog(BuildContext context, productName) async {
     return (await showDialog<bool>(context: context,
           barrierDismissible: false,
           builder: (context) => AlertDialog(
@@ -1372,5 +1535,23 @@ class _ProductDatabasePageState extends State<ProductDatabasePage> with TickerPr
             ],
           ),
         )) ?? false;
+  }
+
+  Future<bool> _showSecondConfirmationDialog(BuildContext context, String productName) async {
+    return (await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        title: Text("Final Confirmation"),
+        content: Text("You are about to permanently delete '$productName'. This action cannot be undone. Are you absolutely sure?"),
+        actions: [
+          TextButton(onPressed: () => Navigator.of(context).pop(false), child: Text("Cancel")),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: Text("Delete Permanently", style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    )) ?? false;
   }
 }

@@ -2,12 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:stockflow/reusable_widgets/colors_utils.dart';
+import 'package:stockflow/reusable_widgets/custom_snackbar.dart';
 import 'package:stockflow/reusable_widgets/error_screen.dart';
 
 // [1. MODEL] 
 class ProductModel {
   final String id, name, brand, model, category, storeNumber;
-  final double salePrice;
+  final double basePrice;
   final int stockBreak, stockCurrent;
 
   ProductModel({
@@ -17,7 +18,7 @@ class ProductModel {
     required this.model,
     required this.category,
     required this.storeNumber,
-    required this.salePrice,
+    required this.basePrice,
     required this.stockBreak,
     required this.stockCurrent,
   });
@@ -31,7 +32,7 @@ class ProductModel {
       model: data['model'] ?? '',
       category: data['category'] ?? '',
       storeNumber: data['storeNumber'] ?? '',
-      salePrice: (data['salePrice'] ?? 0.0).toDouble(),
+      basePrice: (data['basePrice'] ?? 0.0).toDouble(),
       stockBreak: (data['stockBreak'] ?? 0).toInt(),
       stockCurrent: (data['stockCurrent'] ?? 0).toInt(),
     );
@@ -114,8 +115,8 @@ class StockBreakViewModel {
           product.name.toLowerCase().contains(nameFilter.toLowerCase()) &&
           product.brand.toLowerCase().contains(brandFilter.toLowerCase()) &&
           product.category.toLowerCase().contains(categoryFilter.toLowerCase()) &&
-          product.salePrice >= minPrice &&
-          product.salePrice <= maxPrice;
+          product.basePrice >= minPrice &&
+          product.basePrice <= maxPrice;
     }).toList();
   }
 }
@@ -203,8 +204,7 @@ class _StockBreakFilteredPageState extends State<StockBreakFilteredPage> {
     return Scaffold(
       appBar: AppBar(
         title: Text("Stock Break Management", style: TextStyle(color: Colors.white)),
-        backgroundColor: Colors.transparent,
-        elevation: 0,
+        backgroundColor: Colors.transparent, elevation: 0,
         flexibleSpace: Container(
           decoration: BoxDecoration(
             gradient: LinearGradient(
@@ -302,9 +302,7 @@ class _StockBreakFilteredPageState extends State<StockBreakFilteredPage> {
           userStoreNumber: _storeNumber!,
         );
 
-        if (filteredProducts.isEmpty) {
-          return Center(child: Text('No products found matching your criteria.'));
-        }
+        if (filteredProducts.isEmpty) {return Center(child: Text('No products found matching the filters.'));}
 
         return ListView.builder(
           itemCount: filteredProducts.length,
@@ -332,8 +330,9 @@ class _StockBreakFilteredPageState extends State<StockBreakFilteredPage> {
                     _showProductDetailsDialog(context, product);
                   } else {
                     // Para os demais usuários, não faz nada
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(content: Text('You don\'t have permission to modify the stock.'), duration: Duration(seconds: 2)),
+                    CustomSnackbar.show(
+                      context: context,
+                      message: "You don't have permission to modify stock.",
                     );
                   }
                 },
@@ -387,67 +386,109 @@ class _StockBreakFilteredPageState extends State<StockBreakFilteredPage> {
 
   void _showProductDetailsDialog(BuildContext context, ProductModel product) {
     final TextEditingController quantityController = TextEditingController();
-    
+    String? message;
+    Color messageColor = Colors.transparent;
+    int currentStockBreak = product.stockBreak;
+    int currentStockCurrent = product.stockCurrent;
+
     showDialog(
       context: context,
       builder: (context) {
-        return AlertDialog(
-          title: Text('Transfer Product'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text("Product Name: ${product.name}"),
-              Text("Brand: ${product.brand}"),
-              Text("Model: ${product.model}"),
-              Text("Category: ${product.category}"),
-              Text("Stock Break: ${product.stockBreak}"),
-              Text("Current Stock: ${product.stockCurrent}"),
-              SizedBox(height: 10),
-              TextField(
-                controller: quantityController,
-                keyboardType: TextInputType.number,
-                decoration: InputDecoration(
-                  labelText: "Quantity to transfer",
-                  border: OutlineInputBorder(),
-                ),
+        return StatefulBuilder(
+          builder: (context, setState) {
+            return AlertDialog(
+              title: Text('Transfer Product'),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text("Product Name: ${product.name}"),
+                  Text("Brand: ${product.brand}"),
+                  Text("Model: ${product.model}"),
+                  Text("Category: ${product.category}"),
+                  Text("Stock Break: $currentStockBreak"),
+                  Text("Current Stock: $currentStockCurrent"),
+                  SizedBox(height: 10),
+                  TextField(
+                    controller: quantityController,
+                    keyboardType: TextInputType.number,
+                    decoration: InputDecoration(
+                      labelText: "Quantity to transfer",
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                  if (message != null)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 10),
+                      child: Text(
+                        message!,
+                        style: TextStyle(
+                          color: messageColor,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                ],
               ),
-            ],
-          ),
-          actions: [
-            TextButton(onPressed: () => Navigator.of(context).pop(), child: Text('Cancel')),
-            ElevatedButton(
-              onPressed: () async {
-                final transferQuantity = int.tryParse(quantityController.text) ?? 0;
-                
-                if (transferQuantity > 0 && transferQuantity <= product.stockBreak) {
-                  try {
-                    await _viewModel.transferStock(
-                      productId: product.id,
-                      transferQuantity: transferQuantity,
-                      currentStockBreak: product.stockBreak,
-                      currentStockCurrent: product.stockCurrent,
-                    );
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(), 
+                  child: Text('Cancel')
+                ),
+                ElevatedButton(
+                  onPressed: () async {
+                    final transferQuantity = int.tryParse(quantityController.text) ?? 0;
+                    
+                    if (transferQuantity <= 0) {
+                      setState(() {
+                        message = "Quantity must be greater than zero";
+                        messageColor = Colors.red;
+                      }); 
+                      return;
+                    }
+                    
+                    if (transferQuantity > currentStockBreak) {
+                      setState(() {
+                        message = "Quantity exceeds available stock break";
+                        messageColor = Colors.red;
+                      });
+                      return;
+                    }
 
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(content: Text('Stock updated successfully!')),
-                    );
+                    try {
+                      await _viewModel.transferStock(
+                        productId: product.id,
+                        transferQuantity: transferQuantity,
+                        currentStockBreak: currentStockBreak,
+                        currentStockCurrent: currentStockCurrent,
+                      );
 
-                    Navigator.of(context).pop();
-                  } catch (e) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(content: Text('Error updating stock!')),
-                    );
-                  }
-                } else {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text('Invalid quantity!')),
-                  );
-                }
-              },
-              child: Text('Transfer'),
-            ),
-          ],
+                      // Atualiza os valores e limpa o campo
+                      setState(() {
+                        currentStockBreak -= transferQuantity;
+                        currentStockCurrent += transferQuantity;
+                        message = "Stock transferred successfully!";
+                        messageColor = Colors.green;
+                        quantityController.clear(); // Limpa o campo de texto
+                      });
+
+                      Future.delayed(Duration(seconds: 3), () { 
+                        if (Navigator.canPop(context)) {
+                          Navigator.of(context).pop();
+                        }
+                      });
+                    } catch (e) {
+                      setState(() {
+                        message = "Error transferring stock: ${e.toString()}";
+                        messageColor = Colors.red;
+                      });
+                    }
+                  },
+                  child: Text('Transfer'),
+                ),
+              ],
+            );
+          },
         );
       },
     );

@@ -2,15 +2,17 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:stockflow/reusable_widgets/colors_utils.dart';
+import 'package:stockflow/reusable_widgets/custom_snackbar.dart';
 import 'package:stockflow/reusable_widgets/error_screen.dart';
 import 'package:stockflow/reusable_widgets/search_controller.dart';
+import 'package:stockflow/reusable_widgets/vat_manager.dart';
 
 // [1. MODEL]
 class WarehouseProductModel {
   final String id, name, brand, model, category, description, storeNumber;
   final String vatCode, subCategory, productLocation;
   final int stockCurrent, stockOrder, stockMin, stockMax, wareHouseStock, stockBreak;
-  final double lastPurchasePrice, salePrice;
+  final double lastPurchasePrice, basePrice, vatPrice;
   final Timestamp createdAt;
 
   WarehouseProductModel({
@@ -21,7 +23,7 @@ class WarehouseProductModel {
     required this.category,
     required this.description,
     required this.storeNumber,
-    required this.salePrice,
+    required this.basePrice,
     required this.stockCurrent,
     required this.stockOrder,
     required this.stockMin,
@@ -29,6 +31,7 @@ class WarehouseProductModel {
     required this.wareHouseStock,
     required this.stockBreak,
     required this.vatCode,
+    required this.vatPrice,
     required this.subCategory,
     required this.lastPurchasePrice,
     required this.createdAt,
@@ -45,7 +48,7 @@ class WarehouseProductModel {
       category: data['category']?.toString() ?? '',
       description: data['description']?.toString() ?? '',
       storeNumber: data['storeNumber']?.toString() ?? '',
-      salePrice: (data['salePrice'] as num?)?.toDouble() ?? 0.0,
+      basePrice: (data['basePrice'] as num?)?.toDouble() ?? 0.0,
       stockCurrent: (data['stockCurrent'] as num?)?.toInt() ?? 0,
       stockOrder: (data['stockOrder'] as num?)?.toInt() ?? 0,
       stockMin: (data['stockMin'] as num?)?.toInt() ?? 0,
@@ -53,6 +56,7 @@ class WarehouseProductModel {
       wareHouseStock: (data['wareHouseStock'] as num?)?.toInt() ?? 0,
       stockBreak: (data['stockBreak'] as num?)?.toInt() ?? 0,
       vatCode: data['vatCode']?.toString() ?? '',
+      vatPrice: (data['vatPrice'] as num?)?.toDouble() ?? 0.0,
       subCategory: data['subCategory']?.toString() ?? '',
       lastPurchasePrice: (data['lastPurchasePrice'] as num?)?.toDouble() ?? 0.0,
       createdAt: data['createdAt'] as Timestamp? ?? Timestamp.now(),
@@ -67,7 +71,7 @@ class WarehouseProductModel {
     'category': category,
     'description': description,
     'storeNumber': storeNumber,
-    'salePrice': salePrice,
+    'basePrice': basePrice,
     'stockCurrent': stockCurrent,
     'stockOrder': stockOrder,
     'stockMin': stockMin,
@@ -175,7 +179,7 @@ class WarehouseViewModel {
     required String productId,
     required double newPrice,
   }) async {
-    await _firestore.collection('products').doc(productId).update({'salePrice': newPrice});
+    await _firestore.collection('products').doc(productId).update({'basePrice': newPrice});
   }
 
   Future<void> transferBetweenWarehouses({
@@ -278,6 +282,7 @@ class _WarehouseManagementPageState extends State<WarehouseManagementPage>
   String? _storeNumber;
   bool _isStoreManager = false;
   bool _isLoading = true;
+  final VatMonitorService _vatMonitor = VatMonitorService();
 
   @override
   void initState() {
@@ -288,6 +293,7 @@ class _WarehouseManagementPageState extends State<WarehouseManagementPage>
 
   @override
   void dispose() {
+    _vatMonitor.stopMonitoring();
     _searchNotifier.dispose();
     _tabController.dispose();
     super.dispose();
@@ -306,6 +312,11 @@ class _WarehouseManagementPageState extends State<WarehouseManagementPage>
         _storeNumber = storeNumber;
         _isStoreManager = isStoreManager; 
       });
+
+      // Inicia o monitoramento do VAT após obter o storeNumber
+      if (_storeNumber != null && _storeNumber!.isNotEmpty) {
+        _vatMonitor.startMonitoring(_storeNumber!);
+      }
     } catch (e) {
       debugPrint("Error loading user data: $e");
     } finally {
@@ -404,7 +415,7 @@ class _WarehouseManagementPageState extends State<WarehouseManagementPage>
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text('Brand: ${product['brand']}'),
-                Text('Sale Price: €${product['salePrice']}'),
+                Text('Price: €${product['vatPrice'].toStringAsFixed(2)}'),
               ],
             ),
             onTap: () async {
@@ -430,7 +441,7 @@ class _WarehouseManagementPageState extends State<WarehouseManagementPage>
 
   Future<void> _showProductDetailsDialog(BuildContext context, DocumentSnapshot product) async {
     TextEditingController _incrementController = TextEditingController();
-    TextEditingController _salePriceController = TextEditingController(text: product['salePrice'].toString());
+    TextEditingController _basePriceController = TextEditingController(text: product['basePrice'].toString());
 
     int wareHouseStock = product['wareHouseStock'];
     int stockMin = product['stockMin'];
@@ -484,11 +495,11 @@ class _WarehouseManagementPageState extends State<WarehouseManagementPage>
                         children: [
                           Expanded(
                             child: TextField(
-                              controller: _salePriceController,
+                              controller: _basePriceController,
                               keyboardType: TextInputType.numberWithOptions(decimal: true),
                               decoration: InputDecoration(
-                                labelText: "Sale Price",
-                                hintText: "Enter Sale Price",
+                                labelText: "Base Price",
+                                hintText: "Enter Base Price",
                                 border: OutlineInputBorder(),
                               ),
                               enabled: isPriceEditable,
@@ -583,9 +594,9 @@ class _WarehouseManagementPageState extends State<WarehouseManagementPage>
                 TextButton(
                   onPressed: () async {
                     if (isPriceEditable) {
-                      double newPrice = double.tryParse(_salePriceController.text) ?? product['salePrice'];
+                      double newPrice = double.tryParse(_basePriceController.text) ?? product['basePrice'];
 
-                      if (newPrice == product['salePrice']) {
+                      if (newPrice == product['basePrice']) {
                         setState(() {
                           errorMessage = "The new price must be different from the current price.";
                           successMessage = '';
@@ -604,14 +615,14 @@ class _WarehouseManagementPageState extends State<WarehouseManagementPage>
                           }); return;
                         }
 
-                        final oldPrice = product['salePrice'];
+                        final oldPrice = product['basePrice'];
                         await _viewModel.updateProductPrice(
                           productId: product.id,
                           newPrice: newPrice,
                         );
 
                         await _viewModel.createNotification(
-                          message: 'Price of ${product['brand']} - ${product['name']} - ${product['model']} updated from €$oldPrice to €$newPrice.',
+                          message: 'Base Price of ${product['brand']} - ${product['name']} - ${product['model']} updated from €$oldPrice to €$newPrice.',
                           productId: product.id,
                           storeNumber: storeNumber,
                           userId: user.uid,
@@ -619,7 +630,7 @@ class _WarehouseManagementPageState extends State<WarehouseManagementPage>
                         );
 
                         setState(() {
-                          successMessage = "Sale price updated successfully!";
+                          successMessage = "Base Price updated successfully!";
                           errorMessage = '';
                         });
                       } catch (e) {
@@ -630,7 +641,7 @@ class _WarehouseManagementPageState extends State<WarehouseManagementPage>
                       }
                     }
                   },
-                  child: Text("Update Sale Price", style: TextStyle(fontWeight: FontWeight.bold)),
+                  child: Text("Update Base Price", style: TextStyle(fontWeight: FontWeight.bold)),
                 ),
               ],
             );
@@ -798,7 +809,7 @@ class _WarehouseManagementPageState extends State<WarehouseManagementPage>
                                 children: [
                                   Text("Brand: ${product.brand}"),
                                   Text("Model: ${product.model}"),
-                                  Text("Price: €${product.salePrice.toStringAsFixed(2)}"),
+                                  Text("Price: €${product.vatPrice.toStringAsFixed(2)}"),
                                 ],
                               ),
                               value: product.name,
@@ -894,13 +905,15 @@ class _WarehouseManagementPageState extends State<WarehouseManagementPage>
                   onPressed: () {
                     int? quantity = int.tryParse(quantityController.text);
                     if (quantity == null || quantity <= 0) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(content: Text("Please enter a valid quantity.")),
-                      );
+                      CustomSnackbar.show(
+                       context: context,
+                       message: "Please enter a valid quantity.",
+                     );
                     } else if (quantity > availableStock) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(content: Text("Entered quantity exceeds available stock.")),
-                      );
+                      CustomSnackbar.show(
+                       context: context,
+                       message: "Entered quantity exceeds available stock.",
+                     );
                     } else {
                       Navigator.of(context).pop();
                       _confirmTransfer(fromStore, toStore, product, quantity, productData);
@@ -949,15 +962,15 @@ class _WarehouseManagementPageState extends State<WarehouseManagementPage>
       );
       Navigator.of(context).pop(); // Close loading dialog
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text("Success! $quantity of $product transferred from Store $fromStore to Store $toStore."),
-        ),
+      CustomSnackbar.show(
+        context: context,
+        message: "Success! $quantity of $product transferred from Store $fromStore to Store $toStore.", backgroundColor: Colors.green,
       );
     } catch (e) {
       Navigator.of(context).pop(); // Close loading dialog
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("Error occurred during the transfer: ${e.toString()}")),
+      CustomSnackbar.show(
+        context: context,
+        message: "Error occurred during the transfer: ${e.toString()}",
       );
     }
   }

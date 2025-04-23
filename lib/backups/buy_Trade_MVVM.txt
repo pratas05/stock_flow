@@ -2,20 +2,23 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:stockflow/reusable_widgets/colors_utils.dart';
+import 'package:stockflow/reusable_widgets/custom_snackbar.dart';
 import 'package:stockflow/reusable_widgets/error_screen.dart';
 import 'package:stockflow/reusable_widgets/search_controller.dart';
+import 'package:stockflow/reusable_widgets/vat_manager.dart';
 
 // [1. MODEL]
 class Product {
   final String id, name, model, storeNumber;
-  final double salePrice;
+  final double basePrice, vatPrice;
   final int stockCurrent, wareHouseStock, stockBreak;
 
   Product({
     required this.id,
     required this.name,
     required this.model,
-    required this.salePrice,
+    required this.basePrice,
+    required this.vatPrice,
     required this.stockCurrent,
     required this.wareHouseStock,
     required this.stockBreak,
@@ -26,11 +29,12 @@ class Product {
     id: doc.id,
     name: doc['name'] ?? '',
     model: doc['model'] ?? '',
-    salePrice: (doc['salePrice'] ?? 0.0).toDouble(),
+    basePrice: (doc['basePrice'] ?? 0.0).toDouble(),
     stockCurrent: (doc['stockCurrent'] ?? 0).toInt(),
     wareHouseStock: (doc['wareHouseStock'] ?? 0).toInt(),
     stockBreak: (doc['stockBreak'] ?? 0).toInt(),
     storeNumber: doc['storeNumber'] ?? '',
+    vatPrice: (doc['vatPrice'] ?? 0.0).toDouble(),
   );
 }
 
@@ -126,6 +130,7 @@ class _BuyTradePageState extends State<BuyTradePage> with SingleTickerProviderSt
   String? storeNumber;
   bool _isLoading = true;
   bool _isStoreManager = false;
+  final VatMonitorService _vatMonitor = VatMonitorService();
 
   @override
   void initState() {
@@ -144,26 +149,28 @@ class _BuyTradePageState extends State<BuyTradePage> with SingleTickerProviderSt
           _isStoreManager = userData['isStoreManager'] ?? false;
         });
       }
+
+      // Inicia o monitoramento do VAT após obter o storeNumber
+      if (storeNumber != null && storeNumber!.isNotEmpty) {
+        _vatMonitor.startMonitoring(storeNumber!);
+      }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text("Error fetching user data: $e")),
-        );
+        CustomSnackbar.show(context: context, message: 'Error fetching user data: $e');
       }
     } finally {if (mounted) setState(() => _isLoading = false);}
   }
 
   @override
   void dispose() {
+    _vatMonitor.stopMonitoring();
     _tabController.dispose();
     super.dispose();
   }
 
   void _showSafeSnackBar(String message) {
     if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(message)),
-      );
+      CustomSnackbar.show(context: context, message: message);
     }
   }
 
@@ -274,10 +281,12 @@ class _BuyTradePageState extends State<BuyTradePage> with SingleTickerProviderSt
             itemBuilder: (context, product) => ListTile(
               title: Text(
                 "${product.name} - ${product.model}",
-                style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.black87),
+                style: const TextStyle(
+                  fontWeight: FontWeight.bold, 
+                  color: Colors.black87),
               ),
               subtitle: Text(
-                "Price: \$${product.salePrice.toStringAsFixed(2)} | Stock: ${product.stockCurrent}",
+                "Price: \$${product.vatPrice.toStringAsFixed(2)} | Stock: ${product.stockCurrent}",
                 style: TextStyle(color: Colors.grey[700]),
               ),
               trailing: IconButton(
@@ -386,7 +395,7 @@ class _BuyTradePageState extends State<BuyTradePage> with SingleTickerProviderSt
     
     try {
       await _viewModel.buyProduct(productId, stockCurrent);
-      _showSafeSnackBar("Product purchased successfully!");
+      _showSafeSnackBar("Product purchased successfully!"); 
     } catch (e) {
       _showSafeSnackBar("Error purchasing product: $e");
     }
@@ -571,13 +580,13 @@ class _BuyTradePageState extends State<BuyTradePage> with SingleTickerProviderSt
 
             final allProducts = snapshot.data!.docs
                 .map((doc) => Product.fromDocument(doc))
-                .where((product) => product.stockCurrent > 0 && product.id != selectedProduct.id)
+                .where((product) => product.id != selectedProduct.id)
                 .toList();
 
             if (allProducts.isEmpty) {
               return AlertDialog(
                 title: const Text("No Products"),
-                content: const Text("No products available for trade."),
+                content: const Text("No other products available in this store."),
                 actions: [TextButton(onPressed: () => Navigator.of(dialogContext).pop(), child: const Text("OK"))],
               );
             }
@@ -624,20 +633,31 @@ class _BuyTradePageState extends State<BuyTradePage> with SingleTickerProviderSt
                           ...filteredProducts.map((product) => ListTile(
                                 title: Text("${product.name} - ${product.model}"),
                                 subtitle: Text("Shop stock: ${product.stockCurrent}"),
-                                onTap: () {
-                                  Navigator.of(dialogContext).pop();
-                                  _confirmTrade(
-                                    selectedProduct: selectedProduct,
-                                    tradeProduct: product,
-                                    scaffoldContext: scaffoldContext,
-                                  );
-                                },
+                                enabled: product.stockCurrent > 0,
+                                tileColor: product.stockCurrent > 0 ? null : Colors.grey[200],
+                                onTap: product.stockCurrent > 0
+                                    ? () {
+                                        Navigator.of(dialogContext).pop();
+                                        _confirmTrade(
+                                          selectedProduct: selectedProduct,
+                                          tradeProduct: product,
+                                          scaffoldContext: scaffoldContext,
+                                        );
+                                      }
+                                    : null,
                               )),
-                        ] else if (searchController.text.isNotEmpty) ...[const Text("No results found.")],
+                        ] else if (searchController.text.isNotEmpty) ...[
+                          const Text("No results found."),
+                        ],
                       ],
                     ),
                   ),
-                  actions: [TextButton(onPressed: () => Navigator.of(dialogContext).pop(), child: const Text("Cancel"))],
+                  actions: [
+                    TextButton(
+                      onPressed: () => Navigator.of(dialogContext).pop(),
+                      child: const Text("Cancel"),
+                    ),
+                  ],
                 );
               },
             );
