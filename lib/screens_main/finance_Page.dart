@@ -653,7 +653,7 @@ class _FinanceAndHumanResourcesPageState
       if (changedFields.isEmpty) {
         CustomSnackbar.show(
           context: context,
-          message: 'No changes detected in VAT values.',
+          message: 'No changes detected in VAT values.', backgroundColor: Colors.red,
         );
         return;
       }

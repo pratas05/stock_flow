@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:stockflow/reusable_widgets/account_settings_style.dart';
 import 'package:stockflow/reusable_widgets/colors_utils.dart';
 import 'package:intl/intl.dart';
@@ -403,6 +404,7 @@ class _AccountSettingsState extends State<AccountSettings> {
                     TextField(
                       controller: storeNumberController,
                       keyboardType: TextInputType.number,
+                      inputFormatters: [FilteringTextInputFormatter.digitsOnly], 
                       decoration: const InputDecoration(labelText: "Store Number"),
                     ),
                     const SizedBox(height: 8),
@@ -425,6 +427,7 @@ class _AccountSettingsState extends State<AccountSettings> {
                       TextField(
                         controller: userPhoneController,
                         keyboardType: TextInputType.phone,
+                        inputFormatters: [FilteringTextInputFormatter.digitsOnly],
                         decoration: const InputDecoration(labelText: "Phone Number"),
                       ),
                       const SizedBox(height: 8),
@@ -473,13 +476,6 @@ class _AccountSettingsState extends State<AccountSettings> {
                     final storeCity = storeCityController.text.trim();
                     final storeCountry = storeCountryController.text.trim();
 
-                    if (storeNumber.isEmpty || nickname.isEmpty) {
-                    CustomSnackbar.show(
-                      context: context,
-                      message: "Store number and name cannot be empty.",
-                    ); return;
-                    }
-
                     if (isStoreManager &&
                         (storeName.isEmpty ||
                             storeEmail.isEmpty ||
@@ -490,7 +486,7 @@ class _AccountSettingsState extends State<AccountSettings> {
                             storeCountry.isEmpty)) {
                             CustomSnackbar.show(
                               context: context,
-                              message: "Fill in all store details",
+                              message: "Complete all the fields about your Store",
                             ); return;
                           } 
 
@@ -521,9 +517,10 @@ class _AccountSettingsState extends State<AccountSettings> {
                         _isStoreManager = isStoreManager;
                       });
                     } catch (e) {
-                      CustomSnackbar.show(
+                      print(e);
+                      CustomSnackbar.show( 
                         context: context,
-                        message: "Error: ${e.toString()}",
+                        message: 'Error to complete your setup', backgroundColor: Colors.red,
                       );
                     }
                   },
@@ -542,6 +539,16 @@ class _AccountSettingsState extends State<AccountSettings> {
     final storeNumberController = TextEditingController(text: _storeNumber);
     String? errorMessage;
     bool isSaving = false;
+    
+    // Se não tem storeNumber configurado, mostre mensagem e redirecione para setup
+    if (_storeNumber == null) {
+      CustomSnackbar.show(
+        context: context,
+        message: "You need to affiliate with a store first",
+        backgroundColor: Colors.red,
+      );
+      _showSetupDialog(context); return;
+    }
 
     await showDialog(
       context: context,
@@ -558,6 +565,8 @@ class _AccountSettingsState extends State<AccountSettings> {
                   TextFormField(
                     controller: storeNumberController,
                     enabled: !_isStoreManager, // Desabilita se for manager
+                    keyboardType: TextInputType.number,
+                    inputFormatters: [FilteringTextInputFormatter.digitsOnly],
                     decoration: InputDecoration(
                       labelText: "Store Number",
                       errorText: errorMessage,
@@ -628,7 +637,7 @@ class _AccountSettingsState extends State<AccountSettings> {
     if (_storeNumber == null) {
       CustomSnackbar.show(
         context: context,
-        message: "Please complete your setup first.",
+        message: "Please complete your setup first.", backgroundColor: Colors.red,
       );
       _showSetupDialog(context); return;
     }

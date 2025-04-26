@@ -2,12 +2,13 @@ import 'dart:ui';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:stockflow/google_sign.dart';
+import 'package:stockflow/reusable_widgets/custom_snackbar.dart';
 import 'package:stockflow/screens/forgot_pw_page.dart';
 import 'package:stockflow/screens/signup_screen.dart';
 import 'package:stockflow/screens/home_screen.dart';
-import 'package:stockflow/utils/colors_utils.dart';
+import 'package:stockflow/reusable_widgets/colors_utils.dart';
 
-// VIEW MODEL
+// [1. VIEWMODEL]
 class SignInViewModel {
   final TextEditingController emailTextController = TextEditingController();
   final TextEditingController passwordTextController = TextEditingController();
@@ -15,9 +16,7 @@ class SignInViewModel {
 
   Future<void> signIn(BuildContext context) async {
   if (emailTextController.text.isEmpty || passwordTextController.text.isEmpty) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Please, fill the fields first.')),
-    ); return;
+    CustomSnackbar.show(context: context, message: 'Please fill in all fields.');  return;
   }
 
   // Validação do formato do e-mail
@@ -25,9 +24,8 @@ class SignInViewModel {
   final emailRegex = RegExp(emailPattern);
 
   if (!emailRegex.hasMatch(emailTextController.text)) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('The email address is not valid. Please check your input.')),
-    ); return;
+    CustomSnackbar.show(context: context, message: 'The email address is not valid. Please check your input.', backgroundColor: Colors.red); 
+    return;
   }
 
   try {
@@ -40,20 +38,14 @@ class SignInViewModel {
 
     if (user != null && !user.emailVerified) {
       await FirebaseAuth.instance.signOut();
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Email not verified. Please verify your email before logging in.')),
-      );
+      CustomSnackbar.show(context: context, message: 'Email not verified. Please verify your email before logging in.', backgroundColor: Colors.red);
     } else {
       Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => const HomeScreen()));
     }
   } on FirebaseAuthException catch (e) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(getErrorMessage(e.code))),
-    );
+    CustomSnackbar.show(context: context, message: getErrorMessage(e.code));
   } catch (e) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('An unexpected error occurred. Please try again.')),
-    );
+    CustomSnackbar.show(context: context, message: 'An unexpected error occurred. Please try again.');
   }
 }
 
@@ -76,7 +68,7 @@ class SignInViewModel {
   }
 }
 
-// VIEW
+// [2. VIEW]
 class SignInScreen extends StatefulWidget {
   const SignInScreen({super.key});
 

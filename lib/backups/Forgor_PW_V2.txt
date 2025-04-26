@@ -1,9 +1,10 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:stockflow/utils/colors_utils.dart';
+import 'package:stockflow/reusable_widgets/colors_utils.dart';
+import 'package:stockflow/reusable_widgets/custom_snackbar.dart';
 
-// VIEW MODEL
+// [1. VIEWMODEL]
 class ForgotPasswordViewModel {
   final TextEditingController emailController = TextEditingController();
 
@@ -11,20 +12,23 @@ class ForgotPasswordViewModel {
     String email = emailController.text.trim();
 
     if (email.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please enter your email.')),
-      );
-      return;
+      CustomSnackbar.show(
+        context: context,
+        message: 'Please enter your email address.'
+      ); return;
     }
 
     try {
       await FirebaseAuth.instance.sendPasswordResetEmail(email: email);
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('If the email is registered, you will receive a password reset link shortly.')),
+      CustomSnackbar.show(
+        context: context,
+        message: 'Password reset link sent. Your email needs to be associated with an account.', 
+        backgroundColor: Colors.green,
       );
     } on FirebaseAuthException catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(e.message ?? 'An error occurred. Please try again.')),
+      CustomSnackbar.show(
+        context: context,
+        message: e.message ?? 'An error occurred. Please try again.', backgroundColor: Colors.red,
       );
     }
   }
@@ -34,7 +38,7 @@ class ForgotPasswordViewModel {
   }
 }
 
-// VIEW
+// [2. VIEW]
 class ForgotPasswordPage extends StatefulWidget {
   const ForgotPasswordPage({super.key});
 
@@ -89,8 +93,7 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
                         Image.asset(
-                          "assets/images/logo.png",
-                          width: 150,
+                          "assets/images/logo.png", width: 120,
                         ),
                         const SizedBox(height: 15),
                         const Text(
@@ -153,9 +156,7 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
                             child: MouseRegion(
                               cursor: SystemMouseCursors.click,
                               child: GestureDetector(
-                                onTap: () {
-                                  Navigator.pop(context);
-                                },
+                                onTap: () {Navigator.pop(context);},
                                 child: Text(
                                   'Return to Login',
                                   style: TextStyle(color: Colors.lightBlue[300], fontWeight: FontWeight.bold,),

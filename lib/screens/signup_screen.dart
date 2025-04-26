@@ -2,6 +2,7 @@ import 'dart:ui';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:stockflow/firebase_auth_services.dart';
+import 'package:stockflow/reusable_widgets/custom_snackbar.dart';
 import 'package:stockflow/reusable_widgets/privacy_policy.dart';
 import 'package:stockflow/screens/login_screen.dart';
 import 'package:stockflow/reusable_widgets/colors_utils.dart';
@@ -19,46 +20,43 @@ class SignUpViewModel {
     return passwordTextController.text.trim() == confirmPasswordTextController.text.trim();
   }
 
-  bool isPasswordValid(String password) {
-    if (password.length < 8) return false;
-    if (!RegExp(r'\d').hasMatch(password)) return false;
-    if (!RegExp(r'[A-Z]').hasMatch(password)) return false;
-    if (!RegExp(r'[!@#$%^&*(),.?":{}|<>]').hasMatch(password)) return false;
-    return true;
+  PasswordValidation isPasswordValid(String password) {
+    return PasswordValidation(
+      hasMinLength: password.length >= 8,
+      hasNumber: RegExp(r'\d').hasMatch(password),
+      hasUpperCase: RegExp(r'[A-Z]').hasMatch(password),
+      hasSpecialChar: RegExp(r'[!@#$%^&*(),.?":{}|<>]').hasMatch(password),
+    );
   }
 
   Future<void> signUp(BuildContext context) async {
     if (emailTextController.text.isEmpty || passwordTextController.text.isEmpty || confirmPasswordTextController.text.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please fill in all fields.')),
-      ); return;
+      CustomSnackbar.show(context: context, message: 'Please fill in all fields.'); 
+      return;
     }
 
     if (!termsAccepted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('You must accept the terms and conditions.')),
-      ); return;
+      CustomSnackbar.show(context: context, message: 'You must accept the terms and conditions.'); 
+      return;
     }
 
     final emailPattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$';
     final emailRegex = RegExp(emailPattern);
 
     if (!emailRegex.hasMatch(emailTextController.text)) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('The email address is not valid. Please check your input.')),
-      ); return;
+      CustomSnackbar.show(context: context, message: 'The email address is not valid. Please check your input.', backgroundColor: Colors.red); 
+      return;
     }
 
     if (!passwordConfirmed()) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Passwords do not match.')),
-      ); return;
+      CustomSnackbar.show(context: context, message: 'Passwords do not match.', backgroundColor: Colors.red); 
+      return;
     }
 
-    if (!isPasswordValid(passwordTextController.text.trim())) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Password must meet all requirements.')),
-      ); return;
+    final passwordValidation = isPasswordValid(passwordTextController.text.trim());
+    if (!passwordValidation.isValid()) {
+      CustomSnackbar.show(context: context, message: 'Password must meet all requirements.', backgroundColor: Colors.red); 
+      return;
     }
 
     try {
@@ -68,18 +66,14 @@ class SignUpViewModel {
       );
 
       if (user != null) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Verification email sent. Please check your email.')),
-        );
+        CustomSnackbar.show(context: context, message: 'Verification email sent. Please check your email.', backgroundColor: Colors.green);
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(builder: (context) => const SignInScreen()),
         );
       }
     } on FirebaseAuthException catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(e.message ?? 'An error occurred. Please try again.')),
-      );
+      CustomSnackbar.show(context: context, message: e.message ?? 'An error occurred. Please try again.');
     }
   }
 
@@ -88,6 +82,22 @@ class SignUpViewModel {
     passwordTextController.dispose();
     confirmPasswordTextController.dispose();
   }
+}
+
+class PasswordValidation {
+  final bool hasMinLength;
+  final bool hasNumber;
+  final bool hasUpperCase;
+  final bool hasSpecialChar;
+
+  PasswordValidation({
+    required this.hasMinLength,
+    required this.hasNumber,
+    required this.hasUpperCase,
+    required this.hasSpecialChar,
+  });
+
+  bool isValid() {return hasMinLength && hasNumber && hasUpperCase && hasSpecialChar;}
 }
 
 // [2. VIEW]
@@ -100,6 +110,12 @@ class SignUpScreen extends StatefulWidget {
 
 class _SignUpScreenState extends State<SignUpScreen> {
   final SignUpViewModel _viewModel = SignUpViewModel();
+  PasswordValidation _passwordValidation = PasswordValidation(
+    hasMinLength: false,
+    hasNumber: false,
+    hasUpperCase: false,
+    hasSpecialChar: false,
+  );
 
   @override
   void dispose() {
@@ -111,7 +127,8 @@ class _SignUpScreenState extends State<SignUpScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       body: Container(
-        width: double.infinity, height: double.infinity,
+        width: double.infinity, 
+        height: double.infinity,
         decoration: BoxDecoration(
           gradient: LinearGradient(
             colors: [
@@ -119,14 +136,16 @@ class _SignUpScreenState extends State<SignUpScreen> {
               hexStringToColor("9546C4"),
               hexStringToColor("5E61F4"),
             ],
-            begin: Alignment.topCenter, end: Alignment.bottomCenter,
+            begin: Alignment.topCenter, 
+            end: Alignment.bottomCenter,
           ),
         ),
         child: Center(
           child: SingleChildScrollView(
             child: Container(
               width: MediaQuery.of(context).size.width > 500
-                  ? 600 : MediaQuery.of(context).size.width * 0.95,
+                  ? 600 
+                  : MediaQuery.of(context).size.width * 0.95,
               padding: const EdgeInsets.all(25),
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(25),
@@ -143,7 +162,8 @@ class _SignUpScreenState extends State<SignUpScreen> {
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: <Widget>[
                         Image.asset(
-                          "assets/images/logo.png", width: 150,
+                          "assets/images/logo.png", 
+                          width: 150,
                         ),
                         const SizedBox(height: 20),
                         const Text(
@@ -157,7 +177,8 @@ class _SignUpScreenState extends State<SignUpScreen> {
                         ),
                         const SizedBox(height: 10),
                         const Text(
-                          "Create an Account", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.black),
+                          "Create an Account", 
+                          style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.black),
                         ),
                         const SizedBox(height: 20),
 
@@ -182,6 +203,11 @@ class _SignUpScreenState extends State<SignUpScreen> {
                         TextFormField(
                           controller: _viewModel.passwordTextController,
                           obscureText: _viewModel.obscureText,
+                          onChanged: (value) {
+                            setState(() {
+                              _passwordValidation = _viewModel.isPasswordValid(value);
+                            });
+                          },
                           decoration: InputDecoration(
                             filled: true,
                             fillColor: Colors.grey[300],
@@ -210,7 +236,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
                         Container(
                           width: double.infinity,
                           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                          margin: const EdgeInsets.only(left: 12), // This aligns with the input field's padding
+                          margin: const EdgeInsets.only(left: 12),
                           decoration: BoxDecoration(
                             color: Colors.black.withOpacity(0.1),
                             borderRadius: BorderRadius.circular(8),
@@ -223,10 +249,10 @@ class _SignUpScreenState extends State<SignUpScreen> {
                                 style: TextStyle(color: Colors.black, fontSize: 13, fontWeight: FontWeight.bold),
                               ),
                               const SizedBox(height: 4),
-                              _buildRequirementItem("At least 8 characters long"),
-                              _buildRequirementItem("1 uppercase letter (A-Z)"),
-                              _buildRequirementItem("1 number (0-9)"),
-                              _buildRequirementItem("1 special character (!@#\$%^&*)"),
+                              _buildRequirementItem("At least 8 characters long", _passwordValidation.hasMinLength),
+                              _buildRequirementItem("1 uppercase letter (A-Z)", _passwordValidation.hasUpperCase),
+                              _buildRequirementItem("1 number (0-9)", _passwordValidation.hasNumber),
+                              _buildRequirementItem("1 special character (!@#\$%^&*)", _passwordValidation.hasSpecialChar),
                             ],
                           ),
                         ),
@@ -288,7 +314,14 @@ class _SignUpScreenState extends State<SignUpScreen> {
                                         content: SingleChildScrollView(
                                           child: const Text(PrivacyPolicy.privacyPolicyText),
                                         ),
-                                        actions: [TextButton(onPressed: () {Navigator.of(context).pop();}, child: const Text('Close'))],
+                                        actions: [
+                                          TextButton(
+                                            onPressed: () {
+                                              Navigator.of(context).pop();
+                                            }, 
+                                            child: const Text('Close')
+                                          ),
+                                        ],
                                       );
                                     },
                                   );
@@ -321,9 +354,12 @@ class _SignUpScreenState extends State<SignUpScreen> {
                               backgroundColor: Colors.black.withOpacity(0.2),
                               shadowColor: Colors.transparent,
                             ),
-                            onPressed: () async {await _viewModel.signUp(context);},
+                            onPressed: () async {
+                              await _viewModel.signUp(context);
+                            },
                             child: const Text(
-                              'Sign Up', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                              'Sign Up', 
+                              style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
                             ),
                           ),
                         ),
@@ -341,20 +377,28 @@ class _SignUpScreenState extends State<SignUpScreen> {
     );
   }
 
-  Widget _buildRequirementItem(String text) {
+  Widget _buildRequirementItem(String text, bool isMet) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 2),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Padding(
-            padding: EdgeInsets.only(top: 3, right: 6),
+          Padding(
+            padding: const EdgeInsets.only(top: 2, right: 6),
             child: Icon(
-              Icons.circle, size: 6, color: Colors.black,
+              isMet ? Icons.check_rounded : Icons.close_rounded,
+              size: 16,
+              color: isMet ? Colors.green : Colors.redAccent.withOpacity(0.6),
             ),
           ),
           Expanded(
-            child: Text(text, style: const TextStyle(color: Colors.black, fontSize: 13),
+            child: Text(
+              text,
+              style: TextStyle(
+                color: isMet ? Colors.green : Colors.black87,
+                fontSize: 13,
+                fontWeight: isMet ? FontWeight.bold : FontWeight.normal,
+              ),
             ),
           ),
         ],
@@ -366,19 +410,18 @@ class _SignUpScreenState extends State<SignUpScreen> {
     return Row(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
-        const Text(
-          "Already have an account?", style: TextStyle(color: Colors.black, fontSize: 14),
-        ),
+        const Text("Already have an account?", style: TextStyle(color: Colors.black, fontSize: 14)),
         const SizedBox(width: 5),
         TextButton(
-          onPressed: () {Navigator.push(context, MaterialPageRoute(builder: (context) => const SignInScreen()));},
+          onPressed: () {
+            Navigator.push(context, MaterialPageRoute(builder: (context) => const SignInScreen()));
+          },
           style: TextButton.styleFrom(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8), backgroundColor: Colors.black.withOpacity(0.2),
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8), 
+            backgroundColor: Colors.black.withOpacity(0.2),
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
           ),
-          child: Text(
-            'Sign In', style: TextStyle(color: Colors.lightBlue[300], fontWeight: FontWeight.bold),
-          ),
+          child: Text('Sign In', style: TextStyle(color: Colors.lightBlue[300], fontWeight: FontWeight.bold)),
         ),
       ],
     );

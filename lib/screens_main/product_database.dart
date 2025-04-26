@@ -135,36 +135,30 @@ class ProductViewModel {
         }
       }
       return 0.0;
-    } catch (e) {
-      print('Error getting VAT rate: $e');
-      return 0.0;
-    }
+    } catch (e) {print('Error getting VAT rate: $e'); return 0.0;}
   }
 
   Future<void> updateProductsVatPrices(String storeNumber, String vatCode, double newRate) async {
-  try {
-    // Busca todos os produtos com este VAT code
-    final products = await _firestore
-        .collection('products')
-        .where('storeNumber', isEqualTo: storeNumber)
-        .where('vatCode', isEqualTo: vatCode)
-        .get();
+    try {
+      // Busca todos os produtos com este VAT code
+      final products = await _firestore
+          .collection('products')
+          .where('storeNumber', isEqualTo: storeNumber)
+          .where('vatCode', isEqualTo: vatCode)
+          .get();
 
-    // Atualiza cada produto
-    for (final productDoc in products.docs) {
-      final productData = productDoc.data();
-      final basePrice = productData['basePrice']?.toDouble() ?? 0.0;
-      final newVatPrice = basePrice * (1 + newRate);
+      // Atualiza cada produto
+      for (final productDoc in products.docs) {
+        final productData = productDoc.data();
+        final basePrice = productData['basePrice']?.toDouble() ?? 0.0;
+        final newVatPrice = basePrice * (1 + newRate);
 
-      await productDoc.reference.update({
-        'vatPrice': newVatPrice,
-      });
-    }
-  } catch (e) {
-    print('Error updating products VAT prices: $e');
-    throw e;
+        await productDoc.reference.update({
+          'vatPrice': newVatPrice,
+        });
+      }
+    } catch (e) {print('Error updating products VAT prices: $e'); throw e;}
   }
-}
 
   Future<void> updateProduct(String productId, ProductModel product) async {
     try {
@@ -176,8 +170,7 @@ class ProductViewModel {
       
       await _firestore.collection('products').doc(productId).update(updatedProduct);
     } catch (e) {
-      print("Error updating product: $e");
-      throw e;
+      print("Error updating product: $e"); throw e;
     }
   }
 
@@ -242,10 +235,8 @@ class _ProductDatabasePageState extends State<ProductDatabasePage> with TickerPr
   final _modelController = TextEditingController();
   final _stockMaxController = TextEditingController();
   final _wareHouseStockController = TextEditingController();
-  final _stockCurrentController = TextEditingController(text: "0");
-  final _stockOrderController = TextEditingController(text: "0"); // Default value 0
+  final _stockOrderController = TextEditingController(text: "0"); 
   final _stockMinController = TextEditingController();
-  final _stockBreakController = TextEditingController(text: "0");
   final _lastPurchasePriceController = TextEditingController();
   final _basePriceController = TextEditingController(); 
   final _vatCodeController = TextEditingController();
@@ -394,7 +385,7 @@ class _ProductDatabasePageState extends State<ProductDatabasePage> with TickerPr
         brand: _brandController.text.trim(),
         model: _modelController.text.trim(),
         stockMax: stockMax,
-        stockCurrent: int.tryParse(_stockCurrentController.text) ?? 0,
+        stockCurrent: 0,
         stockOrder: stockOrder,
         stockMin: stockMin,
         wareHouseStock: wareHouseStock,
@@ -561,8 +552,8 @@ class _ProductDatabasePageState extends State<ProductDatabasePage> with TickerPr
       _buildTextField(_stockMaxController, "Max Stock", isNumber: true),
       _buildTextField(_stockMinController, "Min Stock", isNumber: true),
       _buildTextField(_wareHouseStockController, "WareHouse Stock", isNumber: true),
-      _buildTextField(_stockCurrentController, "Current Stock", isNumber: true, readOnly: true),
-      _buildTextField(_stockBreakController, "Stock Break", isNumber: true, readOnly: true),
+      // _buildTextField(_stockCurrentController, "Current Stock", isNumber: true, readOnly: true),
+      // _buildTextField(_stockBreakController, "Stock Break", isNumber: true, readOnly: true),
       _buildTextField(_stockOrderController, "Order Stock (Default = 0)", isNumber: true),
       _buildTextField(_lastPurchasePriceController, "Last Purchase Price", isNumber: true),
       _buildTextField(_basePriceController, "Base Price", isNumber: true,),
@@ -1267,14 +1258,12 @@ class _ProductDatabasePageState extends State<ProductDatabasePage> with TickerPr
           ),
           const SizedBox(height: 16),
           _buildEditablePriceRow(
-            isEditing,
-            "Base Price", basePriceController,Colors.green, isNumber: true,
+            isEditing, "Base Price", basePriceController,Colors.green, isNumber: true,
           ),
           
           _buildPriceRow(
             "Price with VAT (${product.vatCode})",
-            "€${product.vatPrice.toStringAsFixed(2)}",
-            Colors.purple,
+            "€${product.vatPrice.toStringAsFixed(2)}", Colors.purple,
           ),
 
          const Divider(height: 16, thickness: 1),
@@ -1415,9 +1404,7 @@ class _ProductDatabasePageState extends State<ProductDatabasePage> with TickerPr
       children: [
         const SizedBox(width: 40),
         Expanded(flex: 2,
-          child: Text(
-            isRequired ? "$label *" : label, style: TextStyle(fontSize: 14, color: Colors.grey[600]),
-          ),
+          child: Text(isRequired ? "$label *" : label, style: TextStyle(fontSize: 14, color: Colors.grey[600])),
         ),
         Expanded(flex: 1,
           child: isEditing
