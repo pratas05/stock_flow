@@ -94,6 +94,15 @@ class ProductModel {
 class ProductViewModel {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final FirebaseAuth _auth = FirebaseAuth.instance;
+  
+  // Adicione este método no ProductViewModel
+  Future<String> getUserStoreCurrency() async {
+    final user = _auth.currentUser;
+    if (user == null) throw Exception("No user is logged in.");
+
+    final userDoc = await _firestore.collection('users').doc(user.uid).get();
+    return userDoc.data()?['storeCurrency'] ?? 'EUR'; // Valor padrão caso não exista
+  }
 
   Future<DocumentReference> saveProduct(ProductModel product) async {
     try {
@@ -104,9 +113,20 @@ class ProductViewModel {
       final storeNumber = userDoc.data()?['storeNumber'];
       if (storeNumber == null) throw Exception("Store information is missing for the user.");
 
-      return await _firestore.collection('products').add(product.toMap());
+      // Adiciona o productId e storeCurrency ao mapa do produto
+      final productData = product.toMap();
+      final productRef = await _firestore.collection('products').add(productData);
+      
+      // Atualiza o documento com o productId (igual ao ID do documento)
+      await productRef.update({
+        'productId': productRef.id,
+        'storeCurrency': await getUserStoreCurrency(),
+      });
+
+      return productRef;
     } catch (e) {
-      print("Error saving product: $e"); throw e;
+      print("Error saving product: $e"); 
+      throw e;
     }
   }
 
@@ -252,9 +272,12 @@ class _ProductDatabasePageState extends State<ProductDatabasePage> with TickerPr
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 2, vsync: this);
+    _tabController = TabController(length: _isStoreManager ? 2 : 1, vsync: this);
     _searchController.addListener(() {
-      setState(() { _searchText = _searchController.text;});
+      setState(() {
+        _searchText = _searchController.text;int tabCount = _isStoreManager ? 2 : 1; // Configurar o TabController dinamicamente com base em _isStoreManager
+        _tabController = TabController(length: tabCount, vsync: this);
+      });
     });
     _loadUserData();
   }
@@ -445,6 +468,16 @@ class _ProductDatabasePageState extends State<ProductDatabasePage> with TickerPr
 
   @override
   Widget build(BuildContext context) {
+    // Atualiza o comprimento do controlador se necessário
+    if (_tabController.length != (_isStoreManager ? 2 : 1)) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        setState(() {
+          _tabController.dispose();
+          _tabController = TabController(length: _isStoreManager ? 2 : 1, vsync: this);
+        });
+      });
+    }
+
     if (_isLoading) {return Center(child: CircularProgressIndicator());}
 
     if (_storeNumber == null || _storeNumber!.isEmpty) {
@@ -455,8 +488,11 @@ class _ProductDatabasePageState extends State<ProductDatabasePage> with TickerPr
       );
     }
 
-    int tabCount = _isStoreManager ? 2 : 1; // Configurar o TabController dinamicamente com base em _isStoreManager
-    _tabController = TabController(length: tabCount, vsync: this);
+    // Atualiza o comprimento do controlador se necessário
+    if (_tabController.length != (_isStoreManager ? 2 : 1)) {
+      _tabController.dispose();
+      _tabController = TabController(length: _isStoreManager ? 2 : 1, vsync: this);
+    }
 
     return Scaffold(
       appBar: AppBar(
@@ -789,11 +825,39 @@ class _ProductDatabasePageState extends State<ProductDatabasePage> with TickerPr
     final vatCodeController = TextEditingController(text: productModel.vatCode);
     final productLocationController = TextEditingController(text: productModel.productLocation);
 
+    // Variável para armazenar o preço com VAT em tempo real
+    double vatPrice = productModel.vatPrice;
+
+    // Função para calcular o VAT price
+    Future<void> calculateVatPrice() async {
+      try {
+        final storeNumber = await _viewModel.getUserStoreNumber();
+        final vatRate = await _viewModel._getVatRate(vatCodeController.text, storeNumber);
+        final basePrice = double.tryParse(basePriceController.text) ?? 0.0;
+        setState(() {
+          vatPrice = basePrice * (1 + vatRate);
+        });
+      } catch (e) {
+        print('Error calculating VAT price: $e');
+        setState(() {
+          vatPrice = double.tryParse(basePriceController.text) ?? 0.0;
+        });
+      }
+    }
+
     await showDialog(
       context: context,
       builder: (context) {
         return StatefulBuilder(
           builder: (context, setState) {
+          // Adiciona listeners para atualizar o VAT price quando basePrice ou vatCode mudam
+          basePriceController.addListener(() {
+            calculateVatPrice();
+          });
+
+          vatCodeController.addListener(() {
+            calculateVatPrice();
+          });
             return Dialog(
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
               insetPadding: EdgeInsets.symmetric(horizontal: 20, vertical: 24), elevation: 10,
@@ -1039,7 +1103,8 @@ class _ProductDatabasePageState extends State<ProductDatabasePage> with TickerPr
                                 lastPurchasePriceController,
                                 basePriceController,
                                 highlightColor,
-                                productModel,
+                                vatCodeController.text, // Código VAT
+                                vatPrice, // Preço com VAT calculado
                               ),
                               SizedBox(height: 16),
                               _buildEditableAdditionalInfoSection(
@@ -1235,41 +1300,55 @@ class _ProductDatabasePageState extends State<ProductDatabasePage> with TickerPr
     TextEditingController lastPurchasePriceController,
     TextEditingController basePriceController,
     Color highlightColor,
-    ProductModel product,
+    String vatCode,
+    double vatPrice,
   ) {
     return Container(
-      decoration: BoxDecoration(color: Colors.white,
+      decoration: BoxDecoration(
+        color: Colors.white,
         borderRadius: BorderRadius.circular(12),
         boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 6, offset: Offset(0, 2))],
       ),
       padding: EdgeInsets.all(16),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
               Container(
                 padding: EdgeInsets.all(8),
-                decoration: BoxDecoration(color: highlightColor.withOpacity(0.1), shape: BoxShape.circle),
+                decoration: BoxDecoration(
+                  color: highlightColor.withOpacity(0.1),
+                  shape: BoxShape.circle),
                 child: Icon(Icons.attach_money, size: 20, color: highlightColor),
               ),
               SizedBox(width: 16),
-              Text("Pricing Information", style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: Colors.grey[800])),
+              Text("Pricing Information", 
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: Colors.grey[800])),
             ],
           ),
           const SizedBox(height: 16),
           _buildEditablePriceRow(
-            isEditing, "Base Price", basePriceController,Colors.green, isNumber: true,
+            isEditing, 
+            "Base Price", 
+            basePriceController,
+            Colors.green, 
+            isNumber: true,
           ),
-          
+          SizedBox(height: 8),
           _buildPriceRow(
-            "Price with VAT (${product.vatCode})",
-            "€${product.vatPrice.toStringAsFixed(2)}", Colors.purple,
+            "Price with VAT ($vatCode)",
+            "€${vatPrice.toStringAsFixed(2)}", 
+            Colors.purple,
           ),
-
-         const Divider(height: 16, thickness: 1),
+          const Divider(height: 16, thickness: 1),
           _buildEditablePriceRow(
             isEditing,
-            "Last Purchase Price", lastPurchasePriceController, Colors.blue, isRequired: true, isNumber: true,
+            "Last Purchase Price", 
+            lastPurchasePriceController, 
+            Colors.blue, 
+            isRequired: true, 
+            isNumber: true,
           ),
         ],
       ),

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:stockflow/reusable_widgets/coins.dart';
 import 'package:stockflow/reusable_widgets/colors_utils.dart';
 import 'package:stockflow/reusable_widgets/custom_snackbar.dart';
 import 'package:stockflow/reusable_widgets/error_screen.dart';
@@ -227,13 +228,6 @@ class _FinanceAndHumanResourcesPageState
   late VatModel _initialVatValues;
   bool _isStoreManager = false;
   bool _isLoading = true;
-
-  final Map<String, String> _currencyMap = {
-    'Euro (€)': '€',
-    'US Dollar (\$)': '\$',
-    'British Pound (£)': '£',
-    'Brazilian Real (R\$)': 'R\$',
-  };
 
   String? _selectedCurrency;
 
@@ -563,31 +557,89 @@ class _FinanceAndHumanResourcesPageState
                             filled: true,
                             fillColor: Colors.grey[100],
                           ),
-                          items: _currencyMap.entries.map((entry) {
+                          items: CurrencyConstants.currencyMap.entries.map((entry) {
                             return DropdownMenuItem<String>(
                               value: entry.value,
                               child: Text(entry.key),
                             );
                           }).toList(),
                           onChanged: (value) async {
+                            if (value == null || value == _selectedCurrency) return;
+
+                            // Armazena o valor anterior
+                            final previousValue = _selectedCurrency;
+
+                            // Primeira confirmação
+                            final firstConfirm = await showDialog<bool>(
+                              context: context,
+                              builder: (context) => AlertDialog(
+                                title: const Text('Change Currency?'),
+                                content: Text('You are about to change the store currency to $value. Are you sure?'),
+                                actions: [
+                                  TextButton(
+                                    onPressed: () => Navigator.pop(context, false),
+                                    child: const Text('Cancel'),
+                                  ),
+                                  TextButton(
+                                    onPressed: () => Navigator.pop(context, true),
+                                    child: const Text('Continue'),
+                                  ),
+                                ],
+                              ),
+                            );
+
+                            if (firstConfirm != true) {
+                              // Volta ao valor anterior visualmente
+                              setState(() {
+                                _selectedCurrency = previousValue;
+                              }); return;
+                            }
+
+                            final secondConfirm = await showDialog<bool>(
+                              context: context,
+                              builder: (context) => AlertDialog(
+                                title: const Text('Confirm Currency Change'),
+                                content: Text('This will affect all financial calculations. Confirm change to $value?'),
+                                actions: [
+                                  TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+                                  TextButton(
+                                    onPressed: () => Navigator.pop(context, true),
+                                    child: const Text('Confirm change', style: TextStyle(color: Colors.red)),
+                                  ),
+                                ],
+                              ),
+                            );
+
+                            if (secondConfirm != true) {
+                              // Volta ao valor anterior visualmente
+                              setState(() {
+                                _selectedCurrency = previousValue;
+                              }); return;
+                            }
+
                             setState(() {
                               _selectedCurrency = value;
                             });
-                            if (value != null) {
-                              try {
-                                await _viewModel.updateStoreCurrency(value);
-                                CustomSnackbar.show(
-                                  context: context,
-                                  message: 'Currency saved: $value',
-                                );
-                              } catch (_) {
-                                CustomSnackbar.show(
-                                  context: context,
-                                  message: 'Error saving currency.',
-                                );
-                              }
+
+                            try {
+                              await _viewModel.updateStoreCurrency(value);
+                              CustomSnackbar.show(
+                                context: context,
+                                message: 'Currency successfully changed to $value',
+                                backgroundColor: Colors.green,
+                              );
+                            } catch (_) {
+                              setState(() { // Em caso de erro, reverte também
+                                _selectedCurrency = previousValue;
+                              });
+                              CustomSnackbar.show(
+                                context: context,
+                                message: 'Error saving currency.',
+                                backgroundColor: Colors.red,
+                              );
                             }
                           },
+                          menuMaxHeight: 300,
                         ),
                       ],
                     ),
@@ -612,9 +664,7 @@ class _FinanceAndHumanResourcesPageState
               ? 'Admin permission removed!'
               : 'Admin permission granted!'),
           behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(8.0),
-          ),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8.0)),
         ),
       );
     } catch (e) {
