@@ -3,6 +3,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/services.dart';
+import 'package:stockflow/reusable_widgets/barcode.dart';
 import 'package:stockflow/reusable_widgets/colors_utils.dart';
 import 'package:stockflow/reusable_widgets/custom_snackbar.dart';
 import 'package:stockflow/reusable_widgets/error_screen.dart';
@@ -743,40 +744,73 @@ class _ProductDatabasePageState extends State<ProductDatabasePage> with TickerPr
       child: SizedBox(
         width: MediaQuery.of(context).size.width * 0.4,
         child: Card(
-          margin: EdgeInsets.symmetric(vertical: 6.0, horizontal: 8.0), elevation: 2.0,
-          child: ListTile(
-            contentPadding: EdgeInsets.all(12.0),
-            title: Text( product['name'], style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-            subtitle: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text('Brand: ${product['brand'] ?? ''}', style: TextStyle(fontSize: 14)),
-                SizedBox(height: 6),
-                Row(
-                  children: [
-                    Icon(Icons.euro_symbol, size: 14, color: Colors.green),
-                    const SizedBox(width: 4),
-                    Text(
-                      '${product['vatPrice'].toStringAsFixed(2)}',
-                      style: TextStyle(fontSize: 14, color: Colors.green, fontWeight: FontWeight.bold),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 6),
-                Row(
-                  children: [
-                    Icon(Icons.location_on, size: 14, color: Colors.blue),
-                    SizedBox(width: 4),
-                    Text(
-                      product['productLocation'] ?? 'Not Located',
-                      style: TextStyle(fontSize: 13, color: Colors.blue),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-            trailing: _buildProductActions(product),
+          margin: EdgeInsets.symmetric(vertical: 6.0, horizontal: 8.0),
+          elevation: 2.0,
+          child: InkWell(
             onTap: () => _showProductDetailsDialog(context, product),
+            child: Padding(
+              padding: EdgeInsets.all(12.0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Product name and actions
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Expanded(
+                        child: Text(
+                          product['name'],
+                          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          IconButton(
+                            icon: Icon(Icons.barcode_reader, color: Colors.blue),
+                            onPressed: () => BarcodePage.showBarcodeDialog(
+                              context, 
+                              product.id, 
+                              product['name']
+                            ),
+                          ),
+                          _buildProductActions(product), 
+                        ],
+                      ),
+                    ],
+                  ),
+                  // Other product info
+                  Text('Brand: ${product['brand'] ?? ''}', style: TextStyle(fontSize: 14)),
+                  SizedBox(height: 6),
+                  Row(
+                    children: [
+                      Icon(Icons.euro_symbol, size: 14, color: Colors.green),
+                      SizedBox(width: 4),
+                      Text(
+                        '${product['vatPrice'].toStringAsFixed(2)}',
+                        style: TextStyle(
+                          fontSize: 14,
+                          color: Colors.green,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ],
+                  ),
+                  SizedBox(height: 6),
+                  Row(
+                    children: [
+                      Icon(Icons.location_on, size: 14, color: Colors.blue),
+                      SizedBox(width: 4),
+                      Text(
+                        product['productLocation'] ?? 'Not Located',
+                        style: TextStyle(fontSize: 13, color: Colors.blue),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
           ),
         ),
       ),
