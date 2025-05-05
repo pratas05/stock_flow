@@ -396,31 +396,181 @@ class _WarehouseManagementPageState extends State<WarehouseManagementPage>
   }
 
   Widget _buildProductCard(BuildContext context, QueryDocumentSnapshot product) {
+    final theme = Theme.of(context);
+    final currentStock = product['stockCurrent'] as int;
+    final minStock = product['stockMin'] as int;
+    final maxStock = product['stockMax'] as int;
+    
+    // Definindo os estados de estoque
+    final isOutOfStock = currentStock <= 0;
+    final isLowStock = currentStock > 0 && currentStock <= 5;
+    final isBelowMin = currentStock < minStock && !isLowStock;
+
     return Center(
       child: Container(
         width: MediaQuery.of(context).size.width * 0.6,
+        margin: const EdgeInsets.symmetric(vertical: 8.0),
         child: Card(
-          margin: EdgeInsets.symmetric(vertical: 8.0, horizontal: 16.0),
-          elevation: 4.0,
-          child: ListTile(
-            contentPadding: EdgeInsets.all(16.0),
-            title: Text(
-              product['name'],
-              style: TextStyle(
-                fontWeight: FontWeight.bold,
-                fontSize: 18,
-              ),
-            ),
-            subtitle: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text('Brand: ${product['brand']}'),
-                Text('Price: €${product['vatPrice'].toStringAsFixed(2)}'),
-              ],
-            ),
+          elevation: 4,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: InkWell(
+            borderRadius: BorderRadius.circular(12),
             onTap: () async {
               await _showProductDetailsDialog(context, product);
             },
+            child: Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Primeira linha - Nome e status
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Expanded(
+                        child: Text(
+                          product['name'],
+                          style: theme.textTheme.titleLarge?.copyWith(
+                            fontWeight: FontWeight.bold,
+                            color: theme.colorScheme.primary,
+                          ),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: isOutOfStock
+                              ? Colors.red.withOpacity(0.2)
+                              : isLowStock
+                                  ? Colors.orange.withOpacity(0.2)
+                                  : isBelowMin
+                                      ? Colors.amber.withOpacity(0.2)
+                                      : Colors.green.withOpacity(0.2),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Text(
+                          isOutOfStock
+                              ? 'OUT OF STOCK ON SHOP'
+                              : isLowStock
+                                  ? 'LOW STOCK ON SHOP'
+                                  : isBelowMin
+                                      ? 'BELOW MIN ON SHOP'
+                                      : 'IN STOCK ON SHOP',
+                          style: theme.textTheme.labelSmall?.copyWith(
+                            color: isOutOfStock
+                                ? const Color.fromARGB(255, 245, 44, 30)
+                                : isLowStock
+                                    ? const Color.fromARGB(255, 255, 140, 0)
+                                    : isBelowMin
+                                        ? Colors.amber[800]
+                                        : Colors.green,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+
+                  // Segunda linha - Detalhes básicos (com Tooltips)
+                  Row(
+                    children: [
+                      Tooltip(
+                        message: 'Product Brand',
+                        child: Icon(Icons.branding_watermark, size: 16, color: theme.colorScheme.secondary),
+                      ),
+                      const SizedBox(width: 4),
+                      Text('${product['brand']}', style: theme.textTheme.bodyMedium),
+                      const SizedBox(width: 16),
+                      Tooltip(
+                        message: 'Product Category',
+                        child: Icon(Icons.category, size: 16, color: theme.colorScheme.secondary),
+                      ),
+                      const SizedBox(width: 4),
+                      Text('${product['category']}', style: theme.textTheme.bodyMedium),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+
+                  // Terceira linha - Preço e estoque
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            '€${product['vatPrice'].toStringAsFixed(2)}',
+                            style: theme.textTheme.titleMedium?.copyWith(
+                              fontWeight: FontWeight.bold,
+                              color: theme.colorScheme.primary,
+                            ),
+                          ),
+                        ],
+                      ),
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          Row(
+                            children: [
+                              Tooltip(
+                                message: 'Current Shop Stock',
+                                child: Icon(Icons.store, size: 16, 
+                                  color: isLowStock ? Colors.orange : theme.colorScheme.secondary),
+                              ),
+                              const SizedBox(width: 4),
+                              Text(
+                                '$currentStock',
+                                style: theme.textTheme.bodyMedium?.copyWith(
+                                  fontWeight: FontWeight.bold,
+                                  color: isLowStock ? Colors.orange : null,
+                                ),
+                              ),
+                              const SizedBox(width: 16),
+                              Tooltip(
+                                message: 'Warehouse Available Stock',
+                                child: Icon(Icons.warehouse, size: 16, color: theme.colorScheme.secondary),
+                              ),
+                              const SizedBox(width: 4),
+                              Text(
+                                '${product['wareHouseStock']}',
+                                style: theme.textTheme.bodyMedium?.copyWith(
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ],
+                          ),
+                          Text(
+                            'Min: $minStock | Max: $maxStock',
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              color: theme.colorScheme.secondary,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+
+                  // Barra de progresso
+                  const SizedBox(height: 8),
+                  LinearProgressIndicator(
+                    value: currentStock / (maxStock * 1.0),
+                    backgroundColor: Colors.grey[200],
+                    color: isOutOfStock
+                        ? Colors.red
+                        : isLowStock
+                            ? Colors.orange
+                            : isBelowMin
+                                ? Colors.amber
+                                : Colors.green,
+                    minHeight: 4,
+                  ),
+                ],
+              ),
+            ),
           ),
         ),
       ),
@@ -1119,6 +1269,7 @@ class _WarehouseManagementPageState extends State<WarehouseManagementPage>
               onSearchChanged: (text) => _searchNotifier.value = text,
               hintText: "Enter Product Name",
             ),
+            const SizedBox(height: 8),
             Expanded(
               child: StreamBuilder<QuerySnapshot>(
                 stream: _viewModel._firestore
@@ -1136,46 +1287,37 @@ class _WarehouseManagementPageState extends State<WarehouseManagementPage>
                   return ValueListenableBuilder<String>(
                     valueListenable: _searchNotifier,
                     builder: (context, searchText, _) {
-                      var filteredProducts = productSnapshot.data!.docs.where((product) { // Filtro em tempo real
+                      var filteredProducts = productSnapshot.data!.docs.where((product) {
                         final productName = product['name'].toString().toLowerCase();
                         final searchLower = searchText.toLowerCase();
                         return (product['stockCurrent'] as int) > 0 &&
-                              productName.contains(searchLower);
+                            productName.contains(searchLower);
                       }).toList();
 
                       if (filteredProducts.isEmpty) {
-                        return Center(child: Text("No matching products with shop stock"));
+                        return Center(
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(Icons.search_off, size: 48, color: Colors.grey[400]),
+                              const SizedBox(height: 16),
+                              Text(
+                                searchText.isEmpty
+                                    ? "No products with shop stock available"
+                                    : "No matching products found",
+                                style: TextStyle(color: Colors.grey[600]),
+                              ),
+                            ],
+                          ),
+                        );
                       }
 
                       return ListView.builder(
+                        padding: const EdgeInsets.symmetric(vertical: 8),
                         itemCount: filteredProducts.length,
                         itemBuilder: (context, index) {
                           var product = filteredProducts[index];
-                          return Center(
-                            child: Container(
-                              width: MediaQuery.of(context).size.width * 0.6,
-                              child: Card(
-                                margin: EdgeInsets.symmetric(vertical: 8.0, horizontal: 16.0), elevation: 4.0,
-                                child: ListTile(
-                                  contentPadding: EdgeInsets.all(16.0),
-                                  title: Text(
-                                    product['name'], style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
-                                  ),
-                                  subtitle: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      Text('Brand: ${product['brand']}'),
-                                      Text('Shop Stock: ${product['stockCurrent']}'),
-                                      Text('Warehouse Stock: ${product['wareHouseStock']}'),
-                                    ],
-                                  ),
-                                  onTap: () async {
-                                    await _showTransferToWarehouseDialog(context, product);
-                                  },
-                                ),
-                              ),
-                            ),
-                          );
+                          return _buildTransferCard(context, product);
                         },
                       );
                     },
@@ -1186,6 +1328,147 @@ class _WarehouseManagementPageState extends State<WarehouseManagementPage>
           ],
         );
       },
+    );
+  }
+
+  Widget _buildTransferCard(BuildContext context, QueryDocumentSnapshot product) {
+    final theme = Theme.of(context);
+    final shopStock = product['stockCurrent'] as int;
+    final warehouseStock = product['wareHouseStock'] as int;
+    final minStock = product['stockMin'] as int;
+    final maxStock = product['stockMax'] as int;
+    final isLowStock = shopStock <= 5;
+
+    return Center(
+      child: Container(
+        width: MediaQuery.of(context).size.width * 0.6,
+        margin: const EdgeInsets.symmetric(vertical: 8.0),
+        child: Card(
+          elevation: 2,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: InkWell(
+            borderRadius: BorderRadius.circular(12),
+            onTap: () async {
+              await _showTransferToWarehouseDialog(context, product);
+            },
+            child: Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Linha superior - Nome e preço
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Expanded(
+                        child: Text(
+                          product['name'],
+                          style: theme.textTheme.titleLarge?.copyWith(
+                            fontWeight: FontWeight.bold,
+                            color: theme.colorScheme.primary,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      Text(
+                        '€${product['vatPrice'].toStringAsFixed(2)}',
+                        style: theme.textTheme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.bold,
+                          color: theme.colorScheme.primary,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+
+                  // Detalhes básicos
+                  Row(
+                    children: [
+                      Icon(Icons.branding_watermark, size: 16, color: theme.colorScheme.secondary),
+                      const SizedBox(width: 4),
+                      Text('${product['brand']}', style: theme.textTheme.bodyMedium),
+                      const SizedBox(width: 16),
+                      Icon(Icons.category, size: 16, color: theme.colorScheme.secondary),
+                      const SizedBox(width: 4),
+                      Text('${product['category']}', style: theme.textTheme.bodyMedium),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+
+                  // Seção de estoque - Agora agrupada
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Stock Information',
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                          fontWeight: FontWeight.bold,
+                          color: theme.colorScheme.secondary,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          // Shop
+                          Row(
+                            children: [
+                              Icon(Icons.store, size: 18, color: isLowStock ? Colors.orange : Colors.green),
+                              const SizedBox(width: 6),
+                              Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text('Shop', style: theme.textTheme.labelSmall),
+                                  Text(
+                                    '$shopStock units',
+                                    style: theme.textTheme.bodySmall?.copyWith(
+                                      fontWeight: FontWeight.bold,
+                                      color: isLowStock ? Colors.orange : Colors.green,
+                                    ),
+                                  ),
+                                  Text(
+                                    'Min: $minStock | Max: $maxStock',
+                                    style: theme.textTheme.labelSmall?.copyWith(fontSize: 10),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
+                          const SizedBox(width: 24),
+                          // Warehouse
+                          Row(
+                            children: [
+                              Icon(Icons.warehouse, size: 18, color: theme.colorScheme.secondary),
+                              const SizedBox(width: 6),
+                              Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text('Warehouse', style: theme.textTheme.labelSmall),
+                                  Text(
+                                    '$warehouseStock units',
+                                    style: theme.textTheme.bodySmall?.copyWith(
+                                      fontWeight: FontWeight.bold,
+                                      color: theme.colorScheme.primary,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
     );
   }
 

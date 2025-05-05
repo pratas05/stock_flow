@@ -576,14 +576,8 @@ class _FinanceAndHumanResourcesPageState
                                 title: const Text('Change Currency?'),
                                 content: Text('You are about to change the store currency to $value. Are you sure?'),
                                 actions: [
-                                  TextButton(
-                                    onPressed: () => Navigator.pop(context, false),
-                                    child: const Text('Cancel'),
-                                  ),
-                                  TextButton(
-                                    onPressed: () => Navigator.pop(context, true),
-                                    child: const Text('Continue'),
-                                  ),
+                                  TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+                                  TextButton(onPressed: () => Navigator.pop(context, true), child: const Text('Continue')),
                                 ],
                               ),
                             );
@@ -592,7 +586,11 @@ class _FinanceAndHumanResourcesPageState
                               // Volta ao valor anterior visualmente
                               setState(() {
                                 _selectedCurrency = previousValue;
-                              }); return;
+                              });
+                              CustomSnackbar.show(
+                                context: context,
+                                message: 'No changes applied',
+                              ); return;
                             }
 
                             final secondConfirm = await showDialog<bool>(
@@ -609,7 +607,6 @@ class _FinanceAndHumanResourcesPageState
                                 ],
                               ),
                             );
-
                             if (secondConfirm != true) {
                               // Volta ao valor anterior visualmente
                               setState(() {

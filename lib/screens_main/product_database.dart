@@ -740,71 +740,196 @@ class _ProductDatabasePageState extends State<ProductDatabasePage> with TickerPr
   }
 
   Widget _buildProductCard(QueryDocumentSnapshot product) {
+    final theme = Theme.of(context);
+    final currentStock = product['stockCurrent'] as int;
+    final isOutOfStock = currentStock == 0;
+    final isLowStock = currentStock > 0 && currentStock <= 5;
+
     return Center(
       child: SizedBox(
-        width: MediaQuery.of(context).size.width * 0.4,
-        child: Card(
-          margin: EdgeInsets.symmetric(vertical: 6.0, horizontal: 8.0),
-          elevation: 2.0,
+        width: MediaQuery.of(context).size.width * 0.5,
+        child: Card(elevation: 4,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+          margin: const EdgeInsets.symmetric(vertical: 8.0, horizontal: 8.0),
           child: InkWell(
+            borderRadius: BorderRadius.circular(12),
             onTap: () => _showProductDetailsDialog(context, product),
             child: Padding(
-              padding: EdgeInsets.all(12.0),
+              padding: const EdgeInsets.all(16.0),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Product name and actions
+                  // Primeira linha - Nome e ações
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       Expanded(
                         child: Text(
                           product['name'],
-                          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                          style: theme.textTheme.titleLarge?.copyWith(
+                            fontWeight: FontWeight.bold,
+                            color: theme.colorScheme.primary,
+                          ),
                           overflow: TextOverflow.ellipsis,
                         ),
                       ),
                       Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          IconButton(
-                            icon: Icon(Icons.barcode_reader, color: Colors.blue),
-                            onPressed: () => BarcodePage.showBarcodeDialog(
-                              context, 
-                              product.id, 
-                              product['name']
+                          Tooltip(
+                            message: 'View Barcode',
+                            child: IconButton(
+                              icon: Icon(Icons.barcode_reader, 
+                                size: 20,
+                                color: Colors.blue[700]),
+                              onPressed: () => BarcodePage.showBarcodeDialog(
+                                context, 
+                                product.id, 
+                                product['name']
+                              ),
                             ),
                           ),
-                          _buildProductActions(product), 
+                          if (_isStoreManager) 
+                            Tooltip(
+                              message: 'Delete Product',
+                              child: IconButton(
+                                icon: Icon(Icons.delete, 
+                                  size: 20,
+                                  color: Colors.red[700]),
+                                onPressed: () async {
+                                  final productName = product['name'] ?? 'this product';
+                                  if (await _showDeleteConfirmationDialog(context, productName)) {
+                                    if (await _showSecondConfirmationDialog(context, productName)) {
+                                      await _viewModel.deleteProduct(product.id);
+                                      _showSnackBar("'$productName' was permanently deleted");
+                                    }
+                                  }
+                                },
+                              ),
+                            ),
                         ],
                       ),
                     ],
                   ),
-                  // Other product info
-                  Text('Brand: ${product['brand'] ?? ''}', style: TextStyle(fontSize: 14)),
-                  SizedBox(height: 6),
+                  const SizedBox(height: 8),
+
+                  // Segunda linha - Detalhes básicos
                   Row(
                     children: [
-                      Icon(Icons.euro_symbol, size: 14, color: Colors.green),
-                      SizedBox(width: 4),
-                      Text(
-                        '${product['vatPrice'].toStringAsFixed(2)}',
-                        style: TextStyle(
-                          fontSize: 14,
-                          color: Colors.green,
-                          fontWeight: FontWeight.bold,
-                        ),
+                      Tooltip(
+                        message: 'Product Brand',
+                        child: Icon(Icons.branding_watermark, 
+                          size: 16, 
+                          color: theme.colorScheme.secondary),
                       ),
+                      const SizedBox(width: 4),
+                      Text('${product['brand'] ?? ''}', 
+                        style: theme.textTheme.bodyMedium),
+                      const SizedBox(width: 16),
+                      Tooltip(
+                        message: 'Product Category',
+                        child: Icon(Icons.category, 
+                          size: 16, 
+                          color: theme.colorScheme.secondary),
+                      ),
+                      const SizedBox(width: 4),
+                      Text('${product['category'] ?? ''}', 
+                        style: theme.textTheme.bodyMedium),
                     ],
                   ),
-                  SizedBox(height: 6),
+                  const SizedBox(height: 8),
+
+                  // Terceira linha - Preço e localização
                   Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Icon(Icons.location_on, size: 14, color: Colors.blue),
-                      SizedBox(width: 4),
-                      Text(
-                        product['productLocation'] ?? 'Not Located',
-                        style: TextStyle(fontSize: 13, color: Colors.blue),
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Icon(Icons.euro_symbol, 
+                                size: 16, 
+                                color: Colors.green[700]),
+                              const SizedBox(width: 4),
+                              Text(
+                                '${product['vatPrice'].toStringAsFixed(2)}',
+                                style: theme.textTheme.titleMedium?.copyWith(
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.green[700],
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 6),
+                          Row(
+                            children: [
+                              Icon(Icons.location_on, 
+                                size: 16, 
+                                color: Colors.blue[700]),
+                              const SizedBox(width: 4),
+                              Text(
+                                product['productLocation'] ?? 'Not Located',
+                                style: theme.textTheme.bodyMedium?.copyWith(
+                                  color: Colors.blue[700],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                      
+                      // Stock info com o novo esquema de cores
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          Row(
+                            children: [
+                              Tooltip(
+                                message: 'Shop Stock',
+                                child: Icon(Icons.store, 
+                                  size: 16, 
+                                  color: isOutOfStock
+                                    ? Colors.red
+                                    : isLowStock
+                                        ? Colors.amber
+                                        : Colors.green),
+                              ),
+                              const SizedBox(width: 4),
+                              Text(
+                                '$currentStock',
+                                style: theme.textTheme.bodyMedium?.copyWith(
+                                  fontWeight: FontWeight.bold,
+                                  color: isOutOfStock
+                                    ? Colors.red
+                                    : isLowStock
+                                        ? Colors.amber[800]
+                                        : Colors.green,
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 4),
+                          Row(
+                            children: [
+                              Tooltip(
+                                message: 'Warehouse Stock',
+                                child: Icon(Icons.warehouse, 
+                                  size: 16, 
+                                  color: theme.colorScheme.secondary),
+                              ),
+                              const SizedBox(width: 4),
+                              Text(
+                                '${product['wareHouseStock']}',
+                                style: theme.textTheme.bodyMedium?.copyWith(
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
                       ),
                     ],
                   ),
@@ -814,27 +939,6 @@ class _ProductDatabasePageState extends State<ProductDatabasePage> with TickerPr
           ),
         ),
       ),
-    );
-  }
-
-  Widget _buildProductActions(QueryDocumentSnapshot product) {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        if (_isStoreManager)
-          IconButton(
-            icon: Icon(Icons.delete, color: Colors.red),
-            onPressed: () async {
-              final productName = product['name'] ?? 'this product';
-              if (await _showDeleteConfirmationDialog(context, productName)) {
-                if (await _showSecondConfirmationDialog(context, productName)) {
-                  await _viewModel.deleteProduct(product.id);
-                  _showSnackBar("'$productName' was permanently deleted");
-                }
-              }
-            },
-          ),
-      ],
     );
   }
 
@@ -1018,6 +1122,7 @@ class _ProductDatabasePageState extends State<ProductDatabasePage> with TickerPr
                                       int stockMax = int.tryParse(stockMaxController.text) ?? 0;
                                       int stockMin = int.tryParse(stockMinController.text) ?? 0;
                                       int stockOrder = int.tryParse(stockOrderController.text) ?? 0;
+                                      int stockCurrent = productModel.stockCurrent;
                                       int wareHouseStock = int.tryParse(wareHouseStockController.text) ?? productModel.wareHouseStock;
 
                                       if (stockMin >= stockMax) {
@@ -1026,6 +1131,18 @@ class _ProductDatabasePageState extends State<ProductDatabasePage> with TickerPr
 
                                       if (stockOrder > stockMax) {
                                         CustomSnackbar.show(context: context, message: 'You cannot order more stock than your warehouse capacity'); return;
+                                      }
+
+                                      if (wareHouseStock + stockOrder > stockMax) {
+                                        CustomSnackbar.show(context: context, message: 'Warehouse stock cannot exceed maximum stock'); return;
+                                      }
+
+                                      if (wareHouseStock + stockCurrent > stockMax) {
+                                        CustomSnackbar.show(context: context, message: 'Warehouse stock cannot exceed maximum stock'); return;
+                                      }
+
+                                      if (stockCurrent + stockOrder > stockMax) {
+                                        CustomSnackbar.show(context: context, message: 'Current stock cannot exceed maximum stock'); return;
                                       }
 
                                       try {
