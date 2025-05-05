@@ -86,6 +86,76 @@ class StockBreakViewModel {
     }
   }
 
+  Future<void> returnProductFromBreakage({
+    required String productId,
+    required String productName,
+    required int breakageQty,
+    required String breakageType,
+    required String breakageNotificationId,
+  }) async {
+    try {
+      // Fetch the product document
+      final productDoc = await FirebaseFirestore.instance.collection('products').doc(productId).get();
+      if (!productDoc.exists) {
+        throw Exception("Product not found");
+      }
+
+      final productData = productDoc.data() as Map<String, dynamic>;
+
+      // Determine the stock field based on breakageType
+      String stockField = breakageType == 'stockCurrent' ? 'stockCurrent' : 'wareHouseStock';
+
+      // Update the stock in the products collection
+      int currentStock = productData[stockField] ?? 0;
+      await FirebaseFirestore.instance.collection('products').doc(productId).update({
+        stockField: currentStock + breakageQty, // Add the returned quantity to stock
+      });
+
+      // Fetch the breakage document
+      final breakageDoc = await FirebaseFirestore.instance.collection('breakages').doc(breakageNotificationId).get();
+      if (!breakageDoc.exists) {
+        throw Exception("Breakage document not found");
+      }
+
+      final breakageData = breakageDoc.data() as Map<String, dynamic>;
+      int currentBreakageQty = breakageData['breakageQty'] ?? 0;
+
+      // Update or delete the breakage document
+      if (currentBreakageQty > breakageQty) {
+        // Reduce the breakageQty in the breakages collection
+        await FirebaseFirestore.instance.collection('breakages').doc(breakageNotificationId).update({
+          'breakageQty': currentBreakageQty - breakageQty,
+        });
+      } else {
+        // Delete the breakage document if all breakages are returned
+        await FirebaseFirestore.instance.collection('breakages').doc(breakageNotificationId).delete();
+      }
+
+      debugPrint("Product returned successfully: $productName");
+    } catch (e) {
+      debugPrint("Error returning product from breakage: $e");
+      rethrow;
+    }
+  }
+
+  Stream<List<Map<String, dynamic>>> getBreakagesStream(String storeNumber) {
+    return _firestore
+        .collection('breakages')
+        .where('storeNumber', isEqualTo: storeNumber)
+        .snapshots()
+        .map((snapshot) => snapshot.docs.map((doc) {
+              final data = doc.data();
+              return {
+                'id': doc.id,
+                'productId': data['productId'],
+                'productName': data['productName'],
+                'breakageQty': data['breakageQty'],
+                'breakageType': data['breakageType'],
+                'timestamp': data['timestamp'],
+              };
+            }).toList());
+  }
+
   List<ProductModel> filterProducts({
     required List<ProductModel> products,
     required String nameFilter,
@@ -252,22 +322,14 @@ class _StockBreakFilteredPageState extends State<StockBreakFilteredPage> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               _buildTextField(_nameController, 'Name'),
-              _buildTextField(_brandController, 'Brand'),
-              _buildTextField(_categoryController, 'Category'),
-              _buildTextField(_storeNumberController, 'Store Number', enabled: false),
               Row(
                 children: [
-                  Expanded(child: _buildDropdown()),
-                  SizedBox(width: 8),
                   IconButton(
                     icon: Icon(Icons.clear_all),
-                    tooltip: 'Clear all filters',
+                    tooltip: 'Clear filter',
                     onPressed: () {
                       setState(() {
                         _nameController.clear();
-                        _brandController.clear();
-                        _categoryController.clear();
-                        _selectedPriceRange = null;
                       });
                     },
                   ),
@@ -281,55 +343,52 @@ class _StockBreakFilteredPageState extends State<StockBreakFilteredPage> {
   }
 
   Widget _buildProductList() {
-    return StreamBuilder<List<ProductModel>>(
-      stream: _viewModel.getProductsStream(),
+    return StreamBuilder<List<Map<String, dynamic>>>(
+      stream: _viewModel.getBreakagesStream(_storeNumber!),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return Center(child: CircularProgressIndicator());
         }
 
         if (!snapshot.hasData || snapshot.data!.isEmpty) {
-          return Center(child: Text('No products found.'));
+          return Center(child: Text('No breakages found.'));
         }
 
-        final filteredProducts = _viewModel.filterProducts(
-          products: snapshot.data!,
-          nameFilter: _nameController.text,
-          brandFilter: _brandController.text,
-          categoryFilter: _categoryController.text,
-          storeNumberFilter: _storeNumberController.text,
-          priceRange: _selectedPriceRange,
-          userStoreNumber: _storeNumber!,
-        );
+        final breakages = snapshot.data!;
 
-        if (filteredProducts.isEmpty) {return Center(child: Text('No products found matching the filters.'));}
+        // Apply the name filter
+        final filteredBreakages = breakages.where((breakage) {
+          final nameFilter = _nameController.text.toLowerCase();
+          final productName = breakage['productName'].toLowerCase();
+          return productName.contains(nameFilter);
+        }).toList();
+
+        if (filteredBreakages.isEmpty) {
+          return Center(child: Text('No breakages match the filter.'));
+        }
 
         return ListView.builder(
-          itemCount: filteredProducts.length,
+          itemCount: filteredBreakages.length,
           itemBuilder: (context, index) {
-            final product = filteredProducts[index];
+            final breakage = filteredBreakages[index];
             return Card(
               margin: EdgeInsets.symmetric(vertical: 8, horizontal: 16),
               child: ListTile(
                 title: Text(
-                  product.name, 
+                  breakage['productName'],
                   style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
                 ),
                 subtitle: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text("Brand: ${product.brand.isNotEmpty ? product.brand : "Without brand"}"),
-                    Text("Model: ${product.model.isNotEmpty ? product.model : "Without model"}"),
-                    Text("Category: ${product.category.isNotEmpty ? product.category : "Without category"}"),
-                    Text("Stock Break: ${product.stockBreak}"),
+                    Text("Breakage Quantity: ${breakage['breakageQty']}"),
+                    Text("Breakage Type: ${breakage['breakageType']}"),
                   ],
                 ),
                 onTap: () {
                   if (_isStoreManager) {
-                    // Apenas os Store Managers podem modificar as quantidades
-                    _showProductDetailsDialog(context, product);
+                    _showReturnBreakageDialog(context, breakage);
                   } else {
-                    // Para os demais usuários, não faz nada
                     CustomSnackbar.show(
                       context: context,
                       message: "You don't have permission to modify stock.",
@@ -485,6 +544,103 @@ class _StockBreakFilteredPageState extends State<StockBreakFilteredPage> {
                     }
                   },
                   child: Text('Transfer'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  void _showReturnBreakageDialog(BuildContext context, Map<String, dynamic> breakage) {
+    final TextEditingController quantityController = TextEditingController();
+    String? message;
+    Color messageColor = Colors.transparent;
+
+    showDialog(
+      context: context,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setState) {
+            return AlertDialog(
+              title: Text('Return Product from Breakage'),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text("Product Name: ${breakage['productName']}"),
+                  Text("Breakage Quantity: ${breakage['breakageQty']}"),
+                  Text("Breakage Type: ${breakage['breakageType']}"),
+                  SizedBox(height: 10),
+                  TextField(
+                    controller: quantityController,
+                    keyboardType: TextInputType.number,
+                    decoration: InputDecoration(
+                      labelText: "Quantity to return",
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                  if (message != null)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 10),
+                      child: Text(
+                        message!,
+                        style: TextStyle(
+                          color: messageColor,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  child: Text('Cancel'),
+                ),
+                ElevatedButton(
+                  onPressed: () async {
+                    final returnQuantity = int.tryParse(quantityController.text) ?? 0;
+
+                    if (returnQuantity <= 0) {
+                      setState(() {
+                        message = "Quantity must be greater than zero.";
+                        messageColor = Colors.red;
+                      });
+                      return;
+                    }
+
+                    if (returnQuantity > breakage['breakageQty']) {
+                      setState(() {
+                        message = "Quantity exceeds available breakage.";
+                        messageColor = Colors.red;
+                      });
+                      return;
+                    }
+
+                    try {
+                      await _viewModel.returnProductFromBreakage(
+                        productId: breakage['productId'],
+                        productName: breakage['productName'],
+                        breakageQty: returnQuantity,
+                        breakageType: breakage['breakageType'],
+                        breakageNotificationId: breakage['id'],
+                      );
+
+                      Navigator.of(context).pop();
+                      CustomSnackbar.show(
+                        context: context,
+                        message: "Product returned successfully!",
+                      );
+                    } catch (e) {
+                      CustomSnackbar.show(
+                        context: context,
+                        message: "Error returning product: $e",
+                      );
+                    }
+                  },
+                  child: Text('Return'),
                 ),
               ],
             );
