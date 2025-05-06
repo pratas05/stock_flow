@@ -73,6 +73,12 @@ class BuyTradeViewModel {
     required String productName,
     required String storeNumber,
   }) async {
+    final breakageType = isWarehouse ? 'wareHouseStock' : 'stockCurrent';
+    final breakageDocId = '${productId}_$breakageType';
+
+    final batch = _firestore.batch();
+
+    // Update the product stock
     final updates = <String, dynamic>{
       'stockBreak': FieldValue.increment(quantity),
     };
@@ -81,10 +87,32 @@ class BuyTradeViewModel {
     } else {
       updates['stockCurrent'] = shopStock - quantity;
     }
-    
-    final batch = _firestore.batch();
     batch.update(_firestore.collection('products').doc(productId), updates);
-    
+
+    // Check if a breakage document already exists
+    final breakageDocRef = _firestore.collection('breakages').doc(breakageDocId);
+    final breakageDoc = await breakageDocRef.get();
+
+    if (breakageDoc.exists) {
+      // If the document exists, merge and sum the breakageQty
+      final existingData = breakageDoc.data() as Map<String, dynamic>;
+      final existingQty = existingData['breakageQty'] ?? 0;
+
+      batch.update(breakageDocRef, {
+        'breakageQty': existingQty + quantity, // Sum quantities
+      });
+    } else {
+      // If the document does not exist, create a new one
+      batch.set(breakageDocRef, {
+        'productId': productId,
+        'productName': productName,
+        'breakageQty': quantity,
+        'breakageType': breakageType,
+        'storeNumber': storeNumber,
+      });
+    }
+
+    // Add a notification for the breakage
     final notificationRef = _firestore.collection('notifications').doc();
     batch.set(notificationRef, {
       'message': '$quantity "$productName" ${quantity > 1 ? 'were' : 'was'} sent from ${isWarehouse ? 'warehouse' : 'shop'} for Break, which means it is damaged',
@@ -92,11 +120,12 @@ class BuyTradeViewModel {
       'notificationType': 'Break',
       'productId': productId,
       'storeNumber': storeNumber,
-      'timestamp': FieldValue.serverTimestamp(),
       'userId': _auth.currentUser?.uid ?? '',
       'quantity': quantity,
       'location': isWarehouse ? 'warehouse' : 'shop',
     });
+
+    // Commit the batch
     await batch.commit();
   }
 
