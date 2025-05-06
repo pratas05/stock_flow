@@ -130,8 +130,6 @@ class StockBreakViewModel {
         // Delete the breakage document if all breakages are returned
         await FirebaseFirestore.instance.collection('breakages').doc(breakageNotificationId).delete();
       }
-
-      debugPrint("Product returned successfully: $productName");
     } catch (e) {
       debugPrint("Error returning product from breakage: $e");
       rethrow;
@@ -199,16 +197,14 @@ class StockBreakFilteredPage extends StatefulWidget {
 
 class _StockBreakFilteredPageState extends State<StockBreakFilteredPage> {
   final TextEditingController _nameController = TextEditingController();
-  final TextEditingController _brandController = TextEditingController();
-  final TextEditingController _categoryController = TextEditingController();
   final TextEditingController _storeNumberController = TextEditingController();
-  String? _selectedPriceRange;
 
   late final StockBreakViewModel _viewModel;
   bool _isLoading = true;
   String? _storeNumber;
   bool _isStoreManager = false;
-
+  String? _selectedBreakageType;
+  
   @override
   void initState() {
     super.initState();
@@ -322,14 +318,40 @@ class _StockBreakFilteredPageState extends State<StockBreakFilteredPage> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               _buildTextField(_nameController, 'Name'),
+              _buildTextField(_storeNumberController, 'Store Number', enabled: false),
+              SizedBox(height: 8),
+              DropdownButtonFormField<String>(
+                value: _selectedBreakageType,
+                onChanged: (value) => setState(() => _selectedBreakageType = value),
+                decoration: InputDecoration(
+                  labelText: "Breakage Type",
+                  border: OutlineInputBorder(),
+                ),
+                items: [
+                  DropdownMenuItem(
+                    value: null,
+                    child: Text("All Types"),
+                  ),
+                  DropdownMenuItem(
+                    value: 'stockCurrent',
+                    child: Text("Shop Stock"),
+                  ),
+                  DropdownMenuItem(
+                    value: 'wareHouseStock',
+                    child: Text("Warehouse Stock"),
+                  ),
+                ],
+              ),
               Row(
                 children: [
+                  SizedBox(width: 8),
                   IconButton(
                     icon: Icon(Icons.clear_all),
-                    tooltip: 'Clear filter',
+                    tooltip: 'Clear all filters',
                     onPressed: () {
                       setState(() {
                         _nameController.clear();
+                        _selectedBreakageType = null;
                       });
                     },
                   ),
@@ -351,50 +373,158 @@ class _StockBreakFilteredPageState extends State<StockBreakFilteredPage> {
         }
 
         if (!snapshot.hasData || snapshot.data!.isEmpty) {
-          return Center(child: Text('No breakages found.'));
+          return Center(
+            child: Text(
+              'No breakages found.',
+              style: TextStyle(color: Colors.white70, fontSize: 18),
+            ),
+          );
         }
 
         final breakages = snapshot.data!;
 
-        // Apply the name filter
         final filteredBreakages = breakages.where((breakage) {
           final nameFilter = _nameController.text.toLowerCase();
           final productName = breakage['productName'].toLowerCase();
-          return productName.contains(nameFilter);
+          
+          // Filtro por nome
+          final nameMatches = productName.contains(nameFilter);
+          
+          // Filtro por tipo de breakage (se selecionado)
+          final typeMatches = _selectedBreakageType == null || 
+                            breakage['breakageType'] == _selectedBreakageType;
+          
+          return nameMatches && typeMatches;
         }).toList();
 
         if (filteredBreakages.isEmpty) {
-          return Center(child: Text('No breakages match the filter.'));
-        }
+          return Center(
+            child: Text(
+              'No breakages match the filter.', style: TextStyle(color: Colors.white70, fontSize: 18),
+            ),
+          );
+        } 
 
         return ListView.builder(
           itemCount: filteredBreakages.length,
           itemBuilder: (context, index) {
             final breakage = filteredBreakages[index];
-            return Card(
+            return Container(
               margin: EdgeInsets.symmetric(vertical: 8, horizontal: 16),
-              child: ListTile(
-                title: Text(
-                  breakage['productName'],
-                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(12),
+                color: Colors.white,
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.1),
+                    spreadRadius: 1,
+                    blurRadius: 5,
+                    offset: Offset(0, 3),
+                  ),
+                ],
+              ),
+              child: Material(
+                color: Colors.transparent,
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(12),
+                  onTap: () {
+                    if (_isStoreManager) {
+                      _showReturnBreakageDialog(context, breakage);
+                    } else {
+                      CustomSnackbar.show(
+                        context: context,
+                        message: "You don't have permission to modify stock.",
+                      );
+                    }
+                  },
+                  child: Padding(
+                    padding: EdgeInsets.all(16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Expanded(
+                              child: Text(
+                                breakage['productName'],
+                                style: TextStyle(
+                                  color: hexStringToColor("9546C4"),
+                                  fontWeight: FontWeight.bold, fontSize: 18,
+                                ),
+                                maxLines: 2, overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        Divider(
+                          color: Colors.grey[300],
+                          thickness: 1,
+                        ),
+                        const SizedBox(height: 8),
+                        Row(
+                          children: [
+                            Tooltip(
+                              message: 'Stock Location',
+                              child: Row(
+                                children: [
+                                  Icon(
+                                    breakage['breakageType'] == 'stockCurrent'
+                                        ? Icons.store
+                                        : Icons.warehouse,
+                                    color: hexStringToColor("5E61F4"),
+                                    size: 18,
+                                  ),
+                                  SizedBox(width: 8),
+                                  Text(
+                                    breakage['breakageType'] == 'stockCurrent'
+                                        ? 'Shop Stock'
+                                        : 'WareHouse Stock',
+                                    style: TextStyle(color: Colors.grey[700]),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            Spacer(),
+                            Tooltip(
+                              message: 'Amount of broken stock',
+                              child: Container(
+                                padding: EdgeInsets.symmetric(
+                                    horizontal: 10, vertical: 4),
+                                decoration: BoxDecoration(
+                                  color: hexStringToColor("5E61F4").withOpacity(0.1),
+                                  borderRadius: BorderRadius.circular(20),
+                                  border: Border.all(
+                                    color: hexStringToColor("5E61F4"),
+                                    width: 1,
+                                  ),
+                                ),
+                                child: Row(
+                                  children: [
+                                    Icon(
+                                      Icons.inventory_2_outlined,
+                                      color: hexStringToColor("5E61F4"),
+                                      size: 16,
+                                    ),
+                                    SizedBox(width: 4),
+                                    Text(
+                                      '${breakage['breakageQty']} units',
+                                      style: TextStyle(
+                                        color: hexStringToColor("5E61F4"),
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
                 ),
-                subtitle: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text("Breakage Quantity: ${breakage['breakageQty']}"),
-                    Text("Breakage Type: ${breakage['breakageType']}"),
-                  ],
-                ),
-                onTap: () {
-                  if (_isStoreManager) {
-                    _showReturnBreakageDialog(context, breakage);
-                  } else {
-                    CustomSnackbar.show(
-                      context: context,
-                      message: "You don't have permission to modify stock.",
-                    );
-                  }
-                },
               ),
             );
           },
@@ -418,140 +548,6 @@ class _StockBreakFilteredPageState extends State<StockBreakFilteredPage> {
     );
   }
 
-  Widget _buildDropdown() {
-    return DropdownButton<String>(
-      isExpanded: true,
-      value: _selectedPriceRange,
-      onChanged: (value) => setState(() => _selectedPriceRange = value),
-      hint: Text("Select Price Range"),
-      items: [
-        DropdownMenuItem<String>(
-          value: null,
-          child: Text("All Prices"),
-        ),
-        ...['0-100', '100-200', '200-300', '300-400',
-          '400-500', '500-600', '600-700', '700-800',
-          '800-900', '900-1000', '1000-2000', '2000-3000',
-          '3000-4000', '4000-5000', '5000+'
-        ].map<DropdownMenuItem<String>>((String value) {
-          return DropdownMenuItem<String>(
-            value: value,
-            child: Text(value),
-          );
-        }).toList(),
-      ],
-    );
-  }
-
-  void _showProductDetailsDialog(BuildContext context, ProductModel product) {
-    final TextEditingController quantityController = TextEditingController();
-    String? message;
-    Color messageColor = Colors.transparent;
-    int currentStockBreak = product.stockBreak;
-    int currentStockCurrent = product.stockCurrent;
-
-    showDialog(
-      context: context,
-      builder: (context) {
-        return StatefulBuilder(
-          builder: (context, setState) {
-            return AlertDialog(
-              title: Text('Transfer Product'),
-              content: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text("Product Name: ${product.name}"),
-                  Text("Brand: ${product.brand}"),
-                  Text("Model: ${product.model}"),
-                  Text("Category: ${product.category}"),
-                  Text("Stock Break: $currentStockBreak"),
-                  Text("Current Stock: $currentStockCurrent"),
-                  SizedBox(height: 10),
-                  TextField(
-                    controller: quantityController,
-                    keyboardType: TextInputType.number,
-                    decoration: InputDecoration(
-                      labelText: "Quantity to transfer",
-                      border: OutlineInputBorder(),
-                    ),
-                  ),
-                  if (message != null)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 10),
-                      child: Text(
-                        message!,
-                        style: TextStyle(
-                          color: messageColor,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ),
-                ],
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.of(context).pop(), 
-                  child: Text('Cancel')
-                ),
-                ElevatedButton(
-                  onPressed: () async {
-                    final transferQuantity = int.tryParse(quantityController.text) ?? 0;
-                    
-                    if (transferQuantity <= 0) {
-                      setState(() {
-                        message = "Quantity must be greater than zero";
-                        messageColor = Colors.red;
-                      }); 
-                      return;
-                    }
-                    
-                    if (transferQuantity > currentStockBreak) {
-                      setState(() {
-                        message = "Quantity exceeds available stock break";
-                        messageColor = Colors.red;
-                      });
-                      return;
-                    }
-
-                    try {
-                      await _viewModel.transferStock(
-                        productId: product.id,
-                        transferQuantity: transferQuantity,
-                        currentStockBreak: currentStockBreak,
-                        currentStockCurrent: currentStockCurrent,
-                      );
-
-                      // Atualiza os valores e limpa o campo
-                      setState(() {
-                        currentStockBreak -= transferQuantity;
-                        currentStockCurrent += transferQuantity;
-                        message = "Stock transferred successfully!";
-                        messageColor = Colors.green;
-                        quantityController.clear(); // Limpa o campo de texto
-                      });
-
-                      Future.delayed(Duration(seconds: 3), () { 
-                        if (Navigator.canPop(context)) {
-                          Navigator.of(context).pop();
-                        }
-                      });
-                    } catch (e) {
-                      setState(() {
-                        message = "Error transferring stock: ${e.toString()}";
-                        messageColor = Colors.red;
-                      });
-                    }
-                  },
-                  child: Text('Transfer'),
-                ),
-              ],
-            );
-          },
-        );
-      },
-    );
-  }
 
   void _showReturnBreakageDialog(BuildContext context, Map<String, dynamic> breakage) {
     final TextEditingController quantityController = TextEditingController();

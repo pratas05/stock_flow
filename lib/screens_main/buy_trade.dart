@@ -537,7 +537,7 @@ class _BuyTradePageState extends State<BuyTradePage> with SingleTickerProviderSt
                     ],
                   ),
                   const SizedBox(height: 20),
-                  Text("Select the quantity to break for ${product.name} - ${product.model}."),
+                  Text("Select the quantity to break for ${product.name}"),
                   Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [

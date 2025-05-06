@@ -416,7 +416,7 @@ class _ProductDatabasePageState extends State<ProductDatabasePage> with TickerPr
         stockBreak: 0,
         lastPurchasePrice: lastPurchasePrice,
         basePrice: basePrice,
-        vatPrice: vatPrice, // Já arredondado para 2 casas decimais
+        vatPrice: vatPrice,
         vatCode: vatCode,
         storeNumber: storeNumber,
         productLocation: _productLocationController.text.trim().isNotEmpty
@@ -795,9 +795,7 @@ class _ProductDatabasePageState extends State<ProductDatabasePage> with TickerPr
                             Tooltip(
                               message: 'Delete Product',
                               child: IconButton(
-                                icon: Icon(Icons.delete, 
-                                  size: 20,
-                                  color: Colors.red[700]),
+                                icon: Icon(Icons.delete, size: 20, color: Colors.red[700]),
                                 onPressed: () async {
                                   final productName = product['name'] ?? 'this product';
                                   if (await _showDeleteConfirmationDialog(context, productName)) {
@@ -1439,8 +1437,6 @@ class _ProductDatabasePageState extends State<ProductDatabasePage> with TickerPr
             Colors.blue,
             isRequired: true, isNumber: true,
           ),
-          Divider(height: 16, thickness: 1),
-          _buildStockRow("Stock Break", productModel.stockBreak.toString(), Colors.red),
         ],
       ),
     );

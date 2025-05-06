@@ -125,16 +125,16 @@ class _HomeScreenState extends State<HomeScreen> {
                       _buildDivider(),
 
                       _buildAdminBox(
-                        "Stock Brake Management",
+                        "Stock Break Management",
                         Icons.warning,
                         "Review of recorded breakages and authorization for stock adjustments.",
                         () {
                           setState(() {
-                        _selectedOption = "Stock Brake Management";
+                        _selectedOption = "Stock Break Management";
                         _currentContent = StockBreakFilteredPage();
                           });
                         },
-                        _selectedOption == "Stock Brake Management",
+                        _selectedOption == "Stock Break Management",
                       ),
                       _buildDivider(),
 

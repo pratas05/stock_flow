@@ -1,14 +1,13 @@
 import 'package:flutter/material.dart';
-import 'package:stockflow/screens/signin_screen.dart';
+import 'package:stockflow/screens/login_screen.dart';
 import 'package:stockflow/screens_main/account_settings.dart';
 import 'package:stockflow/screens_main/finance_Page.dart';
-import 'package:stockflow/screens_main/help_page.dart';
+import 'package:stockflow/screens_main/z_help_page.dart';
 import 'package:stockflow/screens_main/product_database.dart';
 import 'package:stockflow/screens_main/stock_outage.dart';
-import 'package:stockflow/utils/colors_utils.dart';
+import 'package:stockflow/reusable_widgets/colors_utils.dart';
 import 'package:stockflow/screens_main/warehouse_management.dart';
 import 'package:stockflow/screens_main/buy_trade.dart';
-
 import '../screens_main/notificationPage.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -19,18 +18,14 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  // Variável para armazenar a opção selecionada
-  String _selectedOption = '';
-
-  // Variável que controla o conteúdo exibido no centro
-  Widget _currentContent = Container();
+  String _selectedOption = ''; // Variável para armazenar a opção selecionada
+  Widget _currentContent = Container(); // Variável que controla o conteúdo exibido no centro
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       body: Container(
-        width: MediaQuery.of(context).size.width,
-        height: MediaQuery.of(context).size.height,
+        width: MediaQuery.of(context).size.width, height: MediaQuery.of(context).size.height,
         decoration: BoxDecoration(
           gradient: LinearGradient(
             colors: [
@@ -38,17 +33,14 @@ class _HomeScreenState extends State<HomeScreen> {
               hexStringToColor("9546C4"),
               hexStringToColor("5E61F4"),
             ],
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
+            begin: Alignment.topCenter, end: Alignment.bottomCenter,
           ),
         ),
         child: Stack(
           children: [
             // Coluna de navegação à esquerda
             Positioned(
-              left: 0,
-              top: 0,
-              bottom: 0,
+              left: 0, top: 0, bottom: 0,
               child: Container(
                 width: MediaQuery.of(context).size.width * (1 / 4),
                 decoration: BoxDecoration(
@@ -60,22 +52,17 @@ class _HomeScreenState extends State<HomeScreen> {
                     mainAxisAlignment: MainAxisAlignment.start,
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      // Ícone e texto "Stock Flow" no topo
-                      Row(
+                      Row( // Ícone e texto "Stock Flow" no topo
                         children: [
                           Image.asset(
                             "assets/images/logo.png",
-                            width: 60,  // Aumentando o tamanho do ícone
-                            height: 60,
+                            width: 50, height: 50,
                           ),
                           const SizedBox(width: 8),
                           const Text(
                             "Stock Flow",
                             style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 22,
-                              fontWeight: FontWeight.bold,
-                            ),
+                              color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold),
                           ),
                         ],
                       ),
@@ -102,7 +89,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         () {
                           setState(() {
                             _selectedOption = "Account Settings";
-                            _currentContent = const AccountSettings();
+                            _currentContent = AccountSettings(); // Create an instance of AccountSettings
                           });
                         },
                         _selectedOption == "Account Settings",
@@ -138,16 +125,16 @@ class _HomeScreenState extends State<HomeScreen> {
                       _buildDivider(),
 
                       _buildAdminBox(
-                        "Stock Brake Management",
+                        "Stock Break Management",
                         Icons.warning,
                         "Review of recorded breakages and authorization for stock adjustments.",
                         () {
                           setState(() {
-                        _selectedOption = "Stock Brake Management";
+                        _selectedOption = "Stock Break Management";
                         _currentContent = StockBreakFilteredPage();
                           });
                         },
-                        _selectedOption == "Stock Brake Management",
+                        _selectedOption == "Stock Break Management",
                       ),
                       _buildDivider(),
 
@@ -163,7 +150,6 @@ class _HomeScreenState extends State<HomeScreen> {
                         },
                         _selectedOption == "Finance & Human Resources Management",
                       ),
-
                       _buildDivider(),
 
                       _buildAdminBox(
@@ -180,7 +166,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       ),
                       _buildDivider(),
 
-                         _buildAdminBox(
+                        _buildAdminBox(
                         "Help",
                         Icons.help,
                         "To provide information and support for new people",
@@ -209,12 +195,8 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
               ),
             ),
-            // Área de conteúdo principal (no centro)
-            Positioned(
-              top: 0,
-              left: MediaQuery.of(context).size.width * (1 / 4),
-              right: 0,
-              bottom: 0,
+            Positioned( // Área de conteúdo principal (no centro)
+              top: 0, left: MediaQuery.of(context).size.width * (1 / 4), right: 0, bottom: 0,
               child: Container(
                 padding: const EdgeInsets.all(0.0),
                 child: _currentContent,
@@ -245,15 +227,13 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
         child: Row(
           children: [
-            Icon(icon, color: isSelected ? Colors.blue : Colors.black, size: 30), // Alterar a cor do ícone
+            Icon(icon, color: isSelected ? Colors.blue : Colors.black, size: 23), // Alterar a cor do ícone
             const SizedBox(width: 16),
             Expanded(
               child: Text(
                 title,
                 style: TextStyle(
-                  color: isSelected ? Colors.blue : Colors.black, // Alterar a cor do texto
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
+                  color: isSelected ? Colors.blue : Colors.black, fontSize: 15, fontWeight: FontWeight.bold,
                 ),
               ),
             ),
@@ -263,35 +243,27 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  // Método para construir divisores entre as "caixas"
-  Widget _buildDivider() {
+  Widget _buildDivider() { // Método para construir divisores entre as "caixas"
     return Divider(
-      color: Colors.grey.withOpacity(0.5),
-      thickness: 1,
-      height: 30,
+      color: Colors.grey.withOpacity(0.5), thickness: 1, height: 30,
     );
   }
 
-  // Função para confirmar o log out
-  void confirmLogOut() {
+  void confirmLogOut() { // Função para confirmar o log outs
     showDialog(
       context: context,
       builder: (BuildContext context) {
         return AlertDialog(
-          title: Text("Confirm Log Out"),
-          content: Text("Do you really want to log out of your account?"),
+          title: Text("Confirm Log Out"), content: Text("Do you really want to log out of your account?"),
           actions: [
             TextButton(
-              onPressed: () {
-                Navigator.of(context).pop(); // Fecha a caixa de diálogo
-              },
+              onPressed: () {Navigator.of(context).pop();},
               child: Text("No"),
             ),
             TextButton(
               onPressed: () {
                 Navigator.pushReplacement(
-                  context,
-                  MaterialPageRoute(builder: (context) => SignInScreen()), // Redireciona para a tela de login
+                  context, MaterialPageRoute(builder: (context) => SignInScreen()), // Redireciona para a tela de login
                 );
               },
               child: Text('Yes', style: TextStyle(fontWeight: FontWeight.bold)),
