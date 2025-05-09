@@ -218,8 +218,7 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
       ),
       child: Center(
-        child: Container(
-          width: 300,
+        child: Container(width: 300,
           padding: const EdgeInsets.all(20),
           decoration: BoxDecoration(
             color: Colors.white,
@@ -282,9 +281,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     TextButton(
                       onPressed: () {
                         _passwordController.clear();
-                        setState(() {
-                          _isLocked = false;
-                        });
+                        setState(() { _isLocked = false;});
                       },
                       child: Text('Cancel'),
                     ),
