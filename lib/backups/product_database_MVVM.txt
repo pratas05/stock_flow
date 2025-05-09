@@ -96,7 +96,25 @@ class ProductViewModel {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final FirebaseAuth _auth = FirebaseAuth.instance;
   
-  // Adicione este método no ProductViewModel
+  Future<bool> hasFullAdminAccess() async {
+    try {
+      final user = _auth.currentUser;
+      if (user == null) return false;
+
+      final userDoc = await _firestore.collection('users').doc(user.uid).get();
+      if (!userDoc.exists) return false;
+
+      final isStoreManager = userDoc.data()?['isStoreManager'] ?? false;
+      final adminPermission = userDoc.data()?['adminPermission'] as String?;
+      final storeNumber = userDoc.data()?['storeNumber'] as String?;
+
+      return isStoreManager && adminPermission == storeNumber;
+    } catch (e) {
+      debugPrint("Error checking admin access: $e");
+      return false;
+    }
+  }
+
   Future<String> getUserStoreCurrency() async {
     final user = _auth.currentUser;
     if (user == null) throw Exception("No user is logged in.");
@@ -269,14 +287,15 @@ class _ProductDatabasePageState extends State<ProductDatabasePage> with TickerPr
   String? _storeNumber;
   bool _isStoreManager = false;
   bool _isLoading = true;
+  bool _hasAdminAccess = false;
 
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: _isStoreManager ? 2 : 1, vsync: this);
+    _tabController = TabController(length: _isStoreManager && _hasAdminAccess ? 2 : 1, vsync: this);
     _searchController.addListener(() {
       setState(() {
-        _searchText = _searchController.text;int tabCount = _isStoreManager ? 2 : 1; // Configurar o TabController dinamicamente com base em _isStoreManager
+        _searchText = _searchController.text;int tabCount = _isStoreManager && _hasAdminAccess ? 2 : 1; // Configurar o TabController dinamicamente com base em _isStoreManager
         _tabController = TabController(length: tabCount, vsync: this);
       });
     });
@@ -292,20 +311,24 @@ class _ProductDatabasePageState extends State<ProductDatabasePage> with TickerPr
           .doc(FirebaseAuth.instance.currentUser?.uid)
           .get();
       
+      final isStoreManager = userDoc.data()?['isStoreManager'] ?? false;
+      final adminPermission = userDoc.data()?['adminPermission'] as String?;
+      
       setState(() {
         _storeNumber = storeNumber;
-        _isStoreManager = userDoc.data()?['isStoreManager'] ?? false;
+        _isStoreManager = isStoreManager;
+        _hasAdminAccess = isStoreManager && adminPermission == storeNumber;
       });
       
-      // Inicia o monitoramento do VAT após obter o storeNumber
       if (_storeNumber != null && _storeNumber!.isNotEmpty) {
         _vatMonitor.startMonitoring(_storeNumber!);
       }
     } catch (e) {
       debugPrint("Error loading user data: $e");
-    } finally {setState(() => _isLoading = false);}
+    } finally {
+      setState(() => _isLoading = false);
+    }
   }
-
   @override
   void dispose() {
     _vatMonitor.stopMonitoring();
@@ -470,11 +493,11 @@ class _ProductDatabasePageState extends State<ProductDatabasePage> with TickerPr
   @override
   Widget build(BuildContext context) {
     // Atualiza o comprimento do controlador se necessário
-    if (_tabController.length != (_isStoreManager ? 2 : 1)) {
+    if (_tabController.length != (_isStoreManager && _hasAdminAccess ? 2 : 1)) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         setState(() {
           _tabController.dispose();
-          _tabController = TabController(length: _isStoreManager ? 2 : 1, vsync: this);
+          _tabController = TabController(length: _isStoreManager && _hasAdminAccess ? 2 : 1, vsync: this);
         });
       });
     }
@@ -490,9 +513,9 @@ class _ProductDatabasePageState extends State<ProductDatabasePage> with TickerPr
     }
 
     // Atualiza o comprimento do controlador se necessário
-    if (_tabController.length != (_isStoreManager ? 2 : 1)) {
+    if (_tabController.length != (_isStoreManager && _hasAdminAccess ? 2 : 1)) {
       _tabController.dispose();
-      _tabController = TabController(length: _isStoreManager ? 2 : 1, vsync: this);
+      _tabController = TabController(length: _isStoreManager && _hasAdminAccess ? 2 : 1, vsync: this);
     }
 
     return Scaffold(
@@ -509,7 +532,7 @@ class _ProductDatabasePageState extends State<ProductDatabasePage> with TickerPr
         child: TabBarView(
           controller: _tabController,
           children: [
-            if (_isStoreManager) _buildProductForm(),  // Exibe apenas se for Store Manager
+            if (_isStoreManager && _hasAdminAccess) _buildProductForm(),  // Exibe apenas se for Store Manager
             _buildProductList(),
           ],
         ),
@@ -545,7 +568,7 @@ class _ProductDatabasePageState extends State<ProductDatabasePage> with TickerPr
     ];
 
     // Se for Store Manager, adiciona a aba "Register Products"
-    if (_isStoreManager) {
+    if (_isStoreManager && _hasAdminAccess) {
       tabs.insert(0,
         Tab(
           child: Padding(
@@ -791,7 +814,7 @@ class _ProductDatabasePageState extends State<ProductDatabasePage> with TickerPr
                               ),
                             ),
                           ),
-                          if (_isStoreManager) 
+                          if (_isStoreManager && _hasAdminAccess) 
                             Tooltip(
                               message: 'Delete Product',
                               child: IconButton(
@@ -1022,7 +1045,7 @@ class _ProductDatabasePageState extends State<ProductDatabasePage> with TickerPr
                                   "📦 Product Details",
                                   style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: primaryColor),
                                 ),
-                                if (_isStoreManager) // Só edita se for Admin
+                                if (_isStoreManager && _hasAdminAccess) // Só edita se for Admin
                                 IconButton(
                                   icon: Icon(isEditing ? Icons.save : Icons.edit, color: isEditing ? Colors.green : Colors.blue),
                                   onPressed: () async {

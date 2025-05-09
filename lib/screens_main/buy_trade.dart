@@ -43,6 +43,18 @@ class BuyTradeViewModel {
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
+  // No BuyTradeViewModel
+  Future<bool> hasFullAdminAccess() async {
+    try {
+      final userData = await getUserData();
+      if (userData == null) return false;
+      
+      return (userData['isStoreManager'] as bool? ?? false) && (userData['adminPermission'] == userData['storeNumber']);
+    } catch (e) {
+      debugPrint("Error checking admin access: $e"); return false;
+    }
+  }
+
   Future<Map<String, dynamic>?> getUserData() async {
     final user = _auth.currentUser;
     if (user == null) return null;
@@ -123,6 +135,7 @@ class BuyTradeViewModel {
       'userId': _auth.currentUser?.uid ?? '',
       'quantity': quantity,
       'location': isWarehouse ? 'warehouse' : 'shop',
+      'timestamp': FieldValue.serverTimestamp(),
     });
 
     // Commit the batch
@@ -160,6 +173,7 @@ class _BuyTradePageState extends State<BuyTradePage> with SingleTickerProviderSt
   bool _isLoading = true;
   bool _isStoreManager = false;
   final VatMonitorService _vatMonitor = VatMonitorService();
+  bool _hasFullPermission = false;
 
   @override
   void initState() {
@@ -169,26 +183,37 @@ class _BuyTradePageState extends State<BuyTradePage> with SingleTickerProviderSt
     _initializeData();
   }
 
-  Future<void> _initializeData() async {
-    try {
-      final userData = await _viewModel.getUserData();
-      if (userData != null) {
-        setState(() {
-          storeNumber = userData['storeNumber'];
-          _isStoreManager = userData['isStoreManager'] ?? false;
-        });
-      }
+Future<void> _initializeData() async {
+  setState(() => _isLoading = true);
+  try {
+    final userData = await _viewModel.getUserData();
+    if (userData != null) {
+      // Primeiro atualizamos os dados básicos
+      setState(() {
+        storeNumber = userData['storeNumber'];
+        _isStoreManager = userData['isStoreManager'] ?? false;
+      });
+      
+      // Depois verificamos a permissão (fora do setState)
+      final hasPermission = await _viewModel.hasFullAdminAccess();
+      
+      // Finalmente atualizamos o estado completo
+      setState(() {
+        _hasFullPermission = hasPermission;
+      });
+    }
 
-      // Inicia o monitoramento do VAT após obter o storeNumber
-      if (storeNumber != null && storeNumber!.isNotEmpty) {
-        _vatMonitor.startMonitoring(storeNumber!);
-      }
-    } catch (e) {
-      if (mounted) {
-        CustomSnackbar.show(context: context, message: 'Error fetching user data: $e');
-      }
-    } finally {if (mounted) setState(() => _isLoading = false);}
+    if (storeNumber != null && storeNumber!.isNotEmpty) {
+      _vatMonitor.startMonitoring(storeNumber!);
+    }
+  } catch (e) {
+    if (mounted) {
+      CustomSnackbar.show(context: context, message: 'Error fetching user data: $e');
+    }
+  } finally {
+    if (mounted) setState(() => _isLoading = false);
   }
+}
 
   @override
   void dispose() {
@@ -207,6 +232,7 @@ class _BuyTradePageState extends State<BuyTradePage> with SingleTickerProviderSt
   Widget build(BuildContext context) {
     if (_isLoading) {return _buildLoadingScreen();}
     if (!_isStoreManager) {return _buildNoPermissionsScreen();}
+    if (!_hasFullPermission) {return _buildNoPermissionsScreen();}
 
     return Scaffold(
       appBar: _buildAppBar(),
@@ -250,7 +276,7 @@ class _BuyTradePageState extends State<BuyTradePage> with SingleTickerProviderSt
       );
     }
 
-    if (!_isStoreManager) {
+    if (!_isStoreManager || !_hasFullPermission) {
       return const ErrorScreen(
         icon: Icons.warning_amber_rounded,
         title: "Access Denied",

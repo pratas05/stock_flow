@@ -1,3 +1,4 @@
+import 'dart:ui';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
@@ -24,6 +25,7 @@ class UserData {
   final String? storeCountry;
   final String? storeCurrency;
   final bool? isStoreManager;
+  final String? adminPermission;
 
   UserData({
     this.name,
@@ -39,6 +41,7 @@ class UserData {
     this.storeCountry,
     this.isStoreManager,
     this.storeCurrency,
+    this.adminPermission,
   });
 }
 
@@ -46,6 +49,21 @@ class UserData {
 class AccountSettingsViewModel {
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+
+  Future<bool> hasActivityPermission(String? storeNumber) async {
+    if (storeNumber == null) return false;
+    
+    final user = _auth.currentUser;
+    if (user == null) return false;
+
+    final snapshot = await _firestore.collection('users').doc(user.uid).get();
+    if (!snapshot.exists) return false;
+
+    final isStoreManager = snapshot.data()?['isStoreManager'] ?? false;
+    final adminPermission = snapshot.data()?['adminPermission'] as String?;
+
+    return isStoreManager && adminPermission == storeNumber;
+  }
 
   Future<UserData?> loadUserData() async {
     final user = _auth.currentUser;
@@ -67,6 +85,7 @@ class AccountSettingsViewModel {
       storeCity: snapshot.data()?['storeCity'],
       storeCountry: snapshot.data()?['storeCountry'],
       isStoreManager: snapshot.data()?['isStoreManager'] ?? false,
+      adminPermission: snapshot.data()?['adminPermission'],
     );
   }
 
@@ -87,7 +106,7 @@ class AccountSettingsViewModel {
     if (user == null) return;
 
     if (isStoreManager) {
-      // Verificar se já existe uma loja com esse número
+      // For store managers - verify store number doesn't exist
       final existingStoreQuery = await _firestore
           .collection('users')
           .where('storeNumber', isEqualTo: storeNumber)
@@ -96,6 +115,17 @@ class AccountSettingsViewModel {
 
       if (existingStoreQuery.docs.isNotEmpty) {
         throw Exception('A store already exists with the store number $storeNumber');
+      }
+    } else {
+      // For employees - verify store number exists (has a manager)
+      final storeManagerQuery = await _firestore
+          .collection('users')
+          .where('storeNumber', isEqualTo: storeNumber)
+          .where('isStoreManager', isEqualTo: true)
+          .get();
+
+      if (storeManagerQuery.docs.isEmpty) {
+        throw Exception('No store manager found for the store number $storeNumber');
       }
     }
 
@@ -113,7 +143,8 @@ class AccountSettingsViewModel {
       'userEmail': user.email,
       'userId': user.uid,
       'isStoreManager': isStoreManager,
-    });
+      'adminPermission': isStoreManager ? storeNumber : "",
+    }, SetOptions(merge: true));
   }
 
   Future<void> updateStoreNumber(String newStoreNumber) async {
@@ -217,6 +248,7 @@ class _AccountSettingsState extends State<AccountSettings> {
   DateTime? _selectedDay;
   bool get isSetupComplete => _storeNumber != null && _nickname != null;
   bool _isStoreManager = false;
+  bool _hasActivityPermission = false;
 
   @override
   void initState() {
@@ -227,12 +259,15 @@ class _AccountSettingsState extends State<AccountSettings> {
   Future<void> _loadUserData() async {
     setState(() => _isLoading = true);
     final userData = await _viewModel.loadUserData();
-    setState(() {
-      _nickname = userData?.name;
-      _storeNumber = userData?.storeNumber;
-      _isStoreManager = userData?.isStoreManager ?? false;
-      _isLoading = false;
-    });
+    if (userData != null) {
+      final hasPermission = await _viewModel.hasActivityPermission(userData.storeNumber);
+      setState(() {
+        _nickname = userData.name;
+        _storeNumber = userData.storeNumber;
+        _isStoreManager = userData.isStoreManager ?? false;
+        _hasActivityPermission = hasPermission;
+      });
+    }
 
     if ((_nickname == null || _storeNumber == null) && _showSetupDialogOnLoad) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -315,6 +350,8 @@ class _AccountSettingsState extends State<AccountSettings> {
 
   Future<void> _showCalendarDialog(BuildContext context) async {
     if (_isStoreManager == false) {_showNoPermissionSnackBar(); return;}
+
+    if (!_hasActivityPermission) {_showNoPermissionSnackBar(); return;}
 
     await showDialog(
       context: context,

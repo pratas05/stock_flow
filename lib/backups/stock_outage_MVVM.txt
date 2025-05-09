@@ -55,6 +55,7 @@ class StockBreakViewModel {
       return {
         'storeNumber': userDoc.data()?['storeNumber'],
         'isStoreManager': userDoc.data()?['isStoreManager'] ?? false,
+        'adminPermission': userDoc.data()?['adminPermission'] ?? '',
       };
     } catch (e) {
       debugPrint("Error fetching user data: $e");
@@ -204,6 +205,7 @@ class _StockBreakFilteredPageState extends State<StockBreakFilteredPage> {
   String? _storeNumber;
   bool _isStoreManager = false;
   String? _selectedBreakageType;
+  String? _adminPermission;
   
   @override
   void initState() {
@@ -226,12 +228,24 @@ class _StockBreakFilteredPageState extends State<StockBreakFilteredPage> {
     setState(() {
       _storeNumber = userData['storeNumber']?.toString();
       _isStoreManager = userData['isStoreManager'] ?? false;
+      _adminPermission = userData['adminPermission']?.toString();
       _isLoading = false;
       
       if (_storeNumber != null) {
         _storeNumberController.text = _storeNumber!;
       }
     });
+  }
+  
+  bool get _hasModificationPermission {
+    // Se não é store manager, não tem permissão
+    if (!_isStoreManager) return false;
+    
+    // Se adminPermission é igual ao storeNumber, tem permissão total
+    if (_adminPermission == _storeNumber) return true;
+    
+    // Caso contrário, não tem permissão
+    return false;
   }
 
   @override
@@ -434,6 +448,7 @@ class _StockBreakFilteredPageState extends State<StockBreakFilteredPage> {
                       CustomSnackbar.show(
                         context: context,
                         message: "You don't have permission to modify stock.",
+                        backgroundColor: Colors.red
                       );
                     }
                   },
@@ -553,6 +568,15 @@ class _StockBreakFilteredPageState extends State<StockBreakFilteredPage> {
     final TextEditingController quantityController = TextEditingController();
     String? message;
     Color messageColor = Colors.transparent;
+
+    if (!_hasModificationPermission) {
+      CustomSnackbar.show(
+        context: context,
+        message: "You don't have permission to modify breakage stock.",
+        backgroundColor: Colors.red,
+      );
+      return;
+    }
 
     showDialog(
       context: context,

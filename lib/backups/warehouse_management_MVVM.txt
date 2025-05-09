@@ -102,6 +102,28 @@ class WarehouseViewModel {
     }
   }
 
+  // Add this method to WarehouseViewModel class
+  Future<bool> hasAdminPermission() async {
+    try {
+      final user = _auth.currentUser;
+      if (user == null) return false;
+
+      final userDoc = await _firestore.collection('users').doc(user.uid).get();
+      if (!userDoc.exists) return false;
+
+      final data = userDoc.data();
+      if (data == null) return false;
+
+      final adminPermission = data['adminPermission']?.toString() ?? '';
+      final storeNumber = data['storeNumber']?.toString() ?? '';
+
+      // User has admin permission if adminPermission matches storeNumber
+      return adminPermission == storeNumber;
+    } catch (e) {
+      debugPrint("Error checking admin permission: $e"); return false;
+    }
+  }
+
   // Método que verifica se o usuário é um Store Manager
   Future<bool> isUserStoreManager() async {
     try {
@@ -302,18 +324,20 @@ class _WarehouseManagementPageState extends State<WarehouseManagementPage>
   Future<void> _loadUserData() async {
     setState(() => _isLoading = true);
     try {
-      // Carregando o número da loja do usuário
+      // Load user's store number
       final storeNumber = await _viewModel.getCurrentUserStoreNumber();
       
-      // Carregando o valor de isStoreManager da tabela de usuários
-      final isStoreManager = await _viewModel.isUserStoreManager(); 
+      // Check if user is store manager
+      final isStoreManager = await _viewModel.isUserStoreManager();
+      
+      // Check if user has admin permission
+      final hasAdminPermission = await _viewModel.hasAdminPermission();
 
       setState(() {
         _storeNumber = storeNumber;
-        _isStoreManager = isStoreManager; 
+        _isStoreManager = isStoreManager && hasAdminPermission; // Only true if both conditions are met
       });
 
-      // Inicia o monitoramento do VAT após obter o storeNumber
       if (_storeNumber != null && _storeNumber!.isNotEmpty) {
         _vatMonitor.startMonitoring(_storeNumber!);
       }
@@ -328,11 +352,11 @@ class _WarehouseManagementPageState extends State<WarehouseManagementPage>
     return FutureBuilder<String?>(
       future: _viewModel.getCurrentUserStoreNumber(),
       builder: (context, AsyncSnapshot<String?> storeSnapshot) {
-        if (storeSnapshot.data == null) {
-          return Center(child: Text("Store number not set. Please configure it."));
-        }
         if (storeSnapshot.connectionState == ConnectionState.waiting) {
           return Center(child: CircularProgressIndicator());
+        }
+        if (storeSnapshot.data == null) {
+          return Center(child: Text("Store number not set. Please configure it."));
         }
         
         return Column(

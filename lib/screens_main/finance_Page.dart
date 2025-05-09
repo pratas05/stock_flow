@@ -115,6 +115,18 @@ class FinanceAndHRViewModel {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final FirebaseAuth _auth = FirebaseAuth.instance;
 
+  Future<bool> hasFullAdminAccess() async {
+    try {
+      final user = await getCurrentUser();
+      if (user == null) return false;
+      
+      return user.isStoreManager && user.adminPermission == user.storeNumber;
+    } catch (e) {
+      debugPrint("Error checking admin access: $e");
+      return false;
+    }
+  }
+
   Future<UserModel?> getCurrentUser() async {
     try {
       final user = _auth.currentUser;
@@ -133,8 +145,7 @@ class FinanceAndHRViewModel {
       final user = await getCurrentUser();
       return user?.storeNumber; // Updated
     } catch (e) {
-      debugPrint("Error fetching store number: $e");
-      return null;
+      debugPrint("Error fetching store number: $e"); return null;
     }
   }
 
@@ -146,8 +157,7 @@ class FinanceAndHRViewModel {
       final userDoc = await _firestore.collection('users').doc(user.uid).get();
       return userDoc.data()?['storeCurrency'] as String?;
     } catch (e) {
-      debugPrint("Error fetching current currency: $e");
-      return null;
+      debugPrint("Error fetching current currency: $e"); return null;
     }
   }
 
@@ -178,8 +188,7 @@ class FinanceAndHRViewModel {
     try {
       await _firestore.collection('iva').doc(storeNumber).set(vat.toMap());
     } catch (e) {
-      debugPrint("Error updating VAT values: $e");
-      rethrow;
+      debugPrint("Error updating VAT values: $e"); rethrow;
     }
   }
 
@@ -190,8 +199,7 @@ class FinanceAndHRViewModel {
         'adminPermission': currentPermission ? "" : adminStoreNumber,
       });
     } catch (e) {
-      debugPrint("Error updating admin permission: $e");
-      rethrow;
+      debugPrint("Error updating admin permission: $e"); rethrow;
     }
   }
 
@@ -204,8 +212,7 @@ class FinanceAndHRViewModel {
         });
       }
     } catch (e) {
-      debugPrint("Error updating store currency: $e");
-      rethrow;
+      debugPrint("Error updating store currency: $e"); rethrow;
     }
   }
 }
@@ -215,8 +222,7 @@ class FinanceAndHumanResourcesPage extends StatefulWidget {
   const FinanceAndHumanResourcesPage({Key? key}) : super(key: key);
 
   @override
-  _FinanceAndHumanResourcesPageState createState() =>
-      _FinanceAndHumanResourcesPageState();
+  _FinanceAndHumanResourcesPageState createState() => _FinanceAndHumanResourcesPageState();
 }
 
 class _FinanceAndHumanResourcesPageState
@@ -228,8 +234,9 @@ class _FinanceAndHumanResourcesPageState
   late VatModel _initialVatValues;
   bool _isStoreManager = false;
   bool _isLoading = true;
-
   String? _selectedCurrency;
+  bool _hasFullPermission = false;
+
 
   @override
   void initState() {
@@ -238,6 +245,13 @@ class _FinanceAndHumanResourcesPageState
     _loadUserData();
     _tabController = TabController(length: 2, vsync: this);
     _initialVatValues = VatModel(vat1: '0', vat2: '0', vat3: '0', vat4: '0');
+    _initializePermissions();
+  }
+
+  Future<void> _initializePermissions() async {
+    setState(() => _isLoading = true);
+    _hasFullPermission = await _viewModel.hasFullAdminAccess();
+    setState(() => _isLoading = false);
   }
 
   Future<void> _loadUserData() async {
@@ -274,8 +288,7 @@ class _FinanceAndHumanResourcesPageState
                 hexStringToColor("9546C4"),
                 hexStringToColor("5E61F4"),
               ],
-              begin: Alignment.topCenter,
-              end: Alignment.bottomCenter,
+              begin: Alignment.topCenter, end: Alignment.bottomCenter,
             ),
           ),
           child: const Center(child: CircularProgressIndicator()),
@@ -287,12 +300,11 @@ class _FinanceAndHumanResourcesPageState
       return ErrorScreen(
         icon: Icons.warning_amber_rounded,
         title: "Store Access Required",
-        message:
-            "Your account is not associated with any store. Please contact admin.",
+        message: "Your account is not associated with any store. Please contact admin.",
       );
     }
 
-    if (!_isStoreManager) {
+    if (!_isStoreManager || !_hasFullPermission) {
       return ErrorScreen(
         icon: Icons.warning_amber_rounded,
         title: "Access Denied",
@@ -303,8 +315,7 @@ class _FinanceAndHumanResourcesPageState
     return Scaffold(
       appBar: AppBar(
         title: const Text(
-          'Finance & Human Resources',
-          style: TextStyle(color: Colors.white),
+          'Finance & Human Resources', style: TextStyle(color: Colors.white),
         ),
         centerTitle: true,
         flexibleSpace: Container(
@@ -323,8 +334,7 @@ class _FinanceAndHumanResourcesPageState
           controller: _tabController,
           indicatorColor: Colors.white,
           labelColor: Colors.white, // cor do texto selecionado
-          unselectedLabelColor:
-              Colors.white70, // cor do texto não selecionado (mais suave)
+          unselectedLabelColor:Colors.white70, // cor do texto não selecionado (mais suave)
           labelStyle: const TextStyle(fontWeight: FontWeight.bold),
           tabs: const [
             Tab(text: 'Human Resources'),
@@ -365,9 +375,7 @@ class _FinanceAndHumanResourcesPageState
         }
 
         if (snapshot.hasError) {
-          return const Center(
-              child: Text('Error loading users.',
-                  style: TextStyle(fontSize: 18, color: Colors.white)));
+          return const Center(child: Text('Error loading users.', style: TextStyle(fontSize: 18, color: Colors.white)));
         }
 
         final users =
@@ -376,8 +384,7 @@ class _FinanceAndHumanResourcesPageState
 
         if (users.isEmpty) {
           return const Center(
-            child: Text('No users found for this store.',
-                style: TextStyle(fontSize: 18, color: Colors.white)),
+            child: Text('No users found for this store.', style: TextStyle(fontSize: 18, color: Colors.white)),
           );
         }
 
@@ -396,23 +403,18 @@ class _FinanceAndHumanResourcesPageState
                 borderRadius: BorderRadius.circular(12.0),
               ),
               child: ListTile(
-                contentPadding: const EdgeInsets.symmetric(
-                    horizontal: 16.0, vertical: 12.0),
-                title: Text(user.name,
-                    style: const TextStyle(fontWeight: FontWeight.bold)),
+                contentPadding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0),
+                title: Text(user.name, style: const TextStyle(fontWeight: FontWeight.bold)),
                 subtitle: Text(user.email),
-                leading:
-                    const Icon(Icons.person, size: 32, color: Colors.purple),
+                leading: const Icon(Icons.person, size: 32, color: Colors.purple),
                 trailing: IconButton(
                   icon: Icon(
                     hasAdminPermission
                         ? Icons.admin_panel_settings
                         : Icons.person_outline,
-                    color: hasAdminPermission ? Colors.blue : Colors.grey,
-                    size: 32,
+                    color: hasAdminPermission ? Colors.blue : Colors.grey, size: 32,
                   ),
-                  onPressed: () => _toggleAdminPermission(
-                      user.id, hasAdminPermission, storeNumber),
+                  onPressed: () => _toggleAdminPermission(user.id, hasAdminPermission, storeNumber),
                 ),
               ),
             );
@@ -437,8 +439,7 @@ class _FinanceAndHumanResourcesPageState
 
           if (snapshot.hasError) {
             return const Center(
-              child: Text('Error to load financial data',
-                  style: TextStyle(fontSize: 18, color: Colors.white)),
+              child: Text('Error to load financial data', style: TextStyle(fontSize: 18, color: Colors.white)),
             );
           }
 
@@ -469,9 +470,7 @@ class _FinanceAndHumanResourcesPageState
                     child: Column(
                       children: [
                         const Text(
-                          'VAT Configuration',
-                          style: TextStyle(
-                              fontSize: 18, fontWeight: FontWeight.bold),
+                          'VAT Configuration', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                         ),
                         const SizedBox(height: 16),
                         for (var entry in controllers.entries)
@@ -481,8 +480,7 @@ class _FinanceAndHumanResourcesPageState
                               controller: entry.value,
                               decoration: InputDecoration(
                                 labelText: entry.key,
-                                border: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(8.0),
+                                border: OutlineInputBorder(borderRadius: BorderRadius.circular(8.0),
                                 ),
                                 filled: true,
                                 fillColor: Colors.grey[100],
@@ -492,42 +490,31 @@ class _FinanceAndHumanResourcesPageState
                           ),
                         ElevatedButton(
                           style: ElevatedButton.styleFrom(
-                            backgroundColor:
-                                const Color.fromARGB(255, 179, 67, 199),
+                            backgroundColor:const Color.fromARGB(255, 179, 67, 199),
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(8.0),
                             ),
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 32, vertical: 12),
+                            padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 12),
                           ),
-                          onPressed: () =>
-                              _updateVatValues(storeNumber, controllers),
-                          child: const Text('Save',
-                              style: TextStyle(
-                                  color: Color.fromARGB(255, 255, 255, 255))),
+                          onPressed: () => _updateVatValues(storeNumber, controllers),
+                          child: const Text('Save', style: TextStyle(color: Color.fromARGB(255, 255, 255, 255))),
                         ),
                       ],
                     ),
                   ),
                 ),
-
                 const SizedBox(height: 24),
 
                 // Currency Section
-                Card(
-                  elevation: 8,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12.0),
-                  ),
+                Card(elevation: 8,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12.0)),
                   child: Padding(
                     padding: const EdgeInsets.all(16.0),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         const Text(
-                          'Store Currency',
-                          style: TextStyle(
-                              fontSize: 18, fontWeight: FontWeight.bold),
+                          'Store Currency', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                         ),
                         const SizedBox(height: 8),
                         if (currentCurrency != null)
@@ -535,13 +522,11 @@ class _FinanceAndHumanResourcesPageState
                             padding: const EdgeInsets.only(bottom: 12.0),
                             child: RichText(
                               text: TextSpan(
-                                style: const TextStyle(
-                                    fontSize: 16, color: Colors.black87),
+                                style: const TextStyle(fontSize: 16, color: Colors.black87),
                                 children: [
                                   const TextSpan(
                                       text: 'Current Currency: ',
-                                      style: TextStyle(
-                                          fontWeight: FontWeight.bold)),
+                                      style: TextStyle(fontWeight: FontWeight.bold)),
                                   TextSpan(text: currentCurrency),
                                 ],
                               ),
@@ -566,8 +551,7 @@ class _FinanceAndHumanResourcesPageState
                           onChanged: (value) async {
                             if (value == null || value == _selectedCurrency) return;
 
-                            // Armazena o valor anterior
-                            final previousValue = _selectedCurrency;
+                            final previousValue = _selectedCurrency; // Armazena o valor anterior
 
                             // Primeira confirmação
                             final firstConfirm = await showDialog<bool>(
