@@ -33,7 +33,7 @@ class BarcodePage extends StatelessWidget {
                 ),
                 textAlign: pw.TextAlign.center,
               ),
-              pw.SizedBox(height: 20),
+              pw.SizedBox(height: 10),
               pw.BarcodeWidget(
                 barcode: pw.Barcode.code128(),
                 data: productId,
