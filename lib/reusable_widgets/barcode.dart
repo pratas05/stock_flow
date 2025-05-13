@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:barcode_widget/barcode_widget.dart';
+import 'package:pdf/pdf.dart';
+import 'package:pdf/widgets.dart' as pw;
+import 'package:printing/printing.dart';
 
 class BarcodePage extends StatelessWidget {
   final String productId;
@@ -11,18 +14,64 @@ class BarcodePage extends StatelessWidget {
     required this.productName,
   }) : super(key: key);
 
-  // Método estático para mostrar o diálogo de código de barras
+  // Method to generate a PDF with the barcode
+  Future<void> _printBarcode(BuildContext context) async {
+    final pdf = pw.Document();
+
+    pdf.addPage(
+      pw.Page(
+        build: (pw.Context context) {
+          return pw.Column(
+            mainAxisAlignment: pw.MainAxisAlignment.center,
+            crossAxisAlignment: pw.CrossAxisAlignment.center,
+            children: [
+              pw.Text(
+                productName,
+                style: pw.TextStyle(
+                  fontSize: 18,
+                  fontWeight: pw.FontWeight.bold,
+                ),
+                textAlign: pw.TextAlign.center,
+              ),
+              pw.SizedBox(height: 20),
+              pw.BarcodeWidget(
+                barcode: pw.Barcode.code128(),
+                data: productId,
+                width: 250,
+                height: 100,
+              ),
+              pw.SizedBox(height: 15),
+              pw.Text(
+                productId,
+                style: pw.TextStyle(
+                  fontSize: 16,
+                  letterSpacing: 2.0,
+                ),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+
+    // Use the printing package to print the PDF
+    await Printing.layoutPdf(
+      onLayout: (PdfPageFormat format) async => pdf.save(),
+    );
+  }
+
+  // Static method to show the barcode dialog
   static Future<void> showBarcodeDialog(
-    BuildContext context, 
-    String productId, 
-    String productName
+    BuildContext context,
+    String productId,
+    String productName,
   ) async {
     await showDialog(
       context: context,
       builder: (context) {
         return Dialog(
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16)
+            borderRadius: BorderRadius.circular(16),
           ),
           child: Padding(
             padding: const EdgeInsets.all(20.0),
@@ -30,16 +79,16 @@ class BarcodePage extends StatelessWidget {
               mainAxisSize: MainAxisSize.min,
               children: [
                 Text(
-                  productName, 
-                  style: TextStyle(
-                    fontSize: 18, 
-                    fontWeight: FontWeight.bold
+                  productName,
+                  style: const TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
                   ),
                   textAlign: TextAlign.center,
                 ),
                 const SizedBox(height: 20),
                 Container(
-                  padding: EdgeInsets.all(20),
+                  padding: const EdgeInsets.all(20),
                   decoration: BoxDecoration(
                     border: Border.all(color: Colors.grey.shade300),
                     borderRadius: BorderRadius.circular(10),
@@ -49,14 +98,32 @@ class BarcodePage extends StatelessWidget {
                       BarcodeWidget(
                         barcode: Barcode.code128(),
                         data: productId,
-                        width: 250, height: 100,
+                        width: 250,
+                        height: 100,
                       ),
                       const SizedBox(height: 15),
                     ],
                   ),
                 ),
                 const SizedBox(height: 20),
-                ElevatedButton(onPressed: () => Navigator.pop(context), child: Text('Close')),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    ElevatedButton(
+                      onPressed: () => Navigator.pop(context),
+                      child: const Text('Close'),
+                    ),
+                    ElevatedButton.icon(
+                      onPressed: () {
+                        // Call the print functionality
+                        BarcodePage(productId: productId, productName: productName)
+                            ._printBarcode(context);
+                      },
+                      icon: const Icon(Icons.print),
+                      label: const Text('Print'),
+                    ),
+                  ],
+                ),
               ],
             ),
           ),
@@ -96,7 +163,7 @@ class BarcodePage extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 30),
-            
+
             // Barcode container
             Container(
               padding: const EdgeInsets.all(20),
@@ -115,7 +182,7 @@ class BarcodePage extends StatelessWidget {
                     style: const TextStyle(fontSize: 14),
                   ),
                   const SizedBox(height: 15),
-                  
+
                   // Barcode number
                   Text(
                     productId,
@@ -128,23 +195,19 @@ class BarcodePage extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 30),
-            
+
             // Print button
             ElevatedButton.icon(
               icon: const Icon(Icons.print),
               label: const Text('Print Barcode'),
               style: ElevatedButton.styleFrom(
                 padding: const EdgeInsets.symmetric(
-                  horizontal: 30, 
-                  vertical: 15
+                  horizontal: 30,
+                  vertical: 15,
                 ),
               ),
               onPressed: () {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('Print functionality will be implemented')
-                  ),
-                );
+                _printBarcode(context);
               },
             ),
           ],
