@@ -239,11 +239,11 @@ class NotificationsStockAlert extends StatelessWidget {
                           flexibleSpace: Column(
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
-                              const Text('Notifications', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                              const Text('Notifications', style: TextStyle(fontSize: 18, color: Colors.white)),
                               IconButton(
                                 icon: const Icon(Icons.add_alert),
                                 onPressed: () => _showSendNotificationModal(context),
-                                iconSize: 25.0,
+                                iconSize: 25.0, color: Colors.white,
                               ),
                             ],
                           ),

@@ -3,6 +3,7 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:stockflow/reusable_widgets/colors_utils.dart';
 
 class ChatPage extends StatefulWidget {
   const ChatPage({super.key});
@@ -100,14 +101,6 @@ class _ChatPageState extends State<ChatPage> {
       print('Error creating Firestore query: $e');
       return const Stream.empty();
     }
-  }
-
-  Color hexStringToColor(String hexColor) {
-    hexColor = hexColor.toUpperCase().replaceAll("#", "");
-    if (hexColor.length == 6) {
-      hexColor = "FF$hexColor";
-    }
-    return Color(int.parse(hexColor, radix: 16));
   }
 
   @override
