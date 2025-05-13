@@ -27,15 +27,18 @@ class BarcodePage extends StatelessWidget {
             children: [
               pw.Text(
                 productName,
-                style: pw.TextStyle(fontSize: 18, fontWeight: pw.FontWeight.bold),
+                style: pw.TextStyle(
+                  fontSize: 8,
+                  fontWeight: pw.FontWeight.bold,
+                ),
                 textAlign: pw.TextAlign.center,
               ),
               pw.SizedBox(height: 20),
               pw.BarcodeWidget(
                 barcode: pw.Barcode.code128(),
                 data: productId,
-                width: 250,
-                height: 100,
+                width: 120, // 5 cm
+                height: 50, // 3 cm
               ),
               pw.SizedBox(height: 15),
             ],
@@ -45,106 +48,124 @@ class BarcodePage extends StatelessWidget {
     );
 
     // Use the printing package to print the PDF
-    await Printing.layoutPdf(onLayout: (PdfPageFormat format) async => pdf.save());
+    await Printing.layoutPdf(
+      onLayout: (PdfPageFormat format) async => pdf.save(),
+    );
   }
 
   // Static method to show the barcode dialog
-  static Future<void> showBarcodeDialog(
-    BuildContext context,
-    String productId,
-    String productName,
-  ) async {
-    await showDialog(
-      context: context,
-      builder: (context) {
-        return Dialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-          insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 40),
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(
-              maxWidth: 400, // largura máxima do popup
-            ),
-            child: Padding(
-              padding: const EdgeInsets.all(24.0),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: [
-                  Text(
-                    productName,
-                    style: const TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.black87,
-                    ),
-                    textAlign: TextAlign.center,
+static Future<void> showBarcodeDialog(
+  BuildContext context,
+  String productId,
+  String productName,
+) async {
+  await showDialog(
+    context: context,
+    builder: (context) {
+      return Dialog(
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(20),
+        ),
+        insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 40),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(
+            maxWidth: 400, // largura máxima do popup
+          ),
+          child: Padding(
+            padding: const EdgeInsets.all(24.0),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                Text(
+                  productName,
+                  style: const TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.black87,
                   ),
-                  const SizedBox(height: 20),
-                  Container(
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: Colors.grey.shade50,
-                      border: Border.all(color: Colors.grey.shade300),
-                      borderRadius: BorderRadius.circular(12),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withOpacity(0.05),
-                          blurRadius: 8,
-                          offset: const Offset(0, 4),
-                        ),
-                      ],
-                    ),
-                    child: Column(
-                      children: [
-                        BarcodeWidget(
-                          barcode: Barcode.code128(),
-                          data: productId,
-                          width: 250, height: 100,
-                        ),
-                        const SizedBox(height: 10),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 25),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.end,
-                    children: [
-                      TextButton(
-                        onPressed: () => Navigator.pop(context),
-                        child: const Text('Close', style: TextStyle(fontSize: 16, color: Colors.grey)),
-                      ),
-                      const SizedBox(width: 10),
-                      ElevatedButton.icon(
-                        onPressed: () {
-                          BarcodePage(
-                            productId: productId,
-                            productName: productName,
-                          )._printBarcode(context);
-                        },
-                        icon: const Icon(Icons.print),
-                        label: const Text('Print'),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.blueAccent,
-                          foregroundColor: Colors.white,
-                          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                        ),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 20),
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade50,
+                    border: Border.all(color: Colors.grey.shade300),
+                    borderRadius: BorderRadius.circular(12),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.05),
+                        blurRadius: 8,
+                        offset: const Offset(0, 4),
                       ),
                     ],
                   ),
-                ],
-              ),
+                  child: Column(
+                    children: [
+                      BarcodeWidget(
+                        barcode: Barcode.code128(),
+                        data: productId,
+                        width: 250,
+                        height: 100,
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 25),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    TextButton(
+                      onPressed: () => Navigator.pop(context),
+                      child: const Text(
+                        'Close',
+                        style: TextStyle(
+                          fontSize: 16,
+                          color: Colors.grey,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    ElevatedButton.icon(
+                      onPressed: () {
+                        BarcodePage(
+                          productId: productId,
+                          productName: productName,
+                        )._printBarcode(context);
+                      },
+                      icon: const Icon(Icons.print),
+                      label: const Text('Print'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.blueAccent,
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 20,
+                          vertical: 12,
+                        ),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
             ),
           ),
-        );
-      },
-    );
-  }
+        ),
+      );
+    },
+  );
+}
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Product Barcode'), centerTitle: true),
+      appBar: AppBar(
+        title: const Text('Product Barcode'),
+        centerTitle: true,
+      ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(20.0),
         child: Column(
@@ -154,13 +175,19 @@ class BarcodePage extends StatelessWidget {
             // Product information
             Text(
               productName,
-              style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+              style: const TextStyle(
+                fontSize: 22,
+                fontWeight: FontWeight.bold,
+              ),
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 10),
             Text(
               'ID: $productId',
-              style: const TextStyle(fontSize: 16, color: Colors.grey),
+              style: const TextStyle(
+                fontSize: 16,
+                color: Colors.grey,
+              ),
             ),
             const SizedBox(height: 30),
 
@@ -177,13 +204,20 @@ class BarcodePage extends StatelessWidget {
                   BarcodeWidget(
                     barcode: Barcode.code128(),
                     data: productId,
-                    width: 250, height: 100,
+                    width: 250,
+                    height: 100,
                     style: const TextStyle(fontSize: 14),
                   ),
                   const SizedBox(height: 15),
 
                   // Barcode number
-                  Text(productId, style: const TextStyle(fontSize: 16, letterSpacing: 2.0)),
+                  Text(
+                    productId,
+                    style: const TextStyle(
+                      fontSize: 16,
+                      letterSpacing: 2.0,
+                    ),
+                  ),
                 ],
               ),
             ),
@@ -199,7 +233,9 @@ class BarcodePage extends StatelessWidget {
                   vertical: 15,
                 ),
               ),
-              onPressed: () {_printBarcode(context);},
+              onPressed: () {
+                _printBarcode(context);
+              },
             ),
           ],
         ),
