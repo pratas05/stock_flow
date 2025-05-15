@@ -10,6 +10,9 @@ import 'package:stockflow/reusable_widgets/colors_utils.dart';
 import 'package:stockflow/screens_main/warehouse_management.dart';
 import 'package:stockflow/screens_main/buy_trade.dart';
 import '../screens_main/notificationPage.dart';
+import '../screens_main/chat_page.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -24,10 +27,12 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _isLocked = false;
   String _appPassword = '';
   final TextEditingController _passwordController = TextEditingController();
+  final TextEditingController _messageController = TextEditingController();
 
   @override
   void dispose() {
     _passwordController.dispose();
+    _messageController.dispose();
     super.dispose();
   }
 
@@ -47,13 +52,16 @@ class _HomeScreenState extends State<HomeScreen> {
             hexStringToColor("9546C4"),
             hexStringToColor("5E61F4"),
           ],
-          begin: Alignment.topCenter, end: Alignment.bottomCenter,
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
         ),
       ),
       child: Stack(
         children: [
           Positioned(
-            left: 0, top: 0, bottom: 0,
+            left: 0,
+            top: 0,
+            bottom: 0,
             child: Container(
               width: MediaQuery.of(context).size.width * (1 / 4),
               decoration: BoxDecoration(color: Colors.purple.withOpacity(0.5)),
@@ -69,7 +77,11 @@ class _HomeScreenState extends State<HomeScreen> {
                         const SizedBox(width: 8),
                         const Text(
                           "Stock Flow",
-                          style: TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold),
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 22,
+                            fontWeight: FontWeight.bold,
+                          ),
                         ),
                         IconButton(
                           icon: Icon(Icons.home, color: Colors.white),
@@ -171,6 +183,19 @@ class _HomeScreenState extends State<HomeScreen> {
                     ),
                     _buildDivider(),
                     _buildAdminBox(
+                      "Store Chat",
+                      Icons.chat_outlined,
+                      "Communicate with other store members.",
+                      () {
+                        setState(() {
+                          _selectedOption = "Store Chat";
+                          _currentContent = const ChatPage();
+                        });
+                      },
+                      _selectedOption == "Store Chat",
+                    ),
+                    _buildDivider(),
+                    _buildAdminBox(
                       "Help",
                       Icons.help,
                       "To provide information and support for new people",
@@ -197,8 +222,14 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
           ),
           Positioned(
-            top: 0, left: MediaQuery.of(context).size.width * (1 / 4), right: 0, bottom: 0,
-            child: Container(padding: const EdgeInsets.all(0.0), child: _currentContent),
+            top: 0,
+            left: MediaQuery.of(context).size.width * (1 / 4),
+            right: 0,
+            bottom: 0,
+            child: Container(
+              padding: const EdgeInsets.all(0.0),
+              child: _currentContent,
+            ),
           ),
         ],
       ),
@@ -214,11 +245,13 @@ class _HomeScreenState extends State<HomeScreen> {
             hexStringToColor("9546C4"),
             hexStringToColor("5E61F4"),
           ],
-          begin: Alignment.topCenter, end: Alignment.bottomCenter,
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
         ),
       ),
       child: Center(
-        child: Container(width: 300,
+        child: Container(
+          width: 300,
           padding: const EdgeInsets.all(20),
           decoration: BoxDecoration(
             color: Colors.white,
@@ -234,7 +267,8 @@ class _HomeScreenState extends State<HomeScreen> {
               const SizedBox(height: 20),
               TextField(
                 controller: _passwordController,
-                keyboardType: TextInputType.number, maxLength: 6,
+                keyboardType: TextInputType.number,
+                maxLength: 6,
                 obscureText: true,
                 decoration: InputDecoration(
                   border: OutlineInputBorder(),
@@ -258,7 +292,9 @@ class _HomeScreenState extends State<HomeScreen> {
                           });
                         } else {
                           CustomSnackbar.show(
-                            context: context, message: 'Password must be 6 digits', duration: Duration(seconds: 2),
+                            context: context,
+                            message: 'Password must be 6 digits',
+                            duration: Duration(seconds: 2),
                           );
                         }
                       } else {
@@ -270,21 +306,30 @@ class _HomeScreenState extends State<HomeScreen> {
                           });
                         } else {
                           CustomSnackbar.show(
-                            context: context, message: 'Incorrect Password', duration: Duration(seconds: 2),
+                            context: context,
+                            message: 'Incorrect Password',
+                            duration: Duration(seconds: 2),
                           );
                         }
                       }
                     },
                     child: Text(_appPassword.isEmpty ? 'Set Password' : 'Unlock'),
                   ),
-                  if (_appPassword.isEmpty) // Mostrar botão Cancel apenas quando não há senha configurada
+                  if (_appPassword.isEmpty)
                     TextButton(
                       onPressed: () {
                         _passwordController.clear();
-                        setState(() { _isLocked = false;});
+                        setState(() {
+                          _isLocked = false;
+                        });
                       },
                       child: Text('Cancel'),
                     ),
+                  if (_appPassword.isNotEmpty)
+                  TextButton(
+                    onPressed: _showLogoutConfirmation,
+                    child: const Text('Logout', style: TextStyle(color: Colors.red)),
+                  ),
                 ],
               ),
             ],
@@ -297,7 +342,9 @@ class _HomeScreenState extends State<HomeScreen> {
   void _lockApplication() {
     if (_appPassword.isEmpty) {
       // First time locking - need to set password
-      setState(() {_isLocked = true;});
+      setState(() {
+        _isLocked = true;
+      });
     } else {
       // Already has password - just lock
       setState(() {
@@ -324,8 +371,13 @@ class _HomeScreenState extends State<HomeScreen> {
             Icon(icon, color: isSelected ? Colors.blue : Colors.black, size: 23),
             const SizedBox(width: 16),
             Expanded(
-              child: Text(title,
-                style: TextStyle(color: isSelected ? Colors.blue : Colors.black, fontSize: 15, fontWeight: FontWeight.bold),
+              child: Text(
+                title,
+                style: TextStyle(
+                  color: isSelected ? Colors.blue : Colors.black,
+                  fontSize: 15,
+                  fontWeight: FontWeight.bold,
+                ),
               ),
             ),
           ],
@@ -346,14 +398,77 @@ class _HomeScreenState extends State<HomeScreen> {
           title: Text("Confirm Log Out"),
           content: Text("Do you really want to log out of your account?"),
           actions: [
-            TextButton(onPressed: () {Navigator.of(context).pop();}, child: Text("No")),
             TextButton(
-              onPressed: () {Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => SignInScreen()));},
+              onPressed: () {
+                Navigator.of(context).pop();
+              },
+              child: Text("No"),
+            ),
+            TextButton(
+              onPressed: () {
+                Navigator.pushReplacement(
+                  context,
+                  MaterialPageRoute(builder: (context) => SignInScreen()),
+                );
+              },
               child: Text('Yes', style: TextStyle(fontWeight: FontWeight.bold)),
             ),
           ],
         );
       },
+    );
+  }
+
+  void _sendMessage() {
+    final message = _messageController.text.trim();
+    if (message.isNotEmpty) {
+      FirebaseFirestore.instance.collection('messages').add({
+        'text': message,
+        'senderId': FirebaseAuth.instance.currentUser?.uid,
+        'timestamp': FieldValue.serverTimestamp(),
+      });
+      _messageController.clear(); // Clear the input field after sending
+    }
+  }
+
+  Widget buildMessageInputField() {
+    return TextField(
+      controller: _messageController,
+      decoration: InputDecoration(
+        hintText: "Type your message...",
+        border: OutlineInputBorder(),
+      ),
+      onSubmitted: (value) {
+        if (value.trim().isNotEmpty) {
+          _sendMessage(); // Call the send message function
+        }
+      },
+    );
+  }
+
+  void _showLogoutConfirmation() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text("Confirm Logout"),
+        content: const Text("Do you want to log out? You'll need to sign in again."),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text("Cancel"),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.pop(context);
+              Navigator.pushReplacement(
+                context,
+                MaterialPageRoute(builder: (context) => SignInScreen()),
+              );
+            },
+            child: const Text("Logout", style: TextStyle(color: Colors.red)),
+          ),
+        ],
+      ),
     );
   }
 }

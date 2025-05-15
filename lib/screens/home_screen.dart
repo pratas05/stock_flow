@@ -325,6 +325,11 @@ class _HomeScreenState extends State<HomeScreen> {
                       },
                       child: Text('Cancel'),
                     ),
+                  if (_appPassword.isNotEmpty)
+                  TextButton(
+                    onPressed: _showLogoutConfirmation,
+                    child: const Text('Logout', style: TextStyle(color: Colors.red)),
+                  ),
                 ],
               ),
             ],
@@ -438,6 +443,32 @@ class _HomeScreenState extends State<HomeScreen> {
           _sendMessage(); // Call the send message function
         }
       },
+    );
+  }
+
+  void _showLogoutConfirmation() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text("Confirm Logout"),
+        content: const Text("Do you want to log out? You'll need to sign in again."),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text("Cancel"),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.pop(context);
+              Navigator.pushReplacement(
+                context,
+                MaterialPageRoute(builder: (context) => SignInScreen()),
+              );
+            },
+            child: const Text("Logout", style: TextStyle(color: Colors.red)),
+          ),
+        ],
+      ),
     );
   }
 }

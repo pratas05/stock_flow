@@ -1,8 +1,10 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:intl/intl.dart';
 import 'package:stockflow/reusable_widgets/colors_utils.dart';
 import 'package:stockflow/reusable_widgets/custom_snackbar.dart';
+import 'package:stockflow/reusable_widgets/discounts_page.dart';
 import 'package:stockflow/reusable_widgets/error_screen.dart';
 import 'package:stockflow/reusable_widgets/search_controller.dart';
 import 'package:stockflow/reusable_widgets/vat_manager.dart';
@@ -179,41 +181,41 @@ class _BuyTradePageState extends State<BuyTradePage> with SingleTickerProviderSt
   void initState() {
     super.initState();
     _viewModel = BuyTradeViewModel();
-    _tabController = TabController(length: 2, vsync: this);
+    _tabController = TabController(length: 3, vsync: this);
     _initializeData();
   }
 
-Future<void> _initializeData() async {
-  setState(() => _isLoading = true);
-  try {
-    final userData = await _viewModel.getUserData();
-    if (userData != null) {
-      // Primeiro atualizamos os dados básicos
-      setState(() {
-        storeNumber = userData['storeNumber'];
-        _isStoreManager = userData['isStoreManager'] ?? false;
-      });
-      
-      // Depois verificamos a permissão (fora do setState)
-      final hasPermission = await _viewModel.hasFullAdminAccess();
-      
-      // Finalmente atualizamos o estado completo
-      setState(() {
-        _hasFullPermission = hasPermission;
-      });
-    }
+  Future<void> _initializeData() async {
+    setState(() => _isLoading = true);
+    try {
+      final userData = await _viewModel.getUserData();
+      if (userData != null) {
+        // Primeiro atualizamos os dados básicos
+        setState(() {
+          storeNumber = userData['storeNumber'];
+          _isStoreManager = userData['isStoreManager'] ?? false;
+        });
+        
+        // Depois verificamos a permissão (fora do setState)
+        final hasPermission = await _viewModel.hasFullAdminAccess();
+        
+        // Finalmente atualizamos o estado completo
+        setState(() {
+          _hasFullPermission = hasPermission;
+        });
+      }
 
-    if (storeNumber != null && storeNumber!.isNotEmpty) {
-      _vatMonitor.startMonitoring(storeNumber!);
+      if (storeNumber != null && storeNumber!.isNotEmpty) {
+        _vatMonitor.startMonitoring(storeNumber!);
+      }
+    } catch (e) {
+      if (mounted) {
+        CustomSnackbar.show(context: context, message: 'Error fetching user data: $e');
+      }
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
     }
-  } catch (e) {
-    if (mounted) {
-      CustomSnackbar.show(context: context, message: 'Error fetching user data: $e');
-    }
-  } finally {
-    if (mounted) setState(() => _isLoading = false);
   }
-}
 
   @override
   void dispose() {
@@ -243,6 +245,7 @@ Future<void> _initializeData() async {
           children: [
             _buildBuyTab(),
             _buildTradeTab(),
+            const DiscountsPage(),
           ],
         ),
       ),
@@ -305,6 +308,7 @@ Future<void> _initializeData() async {
         tabs: const [
           Tab(text: "Buy"),
           Tab(text: "Trade"),
+          Tab(text: "Discounts"),
         ],
       ),
     );
@@ -333,25 +337,91 @@ Future<void> _initializeData() async {
         ),
         Expanded(
           child: _buildProductList(
-            itemBuilder: (context, product) => ListTile(
-              title: Text(
-                "${product.name} - ${product.model}",
-                style: const TextStyle(
-                  fontWeight: FontWeight.bold, 
-                  color: Colors.black87),
-              ),
-              subtitle: Text(
-                "Price: \$${product.vatPrice.toStringAsFixed(2)} | Stock: ${product.stockCurrent}",
-                style: TextStyle(color: Colors.grey[700]),
-              ),
-              trailing: IconButton(
-                icon: Icon(Icons.add_shopping_cart, 
-                    color: product.stockCurrent > 0 ? Colors.green : Colors.grey),
-                onPressed: product.stockCurrent > 0
-                    ? () => _showBuyConfirmationDialog(product.id, product.stockCurrent)
-                    : null,
-              ),
-            ),
+            itemBuilder: (context, product) {
+              return FutureBuilder<QuerySnapshot>(
+                future: FirebaseFirestore.instance
+                    .collection('discounts')
+                    .where('productId', isEqualTo: product.id)
+                    .get(),
+                builder: (context, snapshot) {
+                  bool hasDiscount = false;
+                  double vatPrice = product.vatPrice;
+                  double priceToShow = vatPrice;
+                  Timestamp? endDate;
+
+                  if (snapshot.hasData && snapshot.data!.docs.isNotEmpty) {
+                    final discountDoc = snapshot.data!.docs.first;
+                    endDate = discountDoc['endDate'] as Timestamp;
+                    final now = Timestamp.now();
+
+                    if (endDate.toDate().isAfter(now.toDate())) {
+                      hasDiscount = true;
+                      priceToShow = (discountDoc['discountPrice'] as num).toDouble();
+                    }
+                  }
+
+                  return ListTile(
+                    title: Text(
+                      "${product.name} - ${product.model}",
+                      style: const TextStyle(
+                        fontWeight: FontWeight.bold,
+                        color: Colors.black87,
+                      ),
+                    ),
+                    subtitle: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        if (hasDiscount) ...[
+                          Text(
+                            "Price: ",
+                            style: TextStyle(color: Colors.grey[700]),
+                          ),
+                          Text(
+                            "€${vatPrice.toStringAsFixed(2)}",
+                            style: const TextStyle(
+                              color: Colors.red,
+                              decoration: TextDecoration.lineThrough,
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          Text(
+                            "€${priceToShow.toStringAsFixed(2)}",
+                            style: const TextStyle(
+                              color: Colors.red,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          Tooltip(
+                            message: 'Promotion ends ${DateFormat('dd/MM HH:mm').format(endDate!.toDate())}',
+                            child: const Icon(Icons.timer, size: 16, color: Colors.red),
+                          ),
+                          const SizedBox(width: 10),
+                          Text(
+                            "| Stock: ${product.stockCurrent}",
+                            style: TextStyle(color: Colors.grey[700]),
+                          ),
+                        ] else ...[
+                          Text(
+                            "Price: €${priceToShow.toStringAsFixed(2)} | Stock: ${product.stockCurrent}",
+                            style: TextStyle(color: Colors.grey[700]),
+                          ),
+                        ],
+                      ],
+                    ),
+                    trailing: IconButton(
+                      icon: Icon(
+                        Icons.add_shopping_cart,
+                        color: product.stockCurrent > 0 ? Colors.green : Colors.grey,
+                      ),
+                      onPressed: product.stockCurrent > 0
+                          ? () => _showBuyConfirmationDialog(product.id, product.stockCurrent)
+                          : null,
+                    ),
+                  );
+                }
+              );
+            },
           ),
         ),
       ],

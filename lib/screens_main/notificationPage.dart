@@ -474,6 +474,8 @@ class NotificationsStockAlert extends StatelessWidget {
         return Icons.schedule;
       case 'Break':
         return Icons.insert_page_break;
+      case 'Discount':
+        return Icons.discount_sharp;
       default:
         return Icons.notification_important;
     }
@@ -501,6 +503,8 @@ class NotificationsStockAlert extends StatelessWidget {
         return Colors.black;
       case 'Break':
         return Color.fromARGB(255, 219, 14, 14);
+      case 'Discount':
+        return Color.fromARGB(255, 16, 91, 11);
       default:
         return Colors.red;
     }
@@ -747,17 +751,14 @@ class NotificationsStockAlert extends StatelessWidget {
                     _buildDetailRow(
                       "Price:",
                       "\$${product.vatPrice.toStringAsFixed(2)}",
-                      valueStyle: TextStyle(
-                          color: Color(0xFF4CAF50),
-                          fontWeight: FontWeight.bold),
+                      valueStyle: TextStyle(color: Color(0xFF4CAF50), fontWeight: FontWeight.bold),
                     ),
                     Divider(color: Colors.grey[300], height: 24, thickness: 1),
                   ],
                   _buildDetailRow(
                     "Date:",
                     formattedDate,
-                    valueStyle: TextStyle(
-                        color: const Color.fromARGB(255, 178, 31, 236)),
+                    valueStyle: TextStyle(color: const Color.fromARGB(255, 178, 31, 236)),
                   ),
                   const SizedBox(height: 12),
                   Text("Message:",
