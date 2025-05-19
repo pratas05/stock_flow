@@ -24,30 +24,25 @@ class _DiscountsPageState extends State<DiscountsPage> {
       final now = Timestamp.now();
       final batch = _firestore.batch();
 
-      // Buscar descontos expirados
+      // Buscar produtos com desconto expirado
       final querySnapshot = await _firestore
-          .collection('discounts')
+          .collection('products')
+          .where('storeNumber', isEqualTo: _storeNumber)
           .where('endDate', isLessThan: now)
           .get();
 
-      // Para cada desconto expirado
-      for (var discountDoc in querySnapshot.docs) {
-        final discountData = discountDoc.data();
-        final productId = discountData['productId'];
-
-        // Adicionar operação para remover discountPrice do produto
-        final productRef = _firestore.collection('products').doc(productId);
-        batch.update(productRef, {'discountPrice': FieldValue.delete()});
-
-        // Adicionar operação para apagar o documento do desconto
-        final discountRef = _firestore.collection('discounts').doc(discountDoc.id);
-        batch.delete(discountRef);
+      // Para cada produto com desconto expirado
+      for (var productDoc in querySnapshot.docs) {
+        batch.update(productDoc.reference, {
+          'discountPrice': FieldValue.delete(),
+          'startDate': FieldValue.delete(),
+          'endDate': FieldValue.delete(),
+          'discountPercent': FieldValue.delete(),
+        });
       }
 
-      // Executar todas as operações em batch
       if (querySnapshot.docs.isNotEmpty) {
         await batch.commit();
-        // print('Cleaned up ${querySnapshot.docs.length} expired discounts');
       }
     } catch (e) {
       print('Error cleaning up expired discounts: $e');
@@ -59,7 +54,6 @@ class _DiscountsPageState extends State<DiscountsPage> {
     super.initState();
     _loadStoreNumber();
     _searchController.addListener(_onSearchChanged);
-    // Executar limpeza inicial
     _cleanupExpiredDiscounts();
   }
 
@@ -78,7 +72,9 @@ class _DiscountsPageState extends State<DiscountsPage> {
     if (user != null) {
       final doc = await _firestore.collection('users').doc(user.uid).get();
       if (doc.exists) {
-        setState(() => _storeNumber = doc.data()?['storeNumber']);
+        setState(() {
+          _storeNumber = doc.data()?['storeNumber'];
+        });
       }
     }
   }
@@ -138,17 +134,17 @@ class _DiscountsPageState extends State<DiscountsPage> {
   }
 
   Widget _buildDiscountsList() {
+    if (_storeNumber == null) {
+    return const Center(child: CircularProgressIndicator());
+    }
     return StreamBuilder<QuerySnapshot>(
       stream: _firestore
-          .collection('discounts')
+          .collection('products')
           .where('storeNumber', isEqualTo: _storeNumber)
+          .where('discountPrice', isGreaterThan: 0)
           .snapshots(),
       builder: (context, snapshot) {
-        // Sempre que os dados são carregados, verifica descontos expirados
-        if (snapshot.connectionState == ConnectionState.active) {
-          _cleanupExpiredDiscounts();
-        }
-
+        final now = Timestamp.now();
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const Center(child: CircularProgressIndicator(color: Colors.white));
         }
@@ -162,20 +158,23 @@ class _DiscountsPageState extends State<DiscountsPage> {
           );
         }
 
-        final now = Timestamp.now();
-
-        // Filtrar descontos válidos (não expirados e que correspondem à pesquisa)
-        final validDiscounts = snapshot.data!.docs.where((doc) {
-          final name = doc['productname'].toString().toLowerCase();
-          final start = doc['startDate'] as Timestamp;
-          final end = doc['endDate'] as Timestamp;
-
-          return name.contains(_searchQuery.toLowerCase()) &&
-              start.compareTo(now) <= 0 &&
-              end.compareTo(now) >= 0;
+        // Filtrar produtos com desconto ativo
+        final discountedProducts = snapshot.data!.docs.where((doc) {
+          final data = doc.data() as Map<String, dynamic>;
+          final endDate = data['endDate'] as Timestamp?;
+          
+          if (endDate == null) return false;
+          
+          // Debug: Mostrar comparação de datas
+          debugPrint('[FILTER CHECK] ${data['name']}');
+          debugPrint(' → endDate: ${endDate.toDate()}');
+          debugPrint(' → now:     ${now.toDate()}');
+          debugPrint(' → visible: ${endDate.compareTo(now) >= 0}');
+          
+          return endDate.compareTo(now) >= 0;
         }).toList();
 
-        if (validDiscounts.isEmpty) {
+        if (discountedProducts.isEmpty) {
           return Center(
             child: Text(
               _searchQuery.isEmpty 
@@ -188,17 +187,23 @@ class _DiscountsPageState extends State<DiscountsPage> {
 
         return ListView.builder(
           padding: const EdgeInsets.all(12),
-          itemCount: validDiscounts.length,
+          itemCount: discountedProducts.length,
           itemBuilder: (context, index) {
-            final discount = validDiscounts[index];
+            final product = discountedProducts[index];
+            final data = product.data() as Map<String, dynamic>;
+            final vatPrice = data['vatPrice']?.toDouble() ?? 0.0;
+            final discountPercent = data['discountPercent'] ?? 0;
+            final discountPrice = data['discountPrice']?.toDouble() ?? 0.0;
+            final endDate = data['endDate'] as Timestamp;
+
             return _buildProductCard(
-              discount['productname'],
-              discount['model'],
-              discount['vatPrice']?.toDouble() ?? 0.0,
-              discount['discountPrice']?.toDouble() ?? 0.0,
-              discount['discountPercent'] ?? 0,
-              discount['endDate'] as Timestamp,
-              discount['productId'] as String,
+              data['name'],
+              data['model'],
+              vatPrice,
+              discountPrice,
+              discountPercent,
+              endDate,
+              product.id,
             );
           },
         );
@@ -220,7 +225,9 @@ class _DiscountsPageState extends State<DiscountsPage> {
     return StreamBuilder<DocumentSnapshot>(
       stream: _firestore.collection('products').doc(productId).snapshots(),
       builder: (context, productSnapshot) {
-        if (!productSnapshot.hasData || !productSnapshot.data!.exists) {return const SizedBox.shrink();}
+        if (!productSnapshot.hasData || !productSnapshot.data!.exists) {
+          return const SizedBox.shrink();
+        }
 
         final productData = productSnapshot.data!.data() as Map<String, dynamic>;
         final currentVatPrice = productData['vatPrice']?.toDouble() ?? vatPrice;
@@ -357,11 +364,22 @@ class _DiscountsPageState extends State<DiscountsPage> {
       builder: (context, snapshot) {
         if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
 
+        // Filter products that don't have an active discount
         final products = snapshot.data!.docs.where((doc) {
-          return doc['name'].toString().toLowerCase().contains(query.toLowerCase());
+          final data = doc.data() as Map<String, dynamic>;
+          final nameMatch = data['name']?.toString().toLowerCase().contains(query.toLowerCase()) ?? false;
+          
+          // Check if product has no discount or discount is expired
+          final hasNoDiscount = !data.containsKey('discountPrice') || 
+              data['discountPrice'] == null || 
+              data['discountPrice'].toString().isEmpty;
+          final hasExpiredDiscount = data.containsKey('endDate') && 
+              (data['endDate'] as Timestamp).compareTo(Timestamp.now()) < 0;
+          
+          return nameMatch && (hasNoDiscount || hasExpiredDiscount);
         }).toList();
 
-        if (products.isEmpty) return const Text("No products found.");
+        if (products.isEmpty) return const Text("No available products found.");
 
         return ConstrainedBox(
           constraints: const BoxConstraints(maxHeight: 200),
@@ -370,9 +388,10 @@ class _DiscountsPageState extends State<DiscountsPage> {
             itemCount: products.length,
             itemBuilder: (context, index) {
               final product = products[index];
+              final data = product.data() as Map<String, dynamic>;
               return ListTile(
-                title: Text(product['name']),
-                subtitle: Text("Model: ${product['model']}"),
+                title: Text(data['name']),
+                subtitle: Text("Model: ${data['model']}"),
                 onTap: () {
                   Navigator.of(context).pop();
                   _showDiscountInputPopup(product);
@@ -503,45 +522,42 @@ class _DiscountsPageState extends State<DiscountsPage> {
     }
 
     try {
-      // Calcular valores do desconto
-      final discountValue = double.parse((vatPrice * discountPercent / 100).toStringAsFixed(2));
-      final discountPrice = double.parse((vatPrice - discountValue).toStringAsFixed(2));
-      final roundedVatPrice = double.parse(vatPrice.toStringAsFixed(2));
-
-      // Definir datas
+      // Calculate dates and discount price
       final startDate = Timestamp.now();
-      final endDate = selectedUnit == 'Hours'
-          ? Timestamp.fromDate(startDate.toDate().add(Duration(hours: durationAmount)))
-          : Timestamp.fromDate(startDate.toDate().add(Duration(days: durationAmount)));
+      DateTime endDateTime;
+      
+      if (selectedUnit == 'Hours') {
+        endDateTime = startDate.toDate().add(Duration(hours: durationAmount));
+      } else {
+        endDateTime = startDate.toDate().add(Duration(days: durationAmount));
+      }
+      
+      // Ajuste para garantir o fuso horário correto
+      endDateTime = endDateTime.toUtc();
+      
+      final endDate = Timestamp.fromDate(endDateTime);
+      final discountPrice = vatPrice * (100 - discountPercent) / 100;
 
-      // Criar o desconto
-      final docRef = await _firestore.collection('discounts').add({
-        'productId': product.id,
-        'productname': product['name'],
-        'model': product['model'],
-        'vatPrice': roundedVatPrice,
-        'discountPercent': discountPercent,
+      // Debug: Mostrar datas que serão salvas
+      debugPrint('[DISCOUNT CREATION]');
+      debugPrint(' → startDate: ${startDate.toDate()}');
+      debugPrint(' → endDate:   ${endDate.toDate()}');
+      debugPrint(' → endDate (timestamp): ${endDate.seconds}.${endDate.nanoseconds}');
+
+      // Update product with discount information
+      await _firestore.collection('products').doc(product.id).update({
         'discountPrice': discountPrice,
         'startDate': startDate,
         'endDate': endDate,
-        'storeNumber': _storeNumber,
-        'discountID': '',
+        'discountPercent': discountPercent,
       });
 
-      // Atualizar com o ID do desconto
-      await docRef.update({'discountID': docRef.id});
-
-      // Atualizar o produto com o novo preço promocional
-      await _firestore.collection('products').doc(product.id).update({
-        'discountPrice': discountPrice,
-      });
-
-      // Criar a notificação
-      final notificationMessage = 'New discount: ${product['name']} - $discountPercent% OFF (€${roundedVatPrice.toStringAsFixed(2)} → €${discountPrice.toStringAsFixed(2)})';
+      // Create notification
+      final notificationMessage = 'New discount: ${product['name']} - $discountPercent% OFF (€${vatPrice.toStringAsFixed(2)} → €${discountPrice.toStringAsFixed(2)})';
       
       await _firestore.collection('notifications').add({
         'message': notificationMessage,
-        'notificationId': '', // Será atualizado após criação
+        'notificationId': '', // Will be updated after creation
         'notificationType': 'Discount',
         'productId': product.id,
         'storeNumber': _storeNumber,
@@ -551,19 +567,25 @@ class _DiscountsPageState extends State<DiscountsPage> {
         await notificationRef.update({'notificationId': notificationRef.id});
       });
 
-      Navigator.pop(context);
-      CustomSnackbar.show(
-        context: context,
-        message: 'Discount created until ${DateFormat('dd/MM/yyyy HH:mm').format(endDate.toDate())}',
-        backgroundColor: Colors.green,
-      );
+      await Future.delayed(const Duration(milliseconds: 500));
+
+      if (mounted) {
+        Navigator.pop(context);
+        CustomSnackbar.show(
+          context: context,
+          message: 'Discount created until ${DateFormat('dd/MM/yyyy HH:mm').format(endDate.toDate())}',
+          backgroundColor: Colors.green,
+        );
+      }
     } catch (e) {
-      Navigator.pop(context);
-      CustomSnackbar.show(
-        context: context,
-        message: 'Error creating discount: ${e.toString()}',
-        backgroundColor: Colors.red,
-      );
+      if (mounted) {
+        Navigator.pop(context);
+        CustomSnackbar.show(
+          context: context,
+          message: 'Error creating discount: ${e.toString()}',
+          backgroundColor: Colors.red,
+        );
+      }
     }
   }
 }
