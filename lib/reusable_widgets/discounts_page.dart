@@ -220,10 +220,10 @@ class _DiscountsPageState extends State<DiscountsPage> {
     return StreamBuilder<DocumentSnapshot>(
       stream: _firestore.collection('products').doc(productId).snapshots(),
       builder: (context, productSnapshot) {
-        // Preço atual do produto (ou o antigo se não conseguir carregar)
-        final currentVatPrice = productSnapshot.hasData
-            ? (productSnapshot.data!['vatPrice'] as num).toDouble()
-            : vatPrice;
+        if (!productSnapshot.hasData || !productSnapshot.data!.exists) {return const SizedBox.shrink();}
+
+        final productData = productSnapshot.data!.data() as Map<String, dynamic>;
+        final currentVatPrice = productData['vatPrice']?.toDouble() ?? vatPrice;
 
         return Card(
           color: Colors.white.withOpacity(0.9),
