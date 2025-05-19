@@ -4,7 +4,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:intl/intl.dart';
 import 'package:stockflow/reusable_widgets/colors_utils.dart';
 import 'package:stockflow/reusable_widgets/custom_snackbar.dart';
-import 'package:stockflow/reusable_widgets/discounts_page.dart';
+import 'package:stockflow/screens_main/discounts_page.dart';
 import 'package:stockflow/reusable_widgets/error_screen.dart';
 import 'package:stockflow/reusable_widgets/search_controller.dart';
 import 'package:stockflow/reusable_widgets/vat_manager.dart';

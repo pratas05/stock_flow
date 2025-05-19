@@ -64,7 +64,7 @@ class _DiscountsPageState extends State<DiscountsPage> {
   }
 
   void _onSearchChanged() {
-    setState(() => _searchQuery = _searchController.text);
+    setState(() => _searchQuery = _searchController.text.toLowerCase());
   }
 
   Future<void> _loadStoreNumber() async {
@@ -123,9 +123,7 @@ class _DiscountsPageState extends State<DiscountsPage> {
               labelText: "Search Product",
               hintText: "Enter product name",
               prefixIcon: const Icon(Icons.search),
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(8.0),
-              ),
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(8.0)),
             ),
           ),
         ),
@@ -135,16 +133,17 @@ class _DiscountsPageState extends State<DiscountsPage> {
 
   Widget _buildDiscountsList() {
     if (_storeNumber == null) {
-    return const Center(child: CircularProgressIndicator());
+      return const Center(child: CircularProgressIndicator());
     }
+    
     return StreamBuilder<QuerySnapshot>(
       stream: _firestore
           .collection('products')
           .where('storeNumber', isEqualTo: _storeNumber)
-          .where('discountPrice', isGreaterThan: 0)
           .snapshots(),
       builder: (context, snapshot) {
         final now = Timestamp.now();
+        
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const Center(child: CircularProgressIndicator(color: Colors.white));
         }
@@ -154,24 +153,23 @@ class _DiscountsPageState extends State<DiscountsPage> {
             child: Text(
               'No discounted products available',
               style: TextStyle(color: Colors.white.withOpacity(0.7)),
-            ),
+            )
           );
         }
 
-        // Filtrar produtos com desconto ativo
+        // Filtrar produtos com desconto ativo e que correspondem à pesquisa
         final discountedProducts = snapshot.data!.docs.where((doc) {
           final data = doc.data() as Map<String, dynamic>;
           final endDate = data['endDate'] as Timestamp?;
+          final productName = data['name']?.toString().toLowerCase() ?? '';
           
-          if (endDate == null) return false;
+          // Verificar se tem desconto ativo
+          final hasActiveDiscount = endDate != null && endDate.compareTo(now) >= 0;
           
-          // Debug: Mostrar comparação de datas
-          debugPrint('[FILTER CHECK] ${data['name']}');
-          debugPrint(' → endDate: ${endDate.toDate()}');
-          debugPrint(' → now:     ${now.toDate()}');
-          debugPrint(' → visible: ${endDate.compareTo(now) >= 0}');
+          // Verificar se corresponde à pesquisa (se houver pesquisa)
+          final matchesSearch = _searchQuery.isEmpty || productName.contains(_searchQuery.toLowerCase());
           
-          return endDate.compareTo(now) >= 0;
+          return hasActiveDiscount && matchesSearch;
         }).toList();
 
         if (discountedProducts.isEmpty) {
@@ -179,9 +177,9 @@ class _DiscountsPageState extends State<DiscountsPage> {
             child: Text(
               _searchQuery.isEmpty 
                   ? 'No active discounts available'
-                  : 'No results found',
+                  : 'No results found for "$_searchQuery"',
               style: TextStyle(color: Colors.white.withOpacity(0.7)),
-            ),
+            )
           );
         }
 
@@ -484,6 +482,7 @@ class _DiscountsPageState extends State<DiscountsPage> {
     final durationAmount = int.tryParse(durationText);
     final user = _auth.currentUser;
 
+    // Validação do percentual de desconto
     if (discountPercent == null || discountPercent < 1 || discountPercent > 99) {
       CustomSnackbar.show(
         context: context,
@@ -493,6 +492,7 @@ class _DiscountsPageState extends State<DiscountsPage> {
       return;
     }
 
+    // Validação da duração
     if (durationAmount == null || durationAmount <= 0) {
       CustomSnackbar.show(
         context: context,
@@ -502,6 +502,7 @@ class _DiscountsPageState extends State<DiscountsPage> {
       return;
     }
 
+    // Validação do número da loja
     if (_storeNumber == null) {
       CustomSnackbar.show(
         context: context,
@@ -511,8 +512,9 @@ class _DiscountsPageState extends State<DiscountsPage> {
       return;
     }
 
+    // Validação do preço do produto
     final double vatPrice = (product['vatPrice'] ?? 0).toDouble();
-    if (vatPrice == 0) {
+    if (vatPrice <= 0) {
       CustomSnackbar.show(
         context: context,
         message: 'Invalid product price. Cannot apply discount.',
@@ -522,52 +524,56 @@ class _DiscountsPageState extends State<DiscountsPage> {
     }
 
     try {
-      // Calculate dates and discount price
+      // Calcular datas e preço com desconto
       final startDate = Timestamp.now();
       DateTime endDateTime;
       
+      // Definir a data de término baseada na unidade selecionada
       if (selectedUnit == 'Hours') {
         endDateTime = startDate.toDate().add(Duration(hours: durationAmount));
       } else {
         endDateTime = startDate.toDate().add(Duration(days: durationAmount));
       }
       
-      // Ajuste para garantir o fuso horário correto
-      endDateTime = endDateTime.toUtc();
+      // Garantir que a data está em UTC
+      endDateTime = endDateTime.toUtc(); final endDate = Timestamp.fromDate(endDateTime);
       
-      final endDate = Timestamp.fromDate(endDateTime);
-      final discountPrice = vatPrice * (100 - discountPercent) / 100;
+      // Calcular preço com desconto e arredondar para 2 casas decimais
+      final discountPrice = double.parse((vatPrice * (100 - discountPercent) / 100).toStringAsFixed(2));
 
-      // Debug: Mostrar datas que serão salvas
+      /* // Debug: Mostrar informações do desconto
       debugPrint('[DISCOUNT CREATION]');
-      debugPrint(' → startDate: ${startDate.toDate()}');
-      debugPrint(' → endDate:   ${endDate.toDate()}');
-      debugPrint(' → endDate (timestamp): ${endDate.seconds}.${endDate.nanoseconds}');
+      debugPrint(' → Original Price: \$$vatPrice');
+      debugPrint(' → Discount Percentage: $discountPercent%');
+      debugPrint(' → Discounted Price: \$$discountPrice');
+      debugPrint(' → Start Date: ${startDate.toDate()}');
+      debugPrint(' → End Date: ${endDate.toDate()}');
+      debugPrint(' → End Date Timestamp: ${endDate.seconds}.${endDate.nanoseconds}');*/
 
-      // Update product with discount information
+      // Atualizar o produto com as informações do desconto
       await _firestore.collection('products').doc(product.id).update({
-        'discountPrice': discountPrice,
+        'discountPrice': discountPrice,  // Já está arredondado para 2 casas decimais
         'startDate': startDate,
         'endDate': endDate,
         'discountPercent': discountPercent,
       });
 
-      // Create notification
-      final notificationMessage = 'New discount: ${product['name']} - $discountPercent% OFF (€${vatPrice.toStringAsFixed(2)} → €${discountPrice.toStringAsFixed(2)})';
+      // Criar notificação
+      final notificationMessage = 'New discount: ${product['name']} - $discountPercent% OFF '
+          '(€${vatPrice.toStringAsFixed(2)} → €${discountPrice.toStringAsFixed(2)}), until ${DateFormat('dd/MM/yyyy HH:mm').format(endDate.toDate())}';
       
-      await _firestore.collection('notifications').add({
+      final notificationRef = await _firestore.collection('notifications').add({
         'message': notificationMessage,
-        'notificationId': '', // Will be updated after creation
+        'notificationId': '', // Será atualizado após a criação
         'notificationType': 'Discount',
         'productId': product.id,
         'storeNumber': _storeNumber,
         'timestamp': Timestamp.now(),
         'userId': user?.uid,
-      }).then((notificationRef) async {
-        await notificationRef.update({'notificationId': notificationRef.id});
       });
-
-      await Future.delayed(const Duration(milliseconds: 500));
+      
+      // Atualizar o notificationId com o ID do documento
+      await notificationRef.update({'notificationId': notificationRef.id});
 
       if (mounted) {
         Navigator.pop(context);
@@ -578,6 +584,7 @@ class _DiscountsPageState extends State<DiscountsPage> {
         );
       }
     } catch (e) {
+      debugPrint('Error creating discount: $e');
       if (mounted) {
         Navigator.pop(context);
         CustomSnackbar.show(
