@@ -405,13 +405,6 @@ class _BuyTradePageState extends State<BuyTradePage> with SingleTickerProviderSt
                               fontWeight: FontWeight.bold,
                             ),
                           ),
-                          if (discountPercent != null) ...[
-                            const SizedBox(width: 6),
-                            Text(
-                              "($discountPercent% OFF)",
-                              style: const TextStyle(color: Colors.green, fontSize: 12),
-                            ),
-                          ],
                           const SizedBox(width: 6),
                           Tooltip(
                             message: 'Promotion ends ${DateFormat('dd/MM HH:mm').format(endDate!.toDate())}',

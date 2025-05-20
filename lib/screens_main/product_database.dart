@@ -298,7 +298,7 @@ class ProductViewModel {
         }
       }
     } catch (e) {
-      print('Error cleaning up expired discounts: $e');
+      // print('Error cleaning up expired discounts: $e');
     }
   }
 }
@@ -438,11 +438,13 @@ Future<double> _getVatRate(String vatCode, String storeNumber) async {
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: _isStoreManager && _hasAdminAccess ? 2 : 1, vsync: this);
+    // Inicializa com o número correto de abas
+    int tabCount = _isStoreManager && _hasAdminAccess ? 2 : 1;
+    _tabController = TabController(length: tabCount, vsync: this);
+    
     _searchController.addListener(() {
       setState(() {
-        _searchText = _searchController.text;int tabCount = _isStoreManager && _hasAdminAccess ? 2 : 1; // Configurar o TabController dinamicamente com base em _isStoreManager
-        _tabController = TabController(length: tabCount, vsync: this);
+        _searchText = _searchController.text;
       });
     });
     _cleanupExpiredDiscounts();
@@ -652,8 +654,8 @@ Future<double> _getVatRate(String vatCode, String storeNumber) async {
         child: TabBarView(
           controller: _tabController,
           children: [
-            if (_isStoreManager && _hasAdminAccess) _buildProductForm(),  // Exibe apenas se for Store Manager
-            _buildProductList(),
+            _buildProductList(),  // Edit & Search primeiro
+            if (_isStoreManager && _hasAdminAccess) _buildProductForm(),  // Register depois, se aplicável
           ],
         ),
       ),
@@ -678,7 +680,7 @@ Future<double> _getVatRate(String vatCode, String storeNumber) async {
 
   List<Widget> _buildTabs() {
     List<Widget> tabs = [
-      // Exibe sempre o "Edit & Search Products"
+      // Sempre exibe "Edit & Search Products" primeiro
       Tab(
         child: Padding(
           padding: EdgeInsets.symmetric(vertical: 5),
@@ -687,9 +689,9 @@ Future<double> _getVatRate(String vatCode, String storeNumber) async {
       ),
     ];
 
-    // Se for Store Manager, adiciona a aba "Register Products"
+    // Se for Store Manager, adiciona a aba "Register Products" depois
     if (_isStoreManager && _hasAdminAccess) {
-      tabs.insert(0,
+      tabs.add(
         Tab(
           child: Padding(
             padding: EdgeInsets.symmetric(vertical: 5),
@@ -1049,21 +1051,12 @@ Future<double> _getVatRate(String vatCode, String storeNumber) async {
                                     ),
                                     const SizedBox(width: 8),
                                     Text(
-                                      '€${vatPrice!.toStringAsFixed(2)}',
+                                      '€${vatPrice.toStringAsFixed(2)}',
                                       style: theme.textTheme.titleMedium?.copyWith(
                                         fontWeight: FontWeight.bold,
                                         color: Colors.red,
                                       ),
                                     ),
-                                    if (discountPercent != null) ...[
-                                      const SizedBox(width: 4),
-                                      Text(
-                                        '($discountPercent% OFF)',
-                                        style: theme.textTheme.bodySmall?.copyWith(
-                                          color: Colors.green[800],
-                                        ),
-                                      ),
-                                    ],
                                   ] else
                                     Text(
                                       '${product['vatPrice'].toStringAsFixed(2)}',
