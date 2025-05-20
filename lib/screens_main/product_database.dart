@@ -763,36 +763,43 @@ class _ProductDatabasePageState extends State<ProductDatabasePage> with TickerPr
     );
   }
 
-    Widget _buildProductCard(QueryDocumentSnapshot product) {
+  Widget _buildProductCard(QueryDocumentSnapshot product) {
     final theme = Theme.of(context);
     final currentStock = product['stockCurrent'] as int;
     final isOutOfStock = currentStock == 0;
     final isLowStock = currentStock > 0 && currentStock <= 5;
     final productId = product.id;
 
-    return StreamBuilder<QuerySnapshot>(
+    return StreamBuilder<DocumentSnapshot>(
       stream: _viewModel._firestore
-          .collection('discounts')
-          .where('productId', isEqualTo: productId)
+          .collection('products')
+          .doc(productId)
           .snapshots(),
-      builder: (context, discountSnapshot) {
-      bool hasValidDiscount = false;
-      double? discountPrice;
-      Timestamp? endDate;
-      String formattedEndDate = '';
-
-      if (discountSnapshot.hasData && discountSnapshot.data!.docs.isNotEmpty) {
-        final discount = discountSnapshot.data!.docs.first;
-        endDate = discount['endDate'] as Timestamp;
-        final now = DateTime.now();
-
-        if (endDate.toDate().isAfter(now)) {
-          hasValidDiscount = true;
-          discountPrice = (discount['discountPrice'] as num).toDouble();
-          formattedEndDate = DateFormat('dd/MM/yyyy HH:mm').format(endDate.toDate());
+      builder: (context, productSnapshot) {
+        if (!productSnapshot.hasData) {
+          return const Center(child: CircularProgressIndicator());
         }
-      }
 
+        final productData = productSnapshot.data!.data() as Map<String, dynamic>;
+        bool hasValidDiscount = false;
+        double? discountPrice;
+        Timestamp? endDate;
+        int? discountPercent;
+
+        // Check for active discount in product data
+        if (productData.containsKey('discountPrice') && 
+            productData['discountPrice'] != null &&
+            productData.containsKey('endDate') &&
+            productData['endDate'] != null) {
+          endDate = productData['endDate'] as Timestamp;
+          final now = DateTime.now();
+
+          if (endDate.toDate().isAfter(now)) {
+            hasValidDiscount = true;
+            discountPrice = (productData['discountPrice'] as num).toDouble();
+            discountPercent = productData['discountPercent'] as int?;
+          }
+        }
 
         return Center(
           child: SizedBox(
@@ -811,7 +818,7 @@ class _ProductDatabasePageState extends State<ProductDatabasePage> with TickerPr
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      // Primeira linha - Nome e ações
+                      // First row - Name and actions
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
@@ -830,7 +837,7 @@ class _ProductDatabasePageState extends State<ProductDatabasePage> with TickerPr
                             children: [
                               if (hasValidDiscount)
                                 Tooltip(
-                                  message: 'Discount ends at $formattedEndDate',
+                                  message: 'Promotion ends ${DateFormat('dd/MM HH:mm').format(endDate!.toDate())}',
                                   child: Icon(
                                     Icons.local_offer,
                                     color: Colors.deepPurple,
@@ -873,7 +880,7 @@ class _ProductDatabasePageState extends State<ProductDatabasePage> with TickerPr
                       ),
                       const SizedBox(height: 8),
 
-                      // Segunda linha - Detalhes básicos
+                      // Second row - Basic details
                       Row(
                         children: [
                           Tooltip(
@@ -899,7 +906,7 @@ class _ProductDatabasePageState extends State<ProductDatabasePage> with TickerPr
                       ),
                       const SizedBox(height: 8),
 
-                      // Terceira linha - Preço e localização
+                      // Third row - Price and location
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
@@ -928,6 +935,15 @@ class _ProductDatabasePageState extends State<ProductDatabasePage> with TickerPr
                                         color: Colors.red,
                                       ),
                                     ),
+                                    if (discountPercent != null) ...[
+                                      const SizedBox(width: 4),
+                                      Text(
+                                        '($discountPercent% OFF)',
+                                        style: theme.textTheme.bodySmall?.copyWith(
+                                          color: Colors.green[800],
+                                        ),
+                                      ),
+                                    ],
                                   ] else
                                     Text(
                                       '${product['vatPrice'].toStringAsFixed(2)}',
@@ -956,7 +972,7 @@ class _ProductDatabasePageState extends State<ProductDatabasePage> with TickerPr
                             ],
                           ),
                           
-                          // Stock info com o novo esquema de cores
+                          // Stock info with color scheme
                           Column(
                             crossAxisAlignment: CrossAxisAlignment.end,
                             children: [

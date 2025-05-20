@@ -702,24 +702,46 @@ class NotificationsStockAlert extends StatelessWidget {
   }
 
   Future<void> _showNotificationDetails(
-      BuildContext context, NotificationModel notification) async {
+    BuildContext context, NotificationModel notification) async {
     try {
       final product = notification.productId != null
-          ? await NotificationsViewModel()
-              .getProductDetails(notification.productId!)
+          ? await NotificationsViewModel().getProductDetails(notification.productId!)
           : null;
 
+      // Get discount information if this is a discount notification
+      double? discountPrice;
+      int? discountPercent;
+      Timestamp? endDate;
+      
+      if (product != null) {
+        final productDoc = await FirebaseFirestore.instance
+            .collection('products')
+            .doc(product.id)
+            .get();
+            
+        if (productDoc.exists) {
+          final productData = productDoc.data() as Map<String, dynamic>;
+          if (productData.containsKey('discountPrice') && 
+              productData['discountPrice'] != null &&
+              productData.containsKey('endDate') &&
+              productData['endDate'] != null) {
+            endDate = productData['endDate'] as Timestamp;
+            if (endDate.toDate().isAfter(DateTime.now())) {
+              discountPrice = (productData['discountPrice'] as num).toDouble();
+              discountPercent = productData['discountPercent'] as int?;
+            }
+          }
+        }
+      }
+
       final notificationDate = notification.timestamp.toDate().toLocal();
-      final formattedDate =
-          DateFormat('dd/MM/yyyy HH:mm').format(notificationDate);
+      final formattedDate = DateFormat('dd/MM/yyyy HH:mm').format(notificationDate);
 
       showDialog(
         context: context,
         builder: (context) {
           return AlertDialog(
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(16.0),
-            ),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16.0)),
             backgroundColor: Colors.white,
             content: SingleChildScrollView(
               child: Column(
@@ -728,10 +750,7 @@ class NotificationsStockAlert extends StatelessWidget {
                 children: [
                   Text(
                     "Notification Details",
-                    style: TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.bold,
-                        color: Color(0xFF5E61F4)),
+                    style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Color(0xFF5E61F4)),
                   ),
                   const SizedBox(height: 16),
                   if (product != null) ...[
@@ -748,23 +767,29 @@ class NotificationsStockAlert extends StatelessWidget {
                       "Model:",
                       product.model,
                     ),
-                    _buildDetailRow(
-                      "Price:",
-                      "\$${product.vatPrice.toStringAsFixed(2)}",
-                      valueStyle: TextStyle(color: Color(0xFF4CAF50), fontWeight: FontWeight.bold),
-                    ),
+                    if (discountPrice != null && endDate != null)
+                      _buildDiscountPriceRow(
+                        originalPrice: product.vatPrice,
+                        discountPrice: discountPrice,
+                        discountPercent: discountPercent,
+                        endDate: endDate,
+                      )
+                    else
+                      _buildDetailRow(
+                        "Price:",
+                        "\$${product.vatPrice.toStringAsFixed(2)}",
+                        valueStyle: TextStyle(
+                          color: Color(0xFF4CAF50),
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
                     Divider(color: Colors.grey[300], height: 24, thickness: 1),
                   ],
                   _buildDetailRow(
-                    "Date:",
-                    formattedDate,
-                    valueStyle: TextStyle(color: const Color.fromARGB(255, 178, 31, 236)),
+                    "Date:", formattedDate, valueStyle: TextStyle(color: const Color.fromARGB(255, 178, 31, 236)),
                   ),
                   const SizedBox(height: 12),
-                  Text("Message:",
-                      style: TextStyle(
-                          fontWeight: FontWeight.w600,
-                          color: Colors.grey[800])),
+                  Text("Message:", style: TextStyle(fontWeight: FontWeight.w600, color: Colors.grey[800])),
                   const SizedBox(height: 8),
                   Container(
                     width: double.infinity,
@@ -791,18 +816,63 @@ class NotificationsStockAlert extends StatelessWidget {
           );
         },
       );
-    } catch (e) {debugPrint("Error showing notification details: $e");}
+    } catch (e) {
+      debugPrint("Error showing notification details: $e");
+      CustomSnackbar.show(
+        context: context,
+        message: "Failed to load notification details",
+        backgroundColor: Colors.red,
+      );
+    }
   }
 
-  Widget _buildDetailRow(String label, String value,
-      {TextStyle? labelStyle, TextStyle? valueStyle}) {
+  Widget _buildDiscountPriceRow({
+    required double originalPrice,
+    required double discountPrice,
+    required int? discountPercent,
+    required Timestamp endDate,
+  }) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        Text(
+          "Price: ", style: TextStyle(fontWeight: FontWeight.w500, color: Colors.grey[700]),
+        ),
+        Text(
+          "\$${originalPrice.toStringAsFixed(2)}",
+          style: TextStyle(decoration: TextDecoration.lineThrough, color: Colors.grey[600]),
+        ),
+        const SizedBox(width: 8),
+        Text(
+          "\$${discountPrice.toStringAsFixed(2)}",
+          style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold),
+        ),
+        if (discountPercent != null) ...[
+          const SizedBox(width: 4),
+          Text(
+            "($discountPercent% OFF)",
+            style: TextStyle(color: Colors.green[800], fontSize: 12),
+          ),
+        ],
+        const SizedBox(width: 8),
+        Tooltip(
+          message: 'Promotion ends ${DateFormat('dd/MM HH:mm').format(endDate.toDate())}',
+          child: Icon(Icons.timer, size: 16, color: Colors.red),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildDetailRow(String label, String value, {TextStyle? labelStyle, TextStyle? valueStyle}) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 8.0),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(label,
-              style: labelStyle ?? TextStyle(fontWeight: FontWeight.w500, color: Colors.grey[700])),
+          Text(
+            label,
+            style: labelStyle ?? TextStyle(fontWeight: FontWeight.w500, color: Colors.grey[700]),
+          ),
           const SizedBox(width: 8),
           Expanded(child: Text(value, style: valueStyle ?? TextStyle(color: Colors.grey[800]))),
         ],

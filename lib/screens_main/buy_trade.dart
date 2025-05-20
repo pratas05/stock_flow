@@ -338,25 +338,38 @@ class _BuyTradePageState extends State<BuyTradePage> with SingleTickerProviderSt
         Expanded(
           child: _buildProductList(
             itemBuilder: (context, product) {
-              return FutureBuilder<QuerySnapshot>(
-                future: FirebaseFirestore.instance
-                    .collection('discounts')
-                    .where('productId', isEqualTo: product.id)
-                    .get(),
+              return StreamBuilder<DocumentSnapshot>(
+                stream: FirebaseFirestore.instance
+                    .collection('products')
+                    .doc(product.id)
+                    .snapshots(),
                 builder: (context, snapshot) {
-                  bool hasDiscount = false;
-                  double vatPrice = product.vatPrice;
-                  double priceToShow = vatPrice;
-                  Timestamp? endDate;
+                  if (!snapshot.hasData) {
+                    return ListTile(
+                      title: Text("${product.name} - ${product.model}"),
+                      subtitle: const Text("Loading..."),
+                    );
+                  }
 
-                  if (snapshot.hasData && snapshot.data!.docs.isNotEmpty) {
-                    final discountDoc = snapshot.data!.docs.first;
-                    endDate = discountDoc['endDate'] as Timestamp;
+                  final productData = snapshot.data!.data() as Map<String, dynamic>;
+                  final vatPrice = productData['vatPrice']?.toDouble() ?? product.vatPrice;
+                  double priceToShow = vatPrice;
+                  bool hasDiscount = false;
+                  Timestamp? endDate;
+                  int? discountPercent;
+
+                  // Check for active discount
+                  if (productData.containsKey('discountPrice') && 
+                      productData['discountPrice'] != null &&
+                      productData.containsKey('endDate') &&
+                      productData['endDate'] != null) {
+                    endDate = productData['endDate'] as Timestamp;
                     final now = Timestamp.now();
 
                     if (endDate.toDate().isAfter(now.toDate())) {
                       hasDiscount = true;
-                      priceToShow = (discountDoc['discountPrice'] as num).toDouble();
+                      priceToShow = (productData['discountPrice'] as num).toDouble();
+                      discountPercent = productData['discountPercent'] as int?;
                     }
                   }
 
@@ -391,6 +404,13 @@ class _BuyTradePageState extends State<BuyTradePage> with SingleTickerProviderSt
                               fontWeight: FontWeight.bold,
                             ),
                           ),
+                          if (discountPercent != null) ...[
+                            const SizedBox(width: 6),
+                            Text(
+                              "($discountPercent% OFF)",
+                              style: const TextStyle(color: Colors.green, fontSize: 12),
+                            ),
+                          ],
                           const SizedBox(width: 6),
                           Tooltip(
                             message: 'Promotion ends ${DateFormat('dd/MM HH:mm').format(endDate!.toDate())}',
@@ -419,7 +439,7 @@ class _BuyTradePageState extends State<BuyTradePage> with SingleTickerProviderSt
                           : null,
                     ),
                   );
-                }
+                },
               );
             },
           ),
@@ -475,9 +495,7 @@ class _BuyTradePageState extends State<BuyTradePage> with SingleTickerProviderSt
         }).toList();
 
         if (filteredDocs.isEmpty) {
-          return Center(
-            child: Text("No products found.", style: TextStyle(color: Colors.white)),
-          );
+          return Center(child: Text("No products found.", style: TextStyle(color: Colors.white)));
         }
 
         return ListView.builder(
