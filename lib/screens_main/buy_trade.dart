@@ -359,8 +359,8 @@ class _BuyTradePageState extends State<BuyTradePage> with SingleTickerProviderSt
                   int? discountPercent;
 
                   // Check for active discount
-                  if (productData.containsKey('discountPrice') && 
-                      productData['discountPrice'] != null &&
+                  if (productData.containsKey('vatPrice') && 
+                      productData['vatPrice'] != null &&
                       productData.containsKey('endDate') &&
                       productData['endDate'] != null) {
                     endDate = productData['endDate'] as Timestamp;
@@ -368,7 +368,7 @@ class _BuyTradePageState extends State<BuyTradePage> with SingleTickerProviderSt
 
                     if (endDate.toDate().isAfter(now.toDate())) {
                       hasDiscount = true;
-                      priceToShow = (productData['discountPrice'] as num).toDouble();
+                      priceToShow = (productData['vatPrice'] as num).toDouble();
                       discountPercent = productData['discountPercent'] as int?;
                     }
                   }
@@ -390,7 +390,8 @@ class _BuyTradePageState extends State<BuyTradePage> with SingleTickerProviderSt
                             style: TextStyle(color: Colors.grey[700]),
                           ),
                           Text(
-                            "€${vatPrice.toStringAsFixed(2)}",
+                            // make the inverse operation to get the original price
+                            "€${(vatPrice / (1 - (discountPercent! / 100))).toStringAsFixed(2)}",
                             style: const TextStyle(
                               color: Colors.red,
                               decoration: TextDecoration.lineThrough,

@@ -178,27 +178,43 @@ class ProductViewModel {
     } catch (e) {print('Error getting VAT rate: $e'); return 0.0;}
   }
 
-  Future<void> updateProductsVatPrices(String storeNumber, String vatCode, double newRate) async {
-    try {
-      // Busca todos os produtos com este VAT code
-      final products = await _firestore
-          .collection('products')
-          .where('storeNumber', isEqualTo: storeNumber)
-          .where('vatCode', isEqualTo: vatCode)
-          .get();
+Future<void> updateProductsVatPrices(String storeNumber, String vatCode, double newRate) async {
+  try {
+    // Busca todos os produtos com este VAT code
+    final products = await _firestore
+        .collection('products')
+        .where('storeNumber', isEqualTo: storeNumber)
+        .where('vatCode', isEqualTo: vatCode)
+        .get();
 
-      // Atualiza cada produto
-      for (final productDoc in products.docs) {
-        final productData = productDoc.data();
-        final basePrice = productData['basePrice']?.toDouble() ?? 0.0;
-        final newVatPrice = basePrice * (1 + newRate);
+    final now = Timestamp.now();
 
-        await productDoc.reference.update({
-          'vatPrice': newVatPrice,
-        });
+    // Atualiza cada produto, se não estiver em promoção
+    for (final productDoc in products.docs) {
+      final productData = productDoc.data();
+      final basePrice = productData['basePrice']?.toDouble() ?? 0.0;
+
+      // Verifica se tem um desconto ativo
+      final hasActiveDiscount = productData.containsKey('endDate') &&
+          (productData['endDate'] as Timestamp).compareTo(now) >= 0;
+
+      if (hasActiveDiscount) {
+        // Pula produtos com desconto ativo
+        continue;
       }
-    } catch (e) {print('Error updating products VAT prices: $e'); throw e;}
+
+      final newVatPrice = basePrice * (1 + newRate);
+
+      await productDoc.reference.update({
+        'vatPrice': double.parse(newVatPrice.toStringAsFixed(2)),
+      });
+    }
+  } catch (e) {
+    print('Error updating products VAT prices: $e');
+    throw e;
   }
+}
+
 
   Future<void> updateProduct(String productId, ProductModel product) async {
     try {
@@ -782,13 +798,13 @@ class _ProductDatabasePageState extends State<ProductDatabasePage> with TickerPr
 
         final productData = productSnapshot.data!.data() as Map<String, dynamic>;
         bool hasValidDiscount = false;
-        double? discountPrice;
+        double? vatPrice;
         Timestamp? endDate;
         int? discountPercent;
 
         // Check for active discount in product data
-        if (productData.containsKey('discountPrice') && 
-            productData['discountPrice'] != null &&
+        if (productData.containsKey('vatPrice') && 
+            productData['vatPrice'] != null &&
             productData.containsKey('endDate') &&
             productData['endDate'] != null) {
           endDate = productData['endDate'] as Timestamp;
@@ -796,7 +812,7 @@ class _ProductDatabasePageState extends State<ProductDatabasePage> with TickerPr
 
           if (endDate.toDate().isAfter(now)) {
             hasValidDiscount = true;
-            discountPrice = (productData['discountPrice'] as num).toDouble();
+            vatPrice = (productData['vatPrice'] as num).toDouble();
             discountPercent = productData['discountPercent'] as int?;
           }
         }
@@ -921,7 +937,8 @@ class _ProductDatabasePageState extends State<ProductDatabasePage> with TickerPr
                                   const SizedBox(width: 4),
                                   if (hasValidDiscount) ...[
                                     Text(
-                                      '${product['vatPrice'].toStringAsFixed(2)}',
+                                      // make the inverse operation to get the original price
+                                      "€${(vatPrice! / (1 - (discountPercent! / 100))).toStringAsFixed(2)}",
                                       style: theme.textTheme.bodyMedium?.copyWith(
                                         decoration: TextDecoration.lineThrough,
                                         color: Colors.grey,
@@ -929,7 +946,7 @@ class _ProductDatabasePageState extends State<ProductDatabasePage> with TickerPr
                                     ),
                                     const SizedBox(width: 8),
                                     Text(
-                                      '${discountPrice!.toStringAsFixed(2)}',
+                                      '€${vatPrice!.toStringAsFixed(2)}',
                                       style: theme.textTheme.titleMedium?.copyWith(
                                         fontWeight: FontWeight.bold,
                                         color: Colors.red,

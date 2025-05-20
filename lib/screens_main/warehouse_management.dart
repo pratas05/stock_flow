@@ -13,7 +13,6 @@ class WarehouseProductModel {
   final String id, name, brand, model, category, description, storeNumber;
   final String vatCode, subCategory, productLocation;
   final int stockCurrent, stockOrder, stockMin, stockMax, wareHouseStock, stockBreak;
-  final double lastPurchasePrice, basePrice, vatPrice;
   final Timestamp createdAt;
 
   WarehouseProductModel({
@@ -24,7 +23,6 @@ class WarehouseProductModel {
     required this.category,
     required this.description,
     required this.storeNumber,
-    required this.basePrice,
     required this.stockCurrent,
     required this.stockOrder,
     required this.stockMin,
@@ -32,9 +30,7 @@ class WarehouseProductModel {
     required this.wareHouseStock,
     required this.stockBreak,
     required this.vatCode,
-    required this.vatPrice,
     required this.subCategory,
-    required this.lastPurchasePrice,
     required this.createdAt,
     required this.productLocation,
   });
@@ -49,7 +45,6 @@ class WarehouseProductModel {
       category: data['category']?.toString() ?? '',
       description: data['description']?.toString() ?? '',
       storeNumber: data['storeNumber']?.toString() ?? '',
-      basePrice: (data['basePrice'] as num?)?.toDouble() ?? 0.0,
       stockCurrent: (data['stockCurrent'] as num?)?.toInt() ?? 0,
       stockOrder: (data['stockOrder'] as num?)?.toInt() ?? 0,
       stockMin: (data['stockMin'] as num?)?.toInt() ?? 0,
@@ -57,9 +52,7 @@ class WarehouseProductModel {
       wareHouseStock: (data['wareHouseStock'] as num?)?.toInt() ?? 0,
       stockBreak: (data['stockBreak'] as num?)?.toInt() ?? 0,
       vatCode: data['vatCode']?.toString() ?? '',
-      vatPrice: (data['vatPrice'] as num?)?.toDouble() ?? 0.0,
       subCategory: data['subCategory']?.toString() ?? '',
-      lastPurchasePrice: (data['lastPurchasePrice'] as num?)?.toDouble() ?? 0.0,
       createdAt: data['createdAt'] as Timestamp? ?? Timestamp.now(),
       productLocation: data['productLocation']?.toString() ?? 'Not Located',
     );
@@ -72,7 +65,6 @@ class WarehouseProductModel {
     'category': category,
     'description': description,
     'storeNumber': storeNumber,
-    'basePrice': basePrice,
     'stockCurrent': stockCurrent,
     'stockOrder': stockOrder,
     'stockMin': stockMin,
@@ -81,7 +73,6 @@ class WarehouseProductModel {
     'stockBreak': stockBreak,
     'vatCode': vatCode,
     'subCategory': subCategory,
-    'lastPurchasePrice': lastPurchasePrice,
     'createdAt': createdAt,
     'productLocation': productLocation,
   };
@@ -425,7 +416,6 @@ class _WarehouseManagementPageState extends State<WarehouseManagementPage>
     final currentStock = product['stockCurrent'] as int;
     final minStock = product['stockMin'] as int;
     final maxStock = product['stockMax'] as int;
-    final vatPrice = product['vatPrice'] as double;
     final productId = product.id;
 
     // Definindo os estados de estoque
@@ -441,27 +431,6 @@ class _WarehouseManagementPageState extends State<WarehouseManagementPage>
       builder: (context, snapshot) {
         if (!snapshot.hasData) {
           return const Center(child: CircularProgressIndicator());
-        }
-
-        final productData = snapshot.data!.data() as Map<String, dynamic>;
-        double? discountPrice;
-        Timestamp? endDate;
-        bool hasDiscount = false;
-        int? discountPercent;
-
-        // Check for active discount in product data
-        if (productData.containsKey('discountPrice') && 
-            productData['discountPrice'] != null &&
-            productData.containsKey('endDate') &&
-            productData['endDate'] != null) {
-          endDate = productData['endDate'] as Timestamp;
-          final now = Timestamp.now();
-
-          if (endDate.compareTo(now) > 0) {
-            hasDiscount = true;
-            discountPrice = (productData['discountPrice'] as num).toDouble();
-            discountPercent = productData['discountPercent'] as int?;
-          }
         }
 
         return Center(
@@ -559,52 +528,6 @@ class _WarehouseManagementPageState extends State<WarehouseManagementPage>
                         children: [
                           Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              if (hasDiscount) ...[
-                                Row(
-                                  children: [
-                                    Text(
-                                      '€${vatPrice.toStringAsFixed(2)}',
-                                      style: theme.textTheme.titleMedium?.copyWith(
-                                        fontWeight: FontWeight.bold,
-                                        color: theme.colorScheme.primary,
-                                        decoration: TextDecoration.lineThrough,
-                                      ),
-                                    ),
-                                    const SizedBox(width: 8),
-                                    Text(
-                                      '€${discountPrice!.toStringAsFixed(2)}',
-                                      style: theme.textTheme.titleMedium?.copyWith(
-                                        fontWeight: FontWeight.bold,
-                                        color: Colors.red,
-                                      ),
-                                    ),
-                                    if (discountPercent != null) ...[
-                                      const SizedBox(width: 4),
-                                      Text(
-                                        '($discountPercent% OFF)',
-                                        style: theme.textTheme.bodySmall?.copyWith(
-                                          color: Colors.green[800],
-                                        ),
-                                      ),
-                                    ],
-                                    const SizedBox(width: 8),
-                                    Tooltip(
-                                      message: 'Promotion ends ${DateFormat('dd/MM HH:mm').format(endDate!.toDate())}',
-                                      child: Icon(Icons.timer, size: 16, color: Colors.red),
-                                    ),
-                                  ],
-                                ),
-                              ] else ...[
-                                Text(
-                                  '€${vatPrice.toStringAsFixed(2)}',
-                                  style: theme.textTheme.titleMedium?.copyWith(
-                                    fontWeight: FontWeight.bold,
-                                    color: theme.colorScheme.primary,
-                                  ),
-                                ),
-                              ],
-                            ],
                           ),
                           Column(
                             crossAxisAlignment: CrossAxisAlignment.end,
@@ -1056,7 +979,6 @@ class _WarehouseManagementPageState extends State<WarehouseManagementPage>
                                 children: [
                                   Text("Brand: ${product.brand}"),
                                   Text("Model: ${product.model}"),
-                                  Text("Price: €${product.vatPrice.toStringAsFixed(2)}"),
                                 ],
                               ),
                               value: product.name,

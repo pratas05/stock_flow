@@ -24,21 +24,26 @@ class _DiscountsPageState extends State<DiscountsPage> {
       final now = Timestamp.now();
       final batch = _firestore.batch();
 
-      // Buscar produtos com desconto expirado
       final querySnapshot = await _firestore
           .collection('products')
           .where('storeNumber', isEqualTo: _storeNumber)
           .where('endDate', isLessThan: now)
           .get();
 
-      // Para cada produto com desconto expirado
       for (var productDoc in querySnapshot.docs) {
-        batch.update(productDoc.reference, {
-          'discountPrice': FieldValue.delete(),
-          'startDate': FieldValue.delete(),
-          'endDate': FieldValue.delete(),
-          'discountPercent': FieldValue.delete(),
-        });
+        final data = productDoc.data();
+        final currentVatPrice = data['vatPrice']?.toDouble() ?? 0.0;
+        final discountPercent = data['discountPercent'] ?? 0;
+
+        if (discountPercent > 0 && currentVatPrice > 0) {
+          final originalPrice = currentVatPrice * 100 / (100 - discountPercent);
+          batch.update(productDoc.reference, {
+            'vatPrice': double.parse(originalPrice.toStringAsFixed(2)),
+            'startDate': FieldValue.delete(),
+            'endDate': FieldValue.delete(),
+            'discountPercent': FieldValue.delete(),
+          });
+        }
       }
 
       if (querySnapshot.docs.isNotEmpty) {
@@ -135,7 +140,7 @@ class _DiscountsPageState extends State<DiscountsPage> {
     if (_storeNumber == null) {
       return const Center(child: CircularProgressIndicator());
     }
-    
+
     return StreamBuilder<QuerySnapshot>(
       stream: _firestore
           .collection('products')
@@ -143,7 +148,7 @@ class _DiscountsPageState extends State<DiscountsPage> {
           .snapshots(),
       builder: (context, snapshot) {
         final now = Timestamp.now();
-        
+
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const Center(child: CircularProgressIndicator(color: Colors.white));
         }
@@ -153,33 +158,27 @@ class _DiscountsPageState extends State<DiscountsPage> {
             child: Text(
               'No discounted products available',
               style: TextStyle(color: Colors.white.withOpacity(0.7)),
-            )
+            ),
           );
         }
 
-        // Filtrar produtos com desconto ativo e que correspondem à pesquisa
         final discountedProducts = snapshot.data!.docs.where((doc) {
           final data = doc.data() as Map<String, dynamic>;
           final endDate = data['endDate'] as Timestamp?;
           final productName = data['name']?.toString().toLowerCase() ?? '';
-          
-          // Verificar se tem desconto ativo
           final hasActiveDiscount = endDate != null && endDate.compareTo(now) >= 0;
-          
-          // Verificar se corresponde à pesquisa (se houver pesquisa)
-          final matchesSearch = _searchQuery.isEmpty || productName.contains(_searchQuery.toLowerCase());
-          
+          final matchesSearch = _searchQuery.isEmpty || productName.contains(_searchQuery);
           return hasActiveDiscount && matchesSearch;
         }).toList();
 
         if (discountedProducts.isEmpty) {
           return Center(
             child: Text(
-              _searchQuery.isEmpty 
+              _searchQuery.isEmpty
                   ? 'No active discounts available'
                   : 'No results found for "$_searchQuery"',
               style: TextStyle(color: Colors.white.withOpacity(0.7)),
-            )
+            ),
           );
         }
 
@@ -191,14 +190,15 @@ class _DiscountsPageState extends State<DiscountsPage> {
             final data = product.data() as Map<String, dynamic>;
             final vatPrice = data['vatPrice']?.toDouble() ?? 0.0;
             final discountPercent = data['discountPercent'] ?? 0;
-            final discountPrice = data['discountPrice']?.toDouble() ?? 0.0;
             final endDate = data['endDate'] as Timestamp;
+
+            final originalPrice = vatPrice * 100 / (100 - discountPercent);
 
             return _buildProductCard(
               data['name'],
               data['model'],
+              originalPrice,
               vatPrice,
-              discountPrice,
               discountPercent,
               endDate,
               product.id,
@@ -212,80 +212,68 @@ class _DiscountsPageState extends State<DiscountsPage> {
   Widget _buildProductCard(
     String name,
     String model,
-    double vatPrice,
-    double newPrice,
+    double originalPrice,
+    double discountedPrice,
     int discountPercent,
     Timestamp endDate,
     String productId,
   ) {
     final formattedEndDate = DateFormat('dd/MM/yyyy HH:mm').format(endDate.toDate());
 
-    return StreamBuilder<DocumentSnapshot>(
-      stream: _firestore.collection('products').doc(productId).snapshots(),
-      builder: (context, productSnapshot) {
-        if (!productSnapshot.hasData || !productSnapshot.data!.exists) {
-          return const SizedBox.shrink();
-        }
-
-        final productData = productSnapshot.data!.data() as Map<String, dynamic>;
-        final currentVatPrice = productData['vatPrice']?.toDouble() ?? vatPrice;
-
-        return Card(
-          color: Colors.white.withOpacity(0.9),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-          margin: const EdgeInsets.symmetric(vertical: 6),
-          child: ListTile(
-            leading: const Icon(Icons.local_offer, color: Colors.deepPurple),
-            title: Text(name, style: const TextStyle(fontWeight: FontWeight.bold)),
-            subtitle: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text('Model: $model'),
-                Text(
-                  'Price: \$${currentVatPrice.toStringAsFixed(2)}',
-                  style: const TextStyle(
-                    decoration: TextDecoration.lineThrough,
-                    decorationColor: Colors.red,
-                    decorationThickness: 2,
-                    color: Colors.redAccent,
-                  ),
+    return Card(
+      color: Colors.white.withOpacity(0.9),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      margin: const EdgeInsets.symmetric(vertical: 6),
+      child: ListTile(
+        leading: const Icon(Icons.local_offer, color: Colors.deepPurple),
+        title: Text(name, style: const TextStyle(fontWeight: FontWeight.bold)),
+        subtitle: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Model: $model'),
+            Text(
+              'Original: €${originalPrice.toStringAsFixed(2)}',
+              style: const TextStyle(
+                decoration: TextDecoration.lineThrough,
+                decorationColor: Colors.red,
+                decorationThickness: 2,
+                color: Colors.redAccent,
+              ),
+            ),
+            Text('Discount: $discountPercent%'),
+            Text('Ends on: $formattedEndDate'),
+          ],
+        ),
+        trailing: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+          decoration: BoxDecoration(
+            color: Colors.green.shade600,
+            borderRadius: BorderRadius.circular(16),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.green.shade900.withOpacity(0.6),
+                offset: const Offset(0, 2),
+                blurRadius: 6,
+              ),
+            ],
+          ),
+          child: Text(
+            '€${discountedPrice.toStringAsFixed(2)}',
+            style: const TextStyle(
+              color: Colors.white,
+              fontWeight: FontWeight.bold,
+              fontSize: 20,
+              shadows: [
+                Shadow(
+                  color: Colors.black26,
+                  offset: Offset(1, 1),
+                  blurRadius: 2,
                 ),
-                Text('Discount: $discountPercent%'),
-                Text('Ends on: $formattedEndDate'),
               ],
             ),
-            trailing: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-              decoration: BoxDecoration(
-                color: Colors.green.shade600,
-                borderRadius: BorderRadius.circular(16),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.green.shade900.withOpacity(0.6),
-                    offset: const Offset(0, 2),
-                    blurRadius: 6,
-                  ),
-                ],
-              ),
-              child: Text(
-                '\$${newPrice.toStringAsFixed(2)}',
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.bold,
-                  fontSize: 20,
-                  shadows: [
-                    Shadow(
-                      color: Colors.black26,
-                      offset: Offset(1, 1),
-                      blurRadius: 2,
-                    ),
-                  ],
-                ),
-              ),
-            ),
           ),
-        );
-      },
+        ),
+      ),
     );
   }
 
@@ -362,19 +350,11 @@ class _DiscountsPageState extends State<DiscountsPage> {
       builder: (context, snapshot) {
         if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
 
-        // Filter products that don't have an active discount
         final products = snapshot.data!.docs.where((doc) {
           final data = doc.data() as Map<String, dynamic>;
           final nameMatch = data['name']?.toString().toLowerCase().contains(query.toLowerCase()) ?? false;
-          
-          // Check if product has no discount or discount is expired
-          final hasNoDiscount = !data.containsKey('discountPrice') || 
-              data['discountPrice'] == null || 
-              data['discountPrice'].toString().isEmpty;
-          final hasExpiredDiscount = data.containsKey('endDate') && 
-              (data['endDate'] as Timestamp).compareTo(Timestamp.now()) < 0;
-          
-          return nameMatch && (hasNoDiscount || hasExpiredDiscount);
+          final hasNoDiscount = !data.containsKey('endDate') || (data['endDate'] as Timestamp).compareTo(Timestamp.now()) < 0;
+          return nameMatch && hasNoDiscount;
         }).toList();
 
         if (products.isEmpty) return const Text("No available products found.");
@@ -482,116 +462,67 @@ class _DiscountsPageState extends State<DiscountsPage> {
     final durationAmount = int.tryParse(durationText);
     final user = _auth.currentUser;
 
-    // Validação do percentual de desconto
     if (discountPercent == null || discountPercent < 1 || discountPercent > 99) {
-      CustomSnackbar.show(
-        context: context,
-        message: 'Please enter a valid discount percentage (1-99)',
-        backgroundColor: Colors.red,
-      );
+      CustomSnackbar.show(context: context, message: 'Please enter a valid discount percentage (1-99)', backgroundColor: Colors.red);
       return;
     }
 
-    // Validação da duração
     if (durationAmount == null || durationAmount <= 0) {
-      CustomSnackbar.show(
-        context: context,
-        message: 'Please enter a valid duration amount',
-        backgroundColor: Colors.red,
-      );
+      CustomSnackbar.show(context: context, message: 'Please enter a valid duration amount', backgroundColor: Colors.red);
       return;
     }
 
-    // Validação do número da loja
     if (_storeNumber == null) {
-      CustomSnackbar.show(
-        context: context,
-        message: 'Store number not found. Please log in again.',
-        backgroundColor: Colors.red,
-      );
+      CustomSnackbar.show(context: context, message: 'Store number not found. Please log in again.', backgroundColor: Colors.red);
       return;
     }
 
-    // Validação do preço do produto
-    final double vatPrice = (product['vatPrice'] ?? 0).toDouble();
-    if (vatPrice <= 0) {
-      CustomSnackbar.show(
-        context: context,
-        message: 'Invalid product price. Cannot apply discount.',
-        backgroundColor: Colors.red,
-      );
+    final double originalVatPrice = (product['vatPrice'] ?? 0).toDouble();
+    if (originalVatPrice <= 0) {
+      CustomSnackbar.show(context: context, message: 'Invalid product price. Cannot apply discount.', backgroundColor: Colors.red);
       return;
     }
 
     try {
-      // Calcular datas e preço com desconto
       final startDate = Timestamp.now();
-      DateTime endDateTime;
-      
-      // Definir a data de término baseada na unidade selecionada
-      if (selectedUnit == 'Hours') {
-        endDateTime = startDate.toDate().add(Duration(hours: durationAmount));
-      } else {
-        endDateTime = startDate.toDate().add(Duration(days: durationAmount));
-      }
-      
-      // Garantir que a data está em UTC
-      endDateTime = endDateTime.toUtc(); final endDate = Timestamp.fromDate(endDateTime);
-      
-      // Calcular preço com desconto e arredondar para 2 casas decimais
-      final discountPrice = double.parse((vatPrice * (100 - discountPercent) / 100).toStringAsFixed(2));
+      final endDateTime = selectedUnit == 'Hours'
+          ? startDate.toDate().add(Duration(hours: durationAmount))
+          : startDate.toDate().add(Duration(days: durationAmount));
+      final endDate = Timestamp.fromDate(endDateTime.toUtc());
 
-      /* // Debug: Mostrar informações do desconto
-      debugPrint('[DISCOUNT CREATION]');
-      debugPrint(' → Original Price: \$$vatPrice');
-      debugPrint(' → Discount Percentage: $discountPercent%');
-      debugPrint(' → Discounted Price: \$$discountPrice');
-      debugPrint(' → Start Date: ${startDate.toDate()}');
-      debugPrint(' → End Date: ${endDate.toDate()}');
-      debugPrint(' → End Date Timestamp: ${endDate.seconds}.${endDate.nanoseconds}');*/
+      final discountedPrice = double.parse((originalVatPrice * (100 - discountPercent) / 100).toStringAsFixed(2));
 
-      // Atualizar o produto com as informações do desconto
       await _firestore.collection('products').doc(product.id).update({
-        'discountPrice': discountPrice,  // Já está arredondado para 2 casas decimais
+        'vatPrice': discountedPrice,
         'startDate': startDate,
         'endDate': endDate,
         'discountPercent': discountPercent,
       });
 
-      // Criar notificação
-      final notificationMessage = 'New discount: ${product['name']} - $discountPercent% OFF '
-          '(€${vatPrice.toStringAsFixed(2)} → €${discountPrice.toStringAsFixed(2)}), until ${DateFormat('dd/MM/yyyy HH:mm').format(endDate.toDate())}';
-      
+      final notificationMessage =
+          'New discount: ${product['name']} - $discountPercent% OFF (€${originalVatPrice.toStringAsFixed(2)} → €${discountedPrice.toStringAsFixed(2)}), until ${DateFormat('dd/MM/yyyy HH:mm').format(endDate.toDate())}';
+
       final notificationRef = await _firestore.collection('notifications').add({
         'message': notificationMessage,
-        'notificationId': '', // Será atualizado após a criação
+        'notificationId': '',
         'notificationType': 'Discount',
         'productId': product.id,
         'storeNumber': _storeNumber,
         'timestamp': Timestamp.now(),
         'userId': user?.uid,
       });
-      
-      // Atualizar o notificationId com o ID do documento
+
       await notificationRef.update({'notificationId': notificationRef.id});
 
       if (mounted) {
         Navigator.pop(context);
-        CustomSnackbar.show(
-          context: context,
-          message: 'Discount created until ${DateFormat('dd/MM/yyyy HH:mm').format(endDate.toDate())}',
-          backgroundColor: Colors.green,
-        );
+        CustomSnackbar.show(context: context, message: 'Discount created until ${DateFormat('dd/MM/yyyy HH:mm').format(endDate.toDate())}', backgroundColor: Colors.green);
       }
     } catch (e) {
       debugPrint('Error creating discount: $e');
       if (mounted) {
         Navigator.pop(context);
-        CustomSnackbar.show(
-          context: context,
-          message: 'Error creating discount: ${e.toString()}',
-          backgroundColor: Colors.red,
-        );
+        CustomSnackbar.show(context: context, message: 'Error creating discount: ${e.toString()}', backgroundColor: Colors.red);
       }
     }
   }
