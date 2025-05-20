@@ -178,42 +178,42 @@ class ProductViewModel {
     } catch (e) {print('Error getting VAT rate: $e'); return 0.0;}
   }
 
-Future<void> updateProductsVatPrices(String storeNumber, String vatCode, double newRate) async {
-  try {
-    // Busca todos os produtos com este VAT code
-    final products = await _firestore
-        .collection('products')
-        .where('storeNumber', isEqualTo: storeNumber)
-        .where('vatCode', isEqualTo: vatCode)
-        .get();
+  Future<void> updateProductsVatPrices(String storeNumber, String vatCode, double newRate) async {
+    try {
+      // Busca todos os produtos com este VAT code
+      final products = await _firestore
+          .collection('products')
+          .where('storeNumber', isEqualTo: storeNumber)
+          .where('vatCode', isEqualTo: vatCode)
+          .get();
 
-    final now = Timestamp.now();
+      final now = Timestamp.now();
 
-    // Atualiza cada produto, se não estiver em promoção
-    for (final productDoc in products.docs) {
-      final productData = productDoc.data();
-      final basePrice = productData['basePrice']?.toDouble() ?? 0.0;
+      // Atualiza cada produto, se não estiver em promoção
+      for (final productDoc in products.docs) {
+        final productData = productDoc.data();
+        final basePrice = productData['basePrice']?.toDouble() ?? 0.0;
 
-      // Verifica se tem um desconto ativo
-      final hasActiveDiscount = productData.containsKey('endDate') &&
-          (productData['endDate'] as Timestamp).compareTo(now) >= 0;
+        // Verifica se tem um desconto ativo
+        final hasActiveDiscount = productData.containsKey('endDate') &&
+            (productData['endDate'] as Timestamp).compareTo(now) >= 0;
 
-      if (hasActiveDiscount) {
-        // Pula produtos com desconto ativo
-        continue;
+        if (hasActiveDiscount) {
+          // Pula produtos com desconto ativo
+          continue;
+        }
+
+        final newVatPrice = basePrice * (1 + newRate);
+
+        await productDoc.reference.update({
+          'vatPrice': double.parse(newVatPrice.toStringAsFixed(2)),
+        });
       }
-
-      final newVatPrice = basePrice * (1 + newRate);
-
-      await productDoc.reference.update({
-        'vatPrice': double.parse(newVatPrice.toStringAsFixed(2)),
-      });
+    } catch (e) {
+      print('Error updating products VAT prices: $e');
+      throw e;
     }
-  } catch (e) {
-    print('Error updating products VAT prices: $e');
-    throw e;
   }
-}
 
 
   Future<void> updateProduct(String productId, ProductModel product) async {
@@ -262,10 +262,44 @@ Future<void> updateProductsVatPrices(String storeNumber, String vatCode, double 
   }
 
   Stream<QuerySnapshot> getProductsStream(String storeNumber) {
+    // Limpa promoções expiradas sempre que o stream for requisitado
+    _cleanupExpiredDiscounts(storeNumber);
     return _firestore
         .collection('products')
         .where('storeNumber', isEqualTo: storeNumber)
         .snapshots();
+  }
+
+  Future<void> _cleanupExpiredDiscounts(String storeNumber) async {
+    try {
+      final now = Timestamp.now();
+
+      // Busca produtos que possuem 'endDate' menor que agora (promoções expiradas)
+      // Note: Pode precisar criar índice no Firestore para essa query.
+      final querySnapshot = await _firestore
+          .collection('products')
+          .where('storeNumber', isEqualTo: storeNumber)
+          // Considerando que nem todos tem 'endDate', vamos tentar filtrar por existência primeiro:
+          .where('endDate', isLessThan: now)
+          .get();
+
+      for (final doc in querySnapshot.docs) {
+        final data = doc.data();
+        if (data['endDate'] == null) continue; // Proteção contra null
+
+        final Timestamp endDate = data['endDate'];
+        if (endDate.compareTo(now) < 0) {
+          // Remove campo 'endDate' e outros relacionados à promoção
+          await doc.reference.update({
+            'startDate': FieldValue.delete(),
+            'endDate': FieldValue.delete(),
+            'discountPercent': FieldValue.delete(),
+          });
+        }
+      }
+    } catch (e) {
+      print('Error cleaning up expired discounts: $e');
+    }
   }
 }
 
@@ -306,18 +340,72 @@ class _ProductDatabasePageState extends State<ProductDatabasePage> with TickerPr
   bool _isLoading = true;
   bool _hasAdminAccess = false;
 
-  @override
-  void initState() {
-    super.initState();
-    _tabController = TabController(length: _isStoreManager && _hasAdminAccess ? 2 : 1, vsync: this);
-    _searchController.addListener(() {
-      setState(() {
-        _searchText = _searchController.text;int tabCount = _isStoreManager && _hasAdminAccess ? 2 : 1; // Configurar o TabController dinamicamente com base em _isStoreManager
-        _tabController = TabController(length: tabCount, vsync: this);
-      });
-    });
-    _loadUserData();
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+
+Future<void> _cleanupExpiredDiscounts() async {
+  try {
+    final now = Timestamp.now();
+    final batch = _firestore.batch();
+
+    final querySnapshot = await _firestore
+        .collection('products')
+        .where('storeNumber', isEqualTo: _storeNumber)
+        .where('endDate', isLessThan: now)
+        .get();
+
+    for (var productDoc in querySnapshot.docs) {
+      final data = productDoc.data();
+      final discountPercent = data['discountPercent'];
+      final vatCode = data['vatCode'];
+      final basePrice = data['basePrice']?.toDouble() ?? 0.0;
+
+      if (discountPercent != null && vatCode != null && basePrice > 0) {
+        final vatRate = await _getVatRate(vatCode, _storeNumber!);
+        final recalculatedVatPrice = basePrice * (1 + vatRate);
+
+        batch.update(productDoc.reference, {
+          'vatPrice': double.parse(recalculatedVatPrice.toStringAsFixed(2)),
+          'startDate': FieldValue.delete(),
+          'endDate': FieldValue.delete(),
+          'discountPercent': FieldValue.delete(),
+        });
+      } else if (data.containsKey('startDate') || data.containsKey('endDate') || data.containsKey('discountPercent')) {
+        // In case discount fields exist but cannot recalculate vatPrice
+        batch.update(productDoc.reference, {
+          'startDate': FieldValue.delete(),
+          'endDate': FieldValue.delete(),
+          'discountPercent': FieldValue.delete(),
+        });
+      }
+    }
+
+    if (querySnapshot.docs.isNotEmpty) {
+      await batch.commit();
+    }
+  } catch (e) {
+    print('Error cleaning up expired discounts: $e');
   }
+}
+
+
+Future<double> _getVatRate(String vatCode, String storeNumber) async {
+  try {
+    final snapshot = await _firestore
+        .collection('vatRates')
+        .doc(storeNumber)
+        .collection('rates')
+        .doc(vatCode)
+        .get();
+
+    if (snapshot.exists) {
+      return (snapshot.data()?['rate'] as num?)?.toDouble() ?? 0.0;
+    }
+  } catch (e) {
+    print('Error fetching VAT rate: $e');
+  }
+  return 0.0;
+}
+
 
   Future<void> _loadUserData() async {
     setState(() => _isLoading = true);
@@ -346,6 +434,21 @@ class _ProductDatabasePageState extends State<ProductDatabasePage> with TickerPr
       setState(() => _isLoading = false);
     }
   }
+
+  @override
+  void initState() {
+    super.initState();
+    _tabController = TabController(length: _isStoreManager && _hasAdminAccess ? 2 : 1, vsync: this);
+    _searchController.addListener(() {
+      setState(() {
+        _searchText = _searchController.text;int tabCount = _isStoreManager && _hasAdminAccess ? 2 : 1; // Configurar o TabController dinamicamente com base em _isStoreManager
+        _tabController = TabController(length: tabCount, vsync: this);
+      });
+    });
+    _cleanupExpiredDiscounts();
+    _loadUserData();
+  }
+
   @override
   void dispose() {
     _vatMonitor.stopMonitoring();

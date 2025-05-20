@@ -19,40 +19,68 @@ class _DiscountsPageState extends State<DiscountsPage> {
   String _searchQuery = '';
   final TextEditingController _searchController = TextEditingController();
 
-  Future<void> _cleanupExpiredDiscounts() async {
-    try {
-      final now = Timestamp.now();
-      final batch = _firestore.batch();
+Future<void> _cleanupExpiredDiscounts() async {
+  try {
+    final now = Timestamp.now();
+    final batch = _firestore.batch();
 
-      final querySnapshot = await _firestore
-          .collection('products')
-          .where('storeNumber', isEqualTo: _storeNumber)
-          .where('endDate', isLessThan: now)
-          .get();
+    final querySnapshot = await _firestore
+        .collection('products')
+        .where('storeNumber', isEqualTo: _storeNumber)
+        .where('endDate', isLessThan: now)
+        .get();
 
-      for (var productDoc in querySnapshot.docs) {
-        final data = productDoc.data();
-        final currentVatPrice = data['vatPrice']?.toDouble() ?? 0.0;
-        final discountPercent = data['discountPercent'] ?? 0;
+    for (var productDoc in querySnapshot.docs) {
+      final data = productDoc.data();
+      final discountPercent = data['discountPercent'];
+      final vatCode = data['vatCode'];
+      final basePrice = data['basePrice']?.toDouble() ?? 0.0;
 
-        if (discountPercent > 0 && currentVatPrice > 0) {
-          final originalPrice = currentVatPrice * 100 / (100 - discountPercent);
-          batch.update(productDoc.reference, {
-            'vatPrice': double.parse(originalPrice.toStringAsFixed(2)),
-            'startDate': FieldValue.delete(),
-            'endDate': FieldValue.delete(),
-            'discountPercent': FieldValue.delete(),
-          });
-        }
+      if (discountPercent != null && vatCode != null && basePrice > 0) {
+        final vatRate = await _getVatRate(vatCode, _storeNumber!);
+        final recalculatedVatPrice = basePrice * (1 + vatRate);
+
+        batch.update(productDoc.reference, {
+          'vatPrice': double.parse(recalculatedVatPrice.toStringAsFixed(2)),
+          'startDate': FieldValue.delete(),
+          'endDate': FieldValue.delete(),
+          'discountPercent': FieldValue.delete(),
+        });
+      } else if (data.containsKey('startDate') || data.containsKey('endDate') || data.containsKey('discountPercent')) {
+        // In case discount fields exist but cannot recalculate vatPrice
+        batch.update(productDoc.reference, {
+          'startDate': FieldValue.delete(),
+          'endDate': FieldValue.delete(),
+          'discountPercent': FieldValue.delete(),
+        });
       }
-
-      if (querySnapshot.docs.isNotEmpty) {
-        await batch.commit();
-      }
-    } catch (e) {
-      print('Error cleaning up expired discounts: $e');
     }
+
+    if (querySnapshot.docs.isNotEmpty) {
+      await batch.commit();
+    }
+  } catch (e) {
+    print('Error cleaning up expired discounts: $e');
   }
+}
+
+Future<double> _getVatRate(String vatCode, String storeNumber) async {
+  try {
+    final snapshot = await _firestore
+        .collection('vatRates')
+        .doc(storeNumber)
+        .collection('rates')
+        .doc(vatCode)
+        .get();
+
+    if (snapshot.exists) {
+      return (snapshot.data()?['rate'] as num?)?.toDouble() ?? 0.0;
+    }
+  } catch (e) {
+    print('Error fetching VAT rate: $e');
+  }
+  return 0.0;
+}
 
   @override
   void initState() {
