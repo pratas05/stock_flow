@@ -14,7 +14,7 @@ import 'package:stockflow/reusable_widgets/vat_manager.dart';
 class ProductModel {
   final String? id;
   final String name, description, category, subCategory, brand, model, vatCode, storeNumber, productLocation;
-  final int stockMax, stockCurrent, stockOrder, stockMin, wareHouseStock, stockBreak;
+  final int stockMax, stockCurrent, stockMin, wareHouseStock, stockBreak;
   final double lastPurchasePrice, basePrice, vatPrice;
   final Timestamp createdAt;
 
@@ -28,7 +28,6 @@ class ProductModel {
     required this.model,
     required this.stockMax,
     required this.stockCurrent,
-    required this.stockOrder,
     required this.stockMin,
     required this.wareHouseStock,
     required this.stockBreak,
@@ -53,7 +52,6 @@ class ProductModel {
       model: data['model'] ?? '',
       stockMax: data['stockMax'] ?? 0,
       stockCurrent: data['stockCurrent'] ?? 0,
-      stockOrder: data['stockOrder'] ?? 0,
       stockMin: data['stockMin'] ?? 0,
       wareHouseStock: data['wareHouseStock'] ?? 0,
       stockBreak: data['stockBreak'] ?? 0,
@@ -77,7 +75,6 @@ class ProductModel {
       'model': model,
       'stockMax': stockMax,
       'stockCurrent': stockCurrent,
-      'stockOrder': stockOrder,
       'stockMin': stockMin,
       'wareHouseStock': wareHouseStock,
       'stockBreak': stockBreak,
@@ -325,7 +322,6 @@ class _ProductDatabasePageState extends State<ProductDatabasePage> with TickerPr
   final _modelController = TextEditingController();
   final _stockMaxController = TextEditingController();
   final _wareHouseStockController = TextEditingController();
-  final _stockOrderController = TextEditingController(text: "0"); 
   final _stockMinController = TextEditingController();
   final _lastPurchasePriceController = TextEditingController();
   final _basePriceController = TextEditingController(); 
@@ -494,7 +490,6 @@ Future<double> _getVatRate(String vatCode, String storeNumber) async {
     // Parse numeric values
     final stockMax = int.tryParse(_stockMaxController.text) ?? 0;
     final stockMin = int.tryParse(_stockMinController.text) ?? 0;
-    final stockOrder = int.tryParse(_stockOrderController.text) ?? 0;
     final wareHouseStock = _wareHouseStockController.text.isEmpty
         ? 0
         : int.tryParse(_wareHouseStockController.text) ?? 0;
@@ -504,10 +499,6 @@ Future<double> _getVatRate(String vatCode, String storeNumber) async {
     // Validate stock values
     if (stockMin >= stockMax) {
       _showSnackBar("Stock Min must be less than Stock Max");
-      return;
-    }
-    if (stockOrder > stockMax) {
-      _showSnackBar("You cannot order more stock than your warehouse capacity");
       return;
     }
     if (wareHouseStock > stockMax) {
@@ -555,7 +546,6 @@ Future<double> _getVatRate(String vatCode, String storeNumber) async {
         model: _modelController.text.trim(),
         stockMax: stockMax,
         stockCurrent: 0,
-        stockOrder: stockOrder,
         stockMin: stockMin,
         wareHouseStock: wareHouseStock,
         stockBreak: 0,
@@ -736,7 +726,6 @@ Future<double> _getVatRate(String vatCode, String storeNumber) async {
       _buildTextField(_wareHouseStockController, "WareHouse Stock", isNumber: true),
       // _buildTextField(_stockCurrentController, "Current Stock", isNumber: true, readOnly: true),
       // _buildTextField(_stockBreakController, "Stock Break", isNumber: true, readOnly: true),
-      _buildTextField(_stockOrderController, "Order Stock (Default = 0)", isNumber: true),
       _buildTextField(_lastPurchasePriceController, "Last Purchase Price", isNumber: true),
       _buildTextField(_basePriceController, "Base Price", isNumber: true,),
       _buildTextField(_vatCodeController, "VAT Code (1, 2, 3, or 4)", isNumber: true, maxLength: 1),
@@ -1162,7 +1151,6 @@ Future<double> _getVatRate(String vatCode, String storeNumber) async {
     final modelController = TextEditingController(text: productModel.model);
     final stockMaxController = TextEditingController(text: productModel.stockMax.toString());
     final stockMinController = TextEditingController(text: productModel.stockMin.toString());
-    final stockOrderController = TextEditingController(text: productModel.stockOrder.toString());
     final wareHouseStockController = TextEditingController(text: productModel.wareHouseStock.toString());
     final lastPurchasePriceController = TextEditingController(text: productModel.lastPurchasePrice.toString());
     final basePriceController = TextEditingController(text: productModel.basePrice.toString());
@@ -1277,11 +1265,6 @@ Future<double> _getVatRate(String vatCode, String storeNumber) async {
                                           'old': productModel.stockMin.toString(), 'new': stockMinController.text
                                         };
                                       }
-                                      if (int.tryParse(stockOrderController.text) != productModel.stockOrder) {
-                                        changedFields['Stock Order'] = {
-                                          'old': productModel.stockOrder.toString(), 'new': stockOrderController.text
-                                        };
-                                      }
                                       if (int.tryParse(wareHouseStockController.text) != productModel.wareHouseStock) {
                                         changedFields['Warehouse Stock'] = {
                                           'old': productModel.wareHouseStock.toString(), 'new': wareHouseStockController.text
@@ -1327,7 +1310,6 @@ Future<double> _getVatRate(String vatCode, String storeNumber) async {
 
                                       int stockMax = int.tryParse(stockMaxController.text) ?? 0;
                                       int stockMin = int.tryParse(stockMinController.text) ?? 0;
-                                      int stockOrder = int.tryParse(stockOrderController.text) ?? 0;
                                       int stockCurrent = productModel.stockCurrent;
                                       int wareHouseStock = int.tryParse(wareHouseStockController.text) ?? productModel.wareHouseStock;
 
@@ -1335,20 +1317,8 @@ Future<double> _getVatRate(String vatCode, String storeNumber) async {
                                         CustomSnackbar.show(context: context, message: 'Minimum stock must be less than maximum stock'); return;
                                       }
 
-                                      if (stockOrder > stockMax) {
-                                        CustomSnackbar.show(context: context, message: 'You cannot order more stock than your warehouse capacity'); return;
-                                      }
-
-                                      if (wareHouseStock + stockOrder > stockMax) {
-                                        CustomSnackbar.show(context: context, message: 'Warehouse stock cannot exceed maximum stock'); return;
-                                      }
-
                                       if (wareHouseStock + stockCurrent > stockMax) {
                                         CustomSnackbar.show(context: context, message: 'Warehouse stock cannot exceed maximum stock'); return;
-                                      }
-
-                                      if (stockCurrent + stockOrder > stockMax) {
-                                        CustomSnackbar.show(context: context, message: 'Current stock cannot exceed maximum stock'); return;
                                       }
 
                                       try {
@@ -1372,7 +1342,6 @@ Future<double> _getVatRate(String vatCode, String storeNumber) async {
                                           model: modelController.text,
                                           stockMax: stockMax,
                                           stockCurrent: productModel.stockCurrent,
-                                          stockOrder: stockOrder,
                                           stockMin: stockMin,
                                           wareHouseStock: wareHouseStock,
                                           stockBreak: productModel.stockBreak,
@@ -1449,7 +1418,6 @@ Future<double> _getVatRate(String vatCode, String storeNumber) async {
                                 isEditing,
                                 stockMaxController,
                                 stockMinController,
-                                stockOrderController,
                                 wareHouseStockController,
                                 productModel,
                                 highlightColor,
@@ -1580,7 +1548,6 @@ Future<double> _getVatRate(String vatCode, String storeNumber) async {
     bool isEditing,
     TextEditingController stockMaxController,
     TextEditingController stockMinController,
-    TextEditingController stockOrderController,
     TextEditingController wareHouseStockController,
     ProductModel productModel,
     Color highlightColor,
@@ -1632,14 +1599,6 @@ Future<double> _getVatRate(String vatCode, String storeNumber) async {
           Divider(height: 16, thickness: 1),
           _buildEditableStockRow(
             isEditing,
-            "Order Stock",
-            stockOrderController,
-            Colors.blue,
-            isNumber: true, isRequired: true,
-          ),
-          Divider(height: 16, thickness: 1),
-          _buildEditableStockRow(
-            isEditing,
             "Min Stock",
             stockMinController,
             Colors.blue,
@@ -1678,8 +1637,7 @@ Future<double> _getVatRate(String vatCode, String storeNumber) async {
                 child: Icon(Icons.attach_money, size: 20, color: highlightColor),
               ),
               SizedBox(width: 16),
-              Text("Pricing Information", 
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: Colors.grey[800])),
+              Text("Pricing Information", style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: Colors.grey[800])),
             ],
           ),
           const SizedBox(height: 16),
