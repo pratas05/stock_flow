@@ -410,17 +410,22 @@ class _WarehouseManagementPageState extends State<WarehouseManagementPage>
     );
   }
 
-  Widget _buildProductCard(BuildContext context, QueryDocumentSnapshot product) { // CARDS DOS PRODUTOS WAREHOUSE TO SHOP
+  Widget _buildProductCard(BuildContext context, QueryDocumentSnapshot product) {
     final theme = Theme.of(context);
-    final currentStock = product['stockCurrent'] as int;
-    final minStock = product['stockMin'] as int;
+    final warehouseStock = product['wareHouseStock'] as int;
     final maxStock = product['stockMax'] as int;
     final productId = product.id;
 
-    // Definindo os estados de estoque
-    final isOutOfStock = currentStock <= 0;
-    final isLowStock = currentStock > 0 && currentStock <= 5;
-    final isBelowMin = currentStock < minStock && !isLowStock;
+    // Warehouse stock status definitions
+    final isOutOfStock = warehouseStock <= 0;
+    final isLowStock = warehouseStock > 0 && warehouseStock <= 10;
+
+    // Warehouse progress bar color logic
+    final warehouseProgressColor = isOutOfStock
+        ? Colors.red
+        : isLowStock
+            ? Colors.orange
+            : Colors.green;
 
     return StreamBuilder<DocumentSnapshot>(
       stream: _viewModel._firestore
@@ -435,33 +440,41 @@ class _WarehouseManagementPageState extends State<WarehouseManagementPage>
         return Center(
           child: Container(
             width: MediaQuery.of(context).size.width * 0.6,
-            margin: const EdgeInsets.symmetric(vertical: 8.0),
+            margin: const EdgeInsets.symmetric(vertical: 2.0),
             child: Card(
-              elevation: 4,
+              elevation: 0,
               shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
+                borderRadius: BorderRadius.circular(8),
+                side: BorderSide(
+                  color: Colors.grey[200]!,
+                  width: 1,
+                ),
               ),
               child: InkWell(
-                borderRadius: BorderRadius.circular(12),
+                borderRadius: BorderRadius.circular(8),
+                hoverColor: Colors.transparent,
+                splashColor: Colors.transparent,
+                highlightColor: Colors.transparent,
                 onTap: () async {
                   await _showProductDetailsDialog(context, product);
                 },
                 child: Padding(
-                  padding: const EdgeInsets.all(16.0),
+                  padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      // Primeira linha - Nome e status
+                      // Product name and status
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
                           Expanded(
                             child: Text(
                               product['name'],
-                              style: theme.textTheme.titleLarge?.copyWith(
+                              style: theme.textTheme.titleMedium?.copyWith(
                                 fontWeight: FontWeight.bold,
-                                color: theme.colorScheme.primary,
+                                color: Colors.deepPurple,
                               ),
+                              maxLines: 2,
                               overflow: TextOverflow.ellipsis,
                             ),
                           ),
@@ -472,118 +485,121 @@ class _WarehouseManagementPageState extends State<WarehouseManagementPage>
                                   ? Colors.red.withOpacity(0.2)
                                   : isLowStock
                                       ? Colors.orange.withOpacity(0.2)
-                                      : isBelowMin
-                                          ? Colors.amber.withOpacity(0.2)
-                                          : Colors.green.withOpacity(0.2),
+                                      : Colors.green.withOpacity(0.2),
                               borderRadius: BorderRadius.circular(12),
                             ),
                             child: Text(
                               isOutOfStock
-                                  ? 'OUT OF STOCK ON SHOP'
+                                  ? 'OUT OF STOCK IN WAREHOUSE'
                                   : isLowStock
-                                      ? 'LOW STOCK ON SHOP'
-                                      : isBelowMin
-                                          ? 'BELOW MIN ON SHOP'
-                                          : 'IN STOCK ON SHOP',
+                                      ? 'LOW STOCK IN WAREHOUSE'
+                                      : 'IN STOCK IN WAREHOUSE',
                               style: theme.textTheme.labelSmall?.copyWith(
                                 color: isOutOfStock
-                                    ? const Color.fromARGB(255, 245, 44, 30)
+                                    ? Colors.red
                                     : isLowStock
-                                        ? const Color.fromARGB(255, 255, 140, 0)
-                                        : isBelowMin
-                                            ? Colors.amber[800]
-                                            : Colors.green,
+                                        ? Colors.orange
+                                        : Colors.green,
                                 fontWeight: FontWeight.bold,
                               ),
                             ),
                           ),
                         ],
                       ),
-                      const SizedBox(height: 8),
+                      const SizedBox(height: 6),
 
-                      // Segunda linha - Detalhes básicos (com Tooltips)
-                      Row(
+                      // Basic info with tooltips
+                      Wrap(
+                        spacing: 6,
+                        runSpacing: 6,
                         children: [
                           Tooltip(
-                            message: 'Product Brand',
-                            child: Icon(Icons.branding_watermark, size: 16, color: theme.colorScheme.secondary),
-                          ),
-                          const SizedBox(width: 4),
-                          Text('${product['brand']}', style: theme.textTheme.bodyMedium),
-                          const SizedBox(width: 16),
-                          Tooltip(
-                            message: 'Product Category',
-                            child: Icon(Icons.category, size: 16, color: theme.colorScheme.secondary),
-                          ),
-                          const SizedBox(width: 4),
-                          Text('${product['category']}', style: theme.textTheme.bodyMedium),
-                        ],
-                      ),
-                      const SizedBox(height: 8),
-
-                      // Terceira linha - Preço e estoque
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                          ),
-                          Column(
-                            crossAxisAlignment: CrossAxisAlignment.end,
-                            children: [
-                              Row(
-                                children: [
-                                  Tooltip(
-                                    message: 'Current Shop Stock',
-                                    child: Icon(Icons.store, size: 16,
-                                      color: isLowStock ? Colors.orange : theme.colorScheme.secondary),
-                                  ),
-                                  const SizedBox(width: 4),
-                                  Text(
-                                    '$currentStock',
-                                    style: theme.textTheme.bodyMedium?.copyWith(
-                                      fontWeight: FontWeight.bold,
-                                      color: isLowStock ? Colors.orange : null,
-                                    ),
-                                  ),
-                                  const SizedBox(width: 16),
-                                  Tooltip(
-                                    message: 'Warehouse Available Stock',
-                                    child: Icon(Icons.warehouse, size: 16, color: theme.colorScheme.secondary),
-                                  ),
-                                  const SizedBox(width: 4),
-                                  Text(
-                                    '${product['wareHouseStock']}',
-                                    style: theme.textTheme.bodyMedium?.copyWith(
-                                      fontWeight: FontWeight.bold,
-                                    ),
-                                  ),
-                                ],
+                            message: 'Product brand',
+                            child: Chip(
+                              visualDensity: VisualDensity.compact,
+                              backgroundColor: Colors.blue[50],
+                              label: Text(
+                                product['brand'],
+                                style: theme.textTheme.bodySmall,
                               ),
-                              Text(
-                                'Min: $minStock | Max: $maxStock',
-                                style: theme.textTheme.bodySmall?.copyWith(
-                                  color: theme.colorScheme.secondary,
+                            ),
+                          ),
+                          Tooltip(
+                            message: 'Product category',
+                            child: Chip(
+                              visualDensity: VisualDensity.compact,
+                              backgroundColor: Colors.purple[50],
+                              label: Text(
+                                product['category'],
+                                style: theme.textTheme.bodySmall,
+                              ),
+                            ),
+                          ),
+                          if (product['model'] != null && product['model'].toString().isNotEmpty)
+                            Tooltip(
+                              message: 'Product model',
+                              child: Chip(
+                                visualDensity: VisualDensity.compact,
+                                backgroundColor: Colors.green[50],
+                                label: Text(
+                                  product['model'],
+                                  style: theme.textTheme.bodySmall,
                                 ),
                               ),
-                            ],
+                            ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+
+                      // Warehouse stock information
+                      Column(
+                        children: [
+                          _buildStockInfoRow(
+                            context,
+                            icon: Icons.warehouse,
+                            label: 'Warehouse Stock',
+                            value: '$warehouseStock units',
+                            isCritical: isOutOfStock,
+                            isLow: isLowStock,
+                          ),
+                          const SizedBox(height: 6),
+                          Text(
+                            'Max: $maxStock',
+                            style: theme.textTheme.labelSmall,
                           ),
                         ],
                       ),
-
-                      // Barra de progresso
                       const SizedBox(height: 8),
-                      LinearProgressIndicator(
-                        value: currentStock / (maxStock * 1.0),
-                        backgroundColor: Colors.grey[200],
-                        color: isOutOfStock
-                            ? Colors.red
-                            : isLowStock
-                                ? Colors.orange
-                                : isBelowMin
-                                    ? Colors.amber
-                                    : Colors.green,
-                        minHeight: 4,
+
+                      // Warehouse stock progress bar
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Warehouse Stock Level',
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          LinearProgressIndicator(
+                            value: warehouseStock / (maxStock * 1.0),
+                            backgroundColor: Colors.grey[200],
+                            color: warehouseProgressColor,
+                            minHeight: 6,
+                          ),
+                          Padding(
+                            padding: const EdgeInsets.only(top: 4),
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Text('0', style: theme.textTheme.labelSmall),
+                                Text('${(maxStock * 0.5).toInt()}', style: theme.textTheme.labelSmall),
+                                Text('$maxStock', style: theme.textTheme.labelSmall),
+                              ],
+                            ),
+                          ),
+                        ],
                       ),
                     ],
                   ),
@@ -595,6 +611,7 @@ class _WarehouseManagementPageState extends State<WarehouseManagementPage>
       },
     );
   }
+
 
   Widget _buildTransferBetweenWarehouses() {
     return Center(
@@ -1349,13 +1366,16 @@ class _WarehouseManagementPageState extends State<WarehouseManagementPage>
     );
   }
 
-  Widget _buildTransferCard(BuildContext context, QueryDocumentSnapshot product) {
+  Widget _buildTransferCard(BuildContext context, QueryDocumentSnapshot product) { // SHOP TO WAREHOUSE
     final theme = Theme.of(context);
     final shopStock = product['stockCurrent'] as int;
-    final warehouseStock = product['wareHouseStock'] as int;
     final minStock = product['stockMin'] as int;
-    final maxStock = product['stockMax'] as int;
     final productId = product.id;
+
+    // Stock status definitions
+    final isOutOfStock = shopStock <= 0;
+    final isLowStock = shopStock > 0 && shopStock <= 5;
+    final isBelowMin = shopStock < minStock && !isLowStock;
 
     return StreamBuilder<DocumentSnapshot>(
       stream: FirebaseFirestore.instance
@@ -1370,46 +1390,87 @@ class _WarehouseManagementPageState extends State<WarehouseManagementPage>
         return Center(
           child: Container(
             width: MediaQuery.of(context).size.width * 0.6,
-            margin: const EdgeInsets.symmetric(vertical: 2.0), // Further reduced margin
+            margin: const EdgeInsets.symmetric(vertical: 2.0),
             child: Card(
-              elevation: 0, // No shadow for cleaner look
+              elevation: 0,
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(8),
                 side: BorderSide(
-                  color: Colors.grey[200]!, // Very subtle border
+                  color: Colors.grey[200]!,
                   width: 1,
                 ),
               ),
               child: InkWell(
                 borderRadius: BorderRadius.circular(8),
-                hoverColor: Colors.transparent, // Remove hover effect
-                splashColor: Colors.transparent, // Remove splash effect
-                highlightColor: Colors.transparent, // Remove highlight effect
+                hoverColor: Colors.transparent,
+                splashColor: Colors.transparent,
+                highlightColor: Colors.transparent,
                 onTap: () async {
                   await _showTransferToWarehouseDialog(context, product);
                 },
                 child: Padding(
-                  padding: const EdgeInsets.fromLTRB(12, 8, 12, 8), // Top/bottom padding reduced
+                  padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      // Product name
-                      Text(
-                        product['name'],
-                        style: theme.textTheme.titleMedium?.copyWith(
-                          fontWeight: FontWeight.bold,
-                          color: Colors.deepPurple, // Purple text color
-                        ),
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
+                      // Product name and status
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Expanded(
+                            child: Text(
+                              product['name'],
+                              style: theme.textTheme.titleMedium?.copyWith(
+                                fontWeight: FontWeight.bold,
+                                color: Colors.deepPurple,
+                              ),
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: isOutOfStock
+                                  ? Colors.red.withOpacity(0.2)
+                                  : isLowStock
+                                      ? Colors.orange.withOpacity(0.2)
+                                      : isBelowMin
+                                          ? Colors.amber.withOpacity(0.2)
+                                          : Colors.green.withOpacity(0.2),
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: Text(
+                              isOutOfStock
+                                  ? 'OUT OF STOCK'
+                                  : isLowStock
+                                      ? 'LOW STOCK'
+                                      : isBelowMin
+                                          ? 'BELOW MIN'
+                                          : 'IN STOCK',
+                              style: theme.textTheme.labelSmall?.copyWith(
+                                color: isOutOfStock
+                                    ? Colors.red
+                                    : isLowStock
+                                        ? Colors.orange
+                                        : isBelowMin
+                                            ? Colors.amber[800]
+                                            : Colors.green,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
-                      const SizedBox(height: 6), // Reduced spacing
+                      const SizedBox(height: 6),
 
                       // Basic info with tooltips
-                      Row(
+                      Wrap(
+                        spacing: 6,
+                        runSpacing: 6,
                         children: [
                           Tooltip(
-                            message: 'Product Brand',
+                            message: 'Product brand',
                             child: Chip(
                               visualDensity: VisualDensity.compact,
                               backgroundColor: Colors.blue[50],
@@ -1419,9 +1480,8 @@ class _WarehouseManagementPageState extends State<WarehouseManagementPage>
                               ),
                             ),
                           ),
-                          const SizedBox(width: 6),
                           Tooltip(
-                            message: 'Product Category',
+                            message: 'Product category',
                             child: Chip(
                               visualDensity: VisualDensity.compact,
                               backgroundColor: Colors.purple[50],
@@ -1431,42 +1491,34 @@ class _WarehouseManagementPageState extends State<WarehouseManagementPage>
                               ),
                             ),
                           ),
-                          const SizedBox(width: 6),
-                          Tooltip(
-                            message: 'Product Model',
-                            child: Chip(
-                              visualDensity: VisualDensity.compact,
-                              backgroundColor: Colors.purple[50],
-                              label: Text(
-                                product['model'],
-                                style: theme.textTheme.bodySmall,
+                          if (product['model'] != null && product['model'].toString().isNotEmpty)
+                            Tooltip(
+                              message: 'Product model',
+                              child: Chip(
+                                visualDensity: VisualDensity.compact,
+                                backgroundColor: Colors.green[50],
+                                label: Text(
+                                  product['model'],
+                                  style: theme.textTheme.bodySmall,
+                                ),
                               ),
                             ),
-                          ),
                         ],
                       ),
-                      const SizedBox(height: 8), // Reduced spacing
+                      const SizedBox(height: 8),
 
-                      // Stock section - Vertical layout
+                      // Shop stock information
                       Column(
                         children: [
-                          // Shop Stock
                           _buildStockInfoRow(
                             context,
                             icon: Icons.store,
                             label: 'Shop Stock',
                             value: '$shopStock units',
-                            minMax: 'Min: $minStock | Max: $maxStock',
+                            isCritical: isOutOfStock,
+                            isLow: isLowStock || isBelowMin,
                           ),
-                          const SizedBox(height: 6), // Reduced spacing
-                          
-                          // Warehouse Stock
-                          _buildStockInfoRow(
-                            context,
-                            icon: Icons.warehouse,
-                            label: 'Warehouse Stock',
-                            value: '$warehouseStock units',
-                          ),
+                          const SizedBox(height: 6),
                         ],
                       ),
                     ],
@@ -1485,20 +1537,30 @@ class _WarehouseManagementPageState extends State<WarehouseManagementPage>
     required IconData icon,
     required String label,
     required String value,
-    String? minMax,
+    bool isCritical = false,
+    bool isLow = false,
   }) {
     final theme = Theme.of(context);
+    Color statusColor = Colors.grey;
+    
+    if (isCritical) {
+      statusColor = Colors.red;
+    } else if (isLow) {
+      statusColor = Colors.orange;
+    } else {
+      statusColor = Colors.green;
+    }
 
     return Container(
-      padding: const EdgeInsets.fromLTRB(8, 6, 8, 6), // More compact padding
+      padding: const EdgeInsets.fromLTRB(8, 6, 8, 6),
       decoration: BoxDecoration(
         color: Colors.grey[50],
         borderRadius: BorderRadius.circular(6),
       ),
       child: Row(
         children: [
-          Icon(icon, size: 16, color: Colors.grey[600]), // Smaller icon
-          const SizedBox(width: 6), // Reduced spacing
+          Icon(icon, size: 16, color: statusColor),
+          const SizedBox(width: 6),
           Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -1512,13 +1574,9 @@ class _WarehouseManagementPageState extends State<WarehouseManagementPage>
                 value,
                 style: theme.textTheme.bodyMedium?.copyWith(
                   fontWeight: FontWeight.bold,
+                  color: statusColor,
                 ),
               ),
-              if (minMax != null)
-                Text(
-                  minMax,
-                  style: theme.textTheme.labelSmall,
-                ),
             ],
           ),
         ],

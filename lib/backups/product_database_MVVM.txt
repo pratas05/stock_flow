@@ -13,10 +13,11 @@ import 'package:stockflow/reusable_widgets/vat_manager.dart';
 // [1. MODEL]
 class ProductModel {
   final String? id;
-  final String name, description, category, subCategory, brand, model, vatCode, storeNumber, productLocation;
-  final int stockMax, stockCurrent, stockOrder, stockMin, wareHouseStock, stockBreak;
+  final String name, description, category, subCategory, brand, model, vatCode, storeNumber;
+  final int stockMax, stockCurrent, stockMin, wareHouseStock, stockBreak;
   final double lastPurchasePrice, basePrice, vatPrice;
   final Timestamp createdAt;
+  final List<String> productLocations; // Changed to List<String>
 
   ProductModel({
     this.id,
@@ -28,7 +29,6 @@ class ProductModel {
     required this.model,
     required this.stockMax,
     required this.stockCurrent,
-    required this.stockOrder,
     required this.stockMin,
     required this.wareHouseStock,
     required this.stockBreak,
@@ -37,7 +37,7 @@ class ProductModel {
     required this.vatCode,
     required this.vatPrice,
     required this.storeNumber,
-    required this.productLocation,
+    required this.productLocations, // Changed from productLocation
     required this.createdAt,
   });
 
@@ -53,7 +53,6 @@ class ProductModel {
       model: data['model'] ?? '',
       stockMax: data['stockMax'] ?? 0,
       stockCurrent: data['stockCurrent'] ?? 0,
-      stockOrder: data['stockOrder'] ?? 0,
       stockMin: data['stockMin'] ?? 0,
       wareHouseStock: data['wareHouseStock'] ?? 0,
       stockBreak: data['stockBreak'] ?? 0,
@@ -62,7 +61,7 @@ class ProductModel {
       vatCode: data['vatCode'] ?? '',
       vatPrice: data['vatPrice']?.toDouble() ?? 0.0,
       storeNumber: data['storeNumber'] ?? '',
-      productLocation: data['productLocation'] ?? 'Not Located',
+      productLocations: List<String>.from(data['productLocations'] ?? []), // Changed
       createdAt: data['createdAt'] ?? Timestamp.now(),
     );
   }
@@ -77,7 +76,6 @@ class ProductModel {
       'model': model,
       'stockMax': stockMax,
       'stockCurrent': stockCurrent,
-      'stockOrder': stockOrder,
       'stockMin': stockMin,
       'wareHouseStock': wareHouseStock,
       'stockBreak': stockBreak,
@@ -86,7 +84,7 @@ class ProductModel {
       'vatCode': vatCode,
       'vatPrice': vatPrice,
       'storeNumber': storeNumber,
-      'productLocation': productLocation,
+      'productLocations': productLocations, // Changed
       'createdAt': createdAt,
     };
   }
@@ -298,7 +296,7 @@ class ProductViewModel {
         }
       }
     } catch (e) {
-      print('Error cleaning up expired discounts: $e');
+      // print('Error cleaning up expired discounts: $e');
     }
   }
 }
@@ -325,12 +323,12 @@ class _ProductDatabasePageState extends State<ProductDatabasePage> with TickerPr
   final _modelController = TextEditingController();
   final _stockMaxController = TextEditingController();
   final _wareHouseStockController = TextEditingController();
-  final _stockOrderController = TextEditingController(text: "0"); 
   final _stockMinController = TextEditingController();
   final _lastPurchasePriceController = TextEditingController();
   final _basePriceController = TextEditingController(); 
   final _vatCodeController = TextEditingController();
-  final _productLocationController = TextEditingController();
+  final _locationInputController = TextEditingController();
+  final List<String> _productLocations = [];
 
   // Controller for search functionality
   final _searchController = TextEditingController();
@@ -438,11 +436,13 @@ Future<double> _getVatRate(String vatCode, String storeNumber) async {
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: _isStoreManager && _hasAdminAccess ? 2 : 1, vsync: this);
+    // Inicializa com o número correto de abas
+    int tabCount = _isStoreManager && _hasAdminAccess ? 2 : 1;
+    _tabController = TabController(length: tabCount, vsync: this);
+    
     _searchController.addListener(() {
       setState(() {
-        _searchText = _searchController.text;int tabCount = _isStoreManager && _hasAdminAccess ? 2 : 1; // Configurar o TabController dinamicamente com base em _isStoreManager
-        _tabController = TabController(length: tabCount, vsync: this);
+        _searchText = _searchController.text;
       });
     });
     _cleanupExpiredDiscounts();
@@ -492,7 +492,6 @@ Future<double> _getVatRate(String vatCode, String storeNumber) async {
     // Parse numeric values
     final stockMax = int.tryParse(_stockMaxController.text) ?? 0;
     final stockMin = int.tryParse(_stockMinController.text) ?? 0;
-    final stockOrder = int.tryParse(_stockOrderController.text) ?? 0;
     final wareHouseStock = _wareHouseStockController.text.isEmpty
         ? 0
         : int.tryParse(_wareHouseStockController.text) ?? 0;
@@ -502,10 +501,6 @@ Future<double> _getVatRate(String vatCode, String storeNumber) async {
     // Validate stock values
     if (stockMin >= stockMax) {
       _showSnackBar("Stock Min must be less than Stock Max");
-      return;
-    }
-    if (stockOrder > stockMax) {
-      _showSnackBar("You cannot order more stock than your warehouse capacity");
       return;
     }
     if (wareHouseStock > stockMax) {
@@ -553,7 +548,6 @@ Future<double> _getVatRate(String vatCode, String storeNumber) async {
         model: _modelController.text.trim(),
         stockMax: stockMax,
         stockCurrent: 0,
-        stockOrder: stockOrder,
         stockMin: stockMin,
         wareHouseStock: wareHouseStock,
         stockBreak: 0,
@@ -562,9 +556,7 @@ Future<double> _getVatRate(String vatCode, String storeNumber) async {
         vatPrice: vatPrice,
         vatCode: vatCode,
         storeNumber: storeNumber,
-        productLocation: _productLocationController.text.trim().isNotEmpty
-            ? _productLocationController.text.trim()
-            : 'Not Located',
+        productLocations: _productLocations.isNotEmpty ? _productLocations : ['Not Located'], 
         createdAt: Timestamp.now(),
       );
 
@@ -606,7 +598,7 @@ Future<double> _getVatRate(String vatCode, String storeNumber) async {
     _stockMinController.clear();
     _lastPurchasePriceController.clear();
     _vatCodeController.clear();
-    _productLocationController.clear();
+    _productLocations.clear();
     _basePriceController.clear();
   }
 
@@ -652,8 +644,8 @@ Future<double> _getVatRate(String vatCode, String storeNumber) async {
         child: TabBarView(
           controller: _tabController,
           children: [
-            if (_isStoreManager && _hasAdminAccess) _buildProductForm(),  // Exibe apenas se for Store Manager
-            _buildProductList(),
+            _buildProductList(),  // Edit & Search primeiro
+            if (_isStoreManager && _hasAdminAccess) _buildProductForm(),  // Register depois, se aplicável
           ],
         ),
       ),
@@ -678,7 +670,7 @@ Future<double> _getVatRate(String vatCode, String storeNumber) async {
 
   List<Widget> _buildTabs() {
     List<Widget> tabs = [
-      // Exibe sempre o "Edit & Search Products"
+      // Sempre exibe "Edit & Search Products" primeiro
       Tab(
         child: Padding(
           padding: EdgeInsets.symmetric(vertical: 5),
@@ -687,9 +679,9 @@ Future<double> _getVatRate(String vatCode, String storeNumber) async {
       ),
     ];
 
-    // Se for Store Manager, adiciona a aba "Register Products"
+    // Se for Store Manager, adiciona a aba "Register Products" depois
     if (_isStoreManager && _hasAdminAccess) {
-      tabs.insert(0,
+      tabs.add(
         Tab(
           child: Padding(
             padding: EdgeInsets.symmetric(vertical: 5),
@@ -734,12 +726,63 @@ Future<double> _getVatRate(String vatCode, String storeNumber) async {
       _buildTextField(_wareHouseStockController, "WareHouse Stock", isNumber: true),
       // _buildTextField(_stockCurrentController, "Current Stock", isNumber: true, readOnly: true),
       // _buildTextField(_stockBreakController, "Stock Break", isNumber: true, readOnly: true),
-      _buildTextField(_stockOrderController, "Order Stock (Default = 0)", isNumber: true),
       _buildTextField(_lastPurchasePriceController, "Last Purchase Price", isNumber: true),
       _buildTextField(_basePriceController, "Base Price", isNumber: true,),
       _buildTextField(_vatCodeController, "VAT Code (1, 2, 3, or 4)", isNumber: true, maxLength: 1),
-      _buildTextField(_productLocationController, "Product Location (default: Not Located)"),
+      _buildLocationField(),
     ];
+  }
+
+  Widget _buildLocationField() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8.0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(height: 8),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              for (var location in _productLocations)
+                Chip(
+                  label: Text(location),
+                  onDeleted: () {
+                    setState(() {
+                      _productLocations.remove(location);
+                    });
+                  },
+                ),
+            ],
+          ),
+          SizedBox(height: 8),
+          Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: _locationInputController,
+                  decoration: InputDecoration(
+                    labelText: "Add location (e.g., AD-20)",
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+              ),
+              IconButton(
+                icon: Icon(Icons.add),
+                onPressed: () {
+                  if (_locationInputController.text.isNotEmpty) {
+                    setState(() {
+                      _productLocations.add(_locationInputController.text);
+                      _locationInputController.clear();
+                    });
+                  }
+                },
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
   }
 
   Widget _buildButton(String label, VoidCallback onPressed, {Color? color, double? width}) {
@@ -905,7 +948,6 @@ Future<double> _getVatRate(String vatCode, String storeNumber) async {
         Timestamp? endDate;
         int? discountPercent;
 
-        // Check for active discount in product data
         if (productData.containsKey('vatPrice') && 
             productData['vatPrice'] != null &&
             productData.containsKey('endDate') &&
@@ -937,7 +979,6 @@ Future<double> _getVatRate(String vatCode, String storeNumber) async {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      // First row - Name and actions
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
@@ -999,7 +1040,6 @@ Future<double> _getVatRate(String vatCode, String storeNumber) async {
                       ),
                       const SizedBox(height: 8),
 
-                      // Second row - Basic details
                       Row(
                         children: [
                           Tooltip(
@@ -1025,7 +1065,6 @@ Future<double> _getVatRate(String vatCode, String storeNumber) async {
                       ),
                       const SizedBox(height: 8),
 
-                      // Third row - Price and location
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
@@ -1040,7 +1079,6 @@ Future<double> _getVatRate(String vatCode, String storeNumber) async {
                                   const SizedBox(width: 4),
                                   if (hasValidDiscount) ...[
                                     Text(
-                                      // make the inverse operation to get the original price
                                       "€${(vatPrice! / (1 - (discountPercent! / 100))).toStringAsFixed(2)}",
                                       style: theme.textTheme.bodyMedium?.copyWith(
                                         decoration: TextDecoration.lineThrough,
@@ -1073,7 +1111,7 @@ Future<double> _getVatRate(String vatCode, String storeNumber) async {
                                     color: Colors.blue[700]),
                                   const SizedBox(width: 4),
                                   Text(
-                                    product['productLocation'] ?? 'Not Located',
+                                    (product['productLocations'] as List<dynamic>?)?.join(', ') ?? 'Not Located',
                                     style: theme.textTheme.bodyMedium?.copyWith(
                                       color: Colors.blue[700],
                                     ),
@@ -1083,7 +1121,6 @@ Future<double> _getVatRate(String vatCode, String storeNumber) async {
                             ],
                           ),
                           
-                          // Stock info with color scheme
                           Column(
                             crossAxisAlignment: CrossAxisAlignment.end,
                             children: [
@@ -1160,14 +1197,14 @@ Future<double> _getVatRate(String vatCode, String storeNumber) async {
     final modelController = TextEditingController(text: productModel.model);
     final stockMaxController = TextEditingController(text: productModel.stockMax.toString());
     final stockMinController = TextEditingController(text: productModel.stockMin.toString());
-    final stockOrderController = TextEditingController(text: productModel.stockOrder.toString());
     final wareHouseStockController = TextEditingController(text: productModel.wareHouseStock.toString());
     final lastPurchasePriceController = TextEditingController(text: productModel.lastPurchasePrice.toString());
     final basePriceController = TextEditingController(text: productModel.basePrice.toString());
     final vatCodeController = TextEditingController(text: productModel.vatCode);
-    final productLocationController = TextEditingController(text: productModel.productLocation);
+    final locationController = TextEditingController();
+    final List<String> locationsList = [...productModel.productLocations]; // Copy locations
 
-    // Variável para armazenar o preço com VAT em tempo real
+    // Function to calculate VAT price
     double vatPrice = productModel.vatPrice;
 
     // Função para calcular o VAT price
@@ -1192,14 +1229,14 @@ Future<double> _getVatRate(String vatCode, String storeNumber) async {
       builder: (context) {
         return StatefulBuilder(
           builder: (context, setState) {
-          // Adiciona listeners para atualizar o VAT price quando basePrice ou vatCode mudam
-          basePriceController.addListener(() {
-            calculateVatPrice();
-          });
+            basePriceController.addListener(() {
+              calculateVatPrice();
+            });
 
-          vatCodeController.addListener(() {
-            calculateVatPrice();
-          });
+            vatCodeController.addListener(() {
+              calculateVatPrice();
+            });
+
             return Dialog(
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
               insetPadding: EdgeInsets.symmetric(horizontal: 20, vertical: 24), elevation: 10,
@@ -1228,11 +1265,11 @@ Future<double> _getVatRate(String vatCode, String storeNumber) async {
                                   "📦 Product Details",
                                   style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: primaryColor),
                                 ),
-                                if (_isStoreManager && _hasAdminAccess) // Só edita se for Admin
+                                if (_isStoreManager && _hasAdminAccess)
                                 IconButton(
                                   icon: Icon(isEditing ? Icons.save : Icons.edit, color: isEditing ? Colors.green : Colors.blue),
                                   onPressed: () async {
-                                    if (isEditing) { // Create a map to track changed fields
+                                    if (isEditing) {
                                       Map<String, Map<String, dynamic>> changedFields = {};
                                       
                                       if (nameController.text != productModel.name) {
@@ -1275,11 +1312,6 @@ Future<double> _getVatRate(String vatCode, String storeNumber) async {
                                           'old': productModel.stockMin.toString(), 'new': stockMinController.text
                                         };
                                       }
-                                      if (int.tryParse(stockOrderController.text) != productModel.stockOrder) {
-                                        changedFields['Stock Order'] = {
-                                          'old': productModel.stockOrder.toString(), 'new': stockOrderController.text
-                                        };
-                                      }
                                       if (int.tryParse(wareHouseStockController.text) != productModel.wareHouseStock) {
                                         changedFields['Warehouse Stock'] = {
                                           'old': productModel.wareHouseStock.toString(), 'new': wareHouseStockController.text
@@ -1300,16 +1332,18 @@ Future<double> _getVatRate(String vatCode, String storeNumber) async {
                                           'old': productModel.vatCode, 'new': vatCodeController.text
                                         };
                                       }
-                                      if (productLocationController.text != productModel.productLocation) {
-                                        changedFields['Product Location'] = {
-                                          'old': productModel.productLocation, 'new': productLocationController.text
+                                      if (locationsList.join(',') != productModel.productLocations.join(',')) {
+                                        changedFields['Product Locations'] = {
+                                          'old': productModel.productLocations.join(', '), 
+                                          'new': locationsList.join(', ')
                                         };
                                       }
 
                                       if (changedFields.isEmpty) {
-                                        CustomSnackbar.show(context: context, message: 'No changes were made to the product'); return;
+                                        CustomSnackbar.show(context: context, message: 'No changes were made to the product'); 
+                                        return;
                                       }
-                                      // Validate all required fields
+                                      
                                       if (nameController.text.isEmpty ||
                                           descriptionController.text.isEmpty ||
                                           categoryController.text.isEmpty ||
@@ -1320,33 +1354,23 @@ Future<double> _getVatRate(String vatCode, String storeNumber) async {
                                           stockMinController.text.isEmpty ||
                                           lastPurchasePriceController.text.isEmpty ||
                                           vatCodeController.text.isEmpty) {
-                                        CustomSnackbar.show(context: context, message: 'Please fill in all required fields'); return;
+                                        CustomSnackbar.show(context: context, message: 'Please fill in all required fields'); 
+                                        return;
                                       }
 
                                       int stockMax = int.tryParse(stockMaxController.text) ?? 0;
                                       int stockMin = int.tryParse(stockMinController.text) ?? 0;
-                                      int stockOrder = int.tryParse(stockOrderController.text) ?? 0;
                                       int stockCurrent = productModel.stockCurrent;
                                       int wareHouseStock = int.tryParse(wareHouseStockController.text) ?? productModel.wareHouseStock;
 
                                       if (stockMin >= stockMax) {
-                                        CustomSnackbar.show(context: context, message: 'Minimum stock must be less than maximum stock'); return;
-                                      }
-
-                                      if (stockOrder > stockMax) {
-                                        CustomSnackbar.show(context: context, message: 'You cannot order more stock than your warehouse capacity'); return;
-                                      }
-
-                                      if (wareHouseStock + stockOrder > stockMax) {
-                                        CustomSnackbar.show(context: context, message: 'Warehouse stock cannot exceed maximum stock'); return;
+                                        CustomSnackbar.show(context: context, message: 'Minimum stock must be less than maximum stock'); 
+                                        return;
                                       }
 
                                       if (wareHouseStock + stockCurrent > stockMax) {
-                                        CustomSnackbar.show(context: context, message: 'Warehouse stock cannot exceed maximum stock'); return;
-                                      }
-
-                                      if (stockCurrent + stockOrder > stockMax) {
-                                        CustomSnackbar.show(context: context, message: 'Current stock cannot exceed maximum stock'); return;
+                                        CustomSnackbar.show(context: context, message: 'Warehouse stock cannot exceed maximum stock'); 
+                                        return;
                                       }
 
                                       try {
@@ -1354,9 +1378,8 @@ Future<double> _getVatRate(String vatCode, String storeNumber) async {
                                         final user = FirebaseAuth.instance.currentUser;
                                         if (user == null) throw Exception("No user logged in");
 
-                                        // Get current VAT rate and calculate new vatPrice
                                         final vatRate = await _viewModel._getVatRate(
-                                        vatCodeController.text, storeNumber);
+                                          vatCodeController.text, storeNumber);
                                         final basePrice = double.tryParse(basePriceController.text) ?? 0.0;
                                         final vatPrice = basePrice * (1 + vatRate);
 
@@ -1370,7 +1393,6 @@ Future<double> _getVatRate(String vatCode, String storeNumber) async {
                                           model: modelController.text,
                                           stockMax: stockMax,
                                           stockCurrent: productModel.stockCurrent,
-                                          stockOrder: stockOrder,
                                           stockMin: stockMin,
                                           wareHouseStock: wareHouseStock,
                                           stockBreak: productModel.stockBreak,
@@ -1379,9 +1401,7 @@ Future<double> _getVatRate(String vatCode, String storeNumber) async {
                                           vatCode: vatCodeController.text,
                                           vatPrice: vatPrice,
                                           storeNumber: storeNumber,
-                                          productLocation: productLocationController.text.isNotEmpty 
-                                              ? productLocationController.text 
-                                              : 'Not Located',
+                                          productLocations: locationsList.isNotEmpty ? locationsList : ['Not Located'],
                                           createdAt: productModel.createdAt,
                                         );
 
@@ -1411,7 +1431,9 @@ Future<double> _getVatRate(String vatCode, String storeNumber) async {
                                         print("Error updating product: $e");
                                         CustomSnackbar.show(context: context, message: 'Error updating product');
                                       }
-                                    } else {setState(() => isEditing = true);}
+                                    } else {
+                                      setState(() => isEditing = true);
+                                    }
                                   },
                                 ),
                               ],
@@ -1447,7 +1469,6 @@ Future<double> _getVatRate(String vatCode, String storeNumber) async {
                                 isEditing,
                                 stockMaxController,
                                 stockMinController,
-                                stockOrderController,
                                 wareHouseStockController,
                                 productModel,
                                 highlightColor,
@@ -1458,16 +1479,18 @@ Future<double> _getVatRate(String vatCode, String storeNumber) async {
                                 lastPurchasePriceController,
                                 basePriceController,
                                 highlightColor,
-                                vatCodeController.text, // Código VAT
-                                vatPrice, // Preço com VAT calculado
+                                vatCodeController.text,
+                                vatPrice,
                               ),
                               SizedBox(height: 16),
                               _buildEditableAdditionalInfoSection(
                                 isEditing,
                                 vatCodeController,
-                                productLocationController,
-                                productModel,
+                                locationController,
+                                locationsList,
                                 highlightColor,
+                                setState,
+                                productModel,
                               ),
                               SizedBox(height: 24),
                             ],
@@ -1578,7 +1601,6 @@ Future<double> _getVatRate(String vatCode, String storeNumber) async {
     bool isEditing,
     TextEditingController stockMaxController,
     TextEditingController stockMinController,
-    TextEditingController stockOrderController,
     TextEditingController wareHouseStockController,
     ProductModel productModel,
     Color highlightColor,
@@ -1630,14 +1652,6 @@ Future<double> _getVatRate(String vatCode, String storeNumber) async {
           Divider(height: 16, thickness: 1),
           _buildEditableStockRow(
             isEditing,
-            "Order Stock",
-            stockOrderController,
-            Colors.blue,
-            isNumber: true, isRequired: true,
-          ),
-          Divider(height: 16, thickness: 1),
-          _buildEditableStockRow(
-            isEditing,
             "Min Stock",
             stockMinController,
             Colors.blue,
@@ -1676,8 +1690,7 @@ Future<double> _getVatRate(String vatCode, String storeNumber) async {
                 child: Icon(Icons.attach_money, size: 20, color: highlightColor),
               ),
               SizedBox(width: 16),
-              Text("Pricing Information", 
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: Colors.grey[800])),
+              Text("Pricing Information", style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: Colors.grey[800])),
             ],
           ),
           const SizedBox(height: 16),
@@ -1726,9 +1739,11 @@ Future<double> _getVatRate(String vatCode, String storeNumber) async {
   Widget _buildEditableAdditionalInfoSection(
     bool isEditing,
     TextEditingController vatCodeController,
-    TextEditingController productLocationController,
-    ProductModel productModel,
+    TextEditingController locationController,
+    List<String> locationsList,
     Color highlightColor,
+    StateSetter setState,
+    ProductModel productModel,
   ) {
     return Container(
       decoration: BoxDecoration(color: Colors.white,
@@ -1750,30 +1765,125 @@ Future<double> _getVatRate(String vatCode, String storeNumber) async {
                   ),
                   keyboardType: TextInputType.number,
                   inputFormatters: [
-                  FilteringTextInputFormatter.allow(RegExp(r'[1-4]')), // Esta é a linha crucial!
-                  LengthLimitingTextInputFormatter(1),
-                ],
-                  validator: (value) {if (value == null || value.isEmpty) return 'VAT Code is required'; return null;},
+                    FilteringTextInputFormatter.allow(RegExp(r'[1-4]')),
+                    LengthLimitingTextInputFormatter(1),
+                  ],
+                  validator: (value) {
+                    if (value == null || value.isEmpty) return 'VAT Code is required';
+                    return null;
+                  },
                 )
               : _buildDetailRow(
                   Icons.confirmation_number,
                   "VAT Code", vatCodeController.text, highlightColor,
                 ),
-          const Divider(height: 24, thickness: 1),
-          
-          _buildEditableDetailRow(
-            isEditing,
-            Icons.location_on,
-            "Product Location", productLocationController, highlightColor,
-          ),
           Divider(height: 24, thickness: 1),
           
+          isEditing 
+              ? _buildEditableLocationsField(locationsList, setState)
+              : _buildLocationsDisplay(locationsList, highlightColor),
+          
+          Divider(height: 24, thickness: 1),
           _buildDetailRow(
             Icons.calendar_today,
             "Created At", _formatDate(productModel.createdAt), highlightColor,
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildLocationsDisplay(List<String> locations, Color highlightColor) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          padding: EdgeInsets.all(8),
+          decoration: BoxDecoration(
+            color: highlightColor.withOpacity(0.1),
+            shape: BoxShape.circle,
+          ),
+          child: Icon(Icons.location_on, size: 20, color: highlightColor),
+        ),
+        SizedBox(width: 16),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text("Product Locations", style: TextStyle(fontSize: 14, color: Colors.grey[600])),
+              SizedBox(height: 4),
+              locations.isEmpty
+                  ? Text("Not Located", style: TextStyle(fontSize: 16, color: Colors.grey[800]))
+                  : Wrap(
+                      spacing: 8,
+                      runSpacing: 4,
+                      children: locations.map((location) => Chip(
+                        label: Text(location),
+                      )).toList(),
+                    ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildEditableLocationsField(List<String> locations, StateSetter setState) {
+    final locationController = TextEditingController();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Icon(Icons.location_on, size: 20, color: Colors.blue),
+            SizedBox(width: 16),
+            Text("Product Locations", style: TextStyle(fontSize: 14, color: Colors.grey[600])),
+          ],
+        ),
+        SizedBox(height: 8),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            for (var location in locations)
+              Chip(
+                label: Text(location),
+                onDeleted: () {
+                  setState(() {
+                    locations.remove(location);
+                  });
+                },
+              ),
+          ],
+        ),
+        SizedBox(height: 8),
+        Row(
+          children: [
+            Expanded(
+              child: TextField(
+                controller: locationController,
+                decoration: InputDecoration(
+                  hintText: "Add location (e.g., AD-20)",
+                  border: OutlineInputBorder(),
+                  isDense: true,
+                ),
+              ),
+            ),
+            IconButton(
+              icon: Icon(Icons.add),
+              onPressed: () {
+                if (locationController.text.isNotEmpty) {
+                  setState(() {
+                    locations.add(locationController.text);
+                    locationController.clear();
+                  });
+                }
+              },
+            ),
+          ],
+        ),
+      ],
     );
   }
 

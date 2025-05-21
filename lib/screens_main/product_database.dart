@@ -13,10 +13,11 @@ import 'package:stockflow/reusable_widgets/vat_manager.dart';
 // [1. MODEL]
 class ProductModel {
   final String? id;
-  final String name, description, category, subCategory, brand, model, vatCode, storeNumber, productLocation;
+  final String name, description, category, subCategory, brand, model, vatCode, storeNumber;
   final int stockMax, stockCurrent, stockMin, wareHouseStock, stockBreak;
   final double lastPurchasePrice, basePrice, vatPrice;
   final Timestamp createdAt;
+  final List<String> productLocations; // Changed to List<String>
 
   ProductModel({
     this.id,
@@ -36,7 +37,7 @@ class ProductModel {
     required this.vatCode,
     required this.vatPrice,
     required this.storeNumber,
-    required this.productLocation,
+    required this.productLocations, // Changed from productLocation
     required this.createdAt,
   });
 
@@ -60,7 +61,7 @@ class ProductModel {
       vatCode: data['vatCode'] ?? '',
       vatPrice: data['vatPrice']?.toDouble() ?? 0.0,
       storeNumber: data['storeNumber'] ?? '',
-      productLocation: data['productLocation'] ?? 'Not Located',
+      productLocations: List<String>.from(data['productLocations'] ?? []), // Changed
       createdAt: data['createdAt'] ?? Timestamp.now(),
     );
   }
@@ -83,7 +84,7 @@ class ProductModel {
       'vatCode': vatCode,
       'vatPrice': vatPrice,
       'storeNumber': storeNumber,
-      'productLocation': productLocation,
+      'productLocations': productLocations, // Changed
       'createdAt': createdAt,
     };
   }
@@ -326,7 +327,8 @@ class _ProductDatabasePageState extends State<ProductDatabasePage> with TickerPr
   final _lastPurchasePriceController = TextEditingController();
   final _basePriceController = TextEditingController(); 
   final _vatCodeController = TextEditingController();
-  final _productLocationController = TextEditingController();
+  final _locationInputController = TextEditingController();
+  final List<String> _productLocations = [];
 
   // Controller for search functionality
   final _searchController = TextEditingController();
@@ -554,9 +556,7 @@ Future<double> _getVatRate(String vatCode, String storeNumber) async {
         vatPrice: vatPrice,
         vatCode: vatCode,
         storeNumber: storeNumber,
-        productLocation: _productLocationController.text.trim().isNotEmpty
-            ? _productLocationController.text.trim()
-            : 'Not Located',
+        productLocations: _productLocations.isNotEmpty ? _productLocations : ['Not Located'], 
         createdAt: Timestamp.now(),
       );
 
@@ -598,7 +598,7 @@ Future<double> _getVatRate(String vatCode, String storeNumber) async {
     _stockMinController.clear();
     _lastPurchasePriceController.clear();
     _vatCodeController.clear();
-    _productLocationController.clear();
+    _productLocations.clear();
     _basePriceController.clear();
   }
 
@@ -729,8 +729,60 @@ Future<double> _getVatRate(String vatCode, String storeNumber) async {
       _buildTextField(_lastPurchasePriceController, "Last Purchase Price", isNumber: true),
       _buildTextField(_basePriceController, "Base Price", isNumber: true,),
       _buildTextField(_vatCodeController, "VAT Code (1, 2, 3, or 4)", isNumber: true, maxLength: 1),
-      _buildTextField(_productLocationController, "Product Location (default: Not Located)"),
+      _buildLocationField(),
     ];
+  }
+
+  Widget _buildLocationField() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8.0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(height: 8),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              for (var location in _productLocations)
+                Chip(
+                  label: Text(location),
+                  onDeleted: () {
+                    setState(() {
+                      _productLocations.remove(location);
+                    });
+                  },
+                ),
+            ],
+          ),
+          SizedBox(height: 8),
+          Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: _locationInputController,
+                  decoration: InputDecoration(
+                    labelText: "Add location (e.g., AD-20)",
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+              ),
+              IconButton(
+                icon: Icon(Icons.add),
+                onPressed: () {
+                  if (_locationInputController.text.isNotEmpty) {
+                    setState(() {
+                      _productLocations.add(_locationInputController.text);
+                      _locationInputController.clear();
+                    });
+                  }
+                },
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
   }
 
   Widget _buildButton(String label, VoidCallback onPressed, {Color? color, double? width}) {
@@ -896,7 +948,6 @@ Future<double> _getVatRate(String vatCode, String storeNumber) async {
         Timestamp? endDate;
         int? discountPercent;
 
-        // Check for active discount in product data
         if (productData.containsKey('vatPrice') && 
             productData['vatPrice'] != null &&
             productData.containsKey('endDate') &&
@@ -928,7 +979,6 @@ Future<double> _getVatRate(String vatCode, String storeNumber) async {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      // First row - Name and actions
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
@@ -990,7 +1040,6 @@ Future<double> _getVatRate(String vatCode, String storeNumber) async {
                       ),
                       const SizedBox(height: 8),
 
-                      // Second row - Basic details
                       Row(
                         children: [
                           Tooltip(
@@ -1016,7 +1065,6 @@ Future<double> _getVatRate(String vatCode, String storeNumber) async {
                       ),
                       const SizedBox(height: 8),
 
-                      // Third row - Price and location
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
@@ -1031,7 +1079,6 @@ Future<double> _getVatRate(String vatCode, String storeNumber) async {
                                   const SizedBox(width: 4),
                                   if (hasValidDiscount) ...[
                                     Text(
-                                      // make the inverse operation to get the original price
                                       "€${(vatPrice! / (1 - (discountPercent! / 100))).toStringAsFixed(2)}",
                                       style: theme.textTheme.bodyMedium?.copyWith(
                                         decoration: TextDecoration.lineThrough,
@@ -1064,7 +1111,7 @@ Future<double> _getVatRate(String vatCode, String storeNumber) async {
                                     color: Colors.blue[700]),
                                   const SizedBox(width: 4),
                                   Text(
-                                    product['productLocation'] ?? 'Not Located',
+                                    (product['productLocations'] as List<dynamic>?)?.join(', ') ?? 'Not Located',
                                     style: theme.textTheme.bodyMedium?.copyWith(
                                       color: Colors.blue[700],
                                     ),
@@ -1074,7 +1121,6 @@ Future<double> _getVatRate(String vatCode, String storeNumber) async {
                             ],
                           ),
                           
-                          // Stock info with color scheme
                           Column(
                             crossAxisAlignment: CrossAxisAlignment.end,
                             children: [
@@ -1155,9 +1201,10 @@ Future<double> _getVatRate(String vatCode, String storeNumber) async {
     final lastPurchasePriceController = TextEditingController(text: productModel.lastPurchasePrice.toString());
     final basePriceController = TextEditingController(text: productModel.basePrice.toString());
     final vatCodeController = TextEditingController(text: productModel.vatCode);
-    final productLocationController = TextEditingController(text: productModel.productLocation);
+    final locationController = TextEditingController();
+    final List<String> locationsList = [...productModel.productLocations]; // Copy locations
 
-    // Variável para armazenar o preço com VAT em tempo real
+    // Function to calculate VAT price
     double vatPrice = productModel.vatPrice;
 
     // Função para calcular o VAT price
@@ -1182,14 +1229,14 @@ Future<double> _getVatRate(String vatCode, String storeNumber) async {
       builder: (context) {
         return StatefulBuilder(
           builder: (context, setState) {
-          // Adiciona listeners para atualizar o VAT price quando basePrice ou vatCode mudam
-          basePriceController.addListener(() {
-            calculateVatPrice();
-          });
+            basePriceController.addListener(() {
+              calculateVatPrice();
+            });
 
-          vatCodeController.addListener(() {
-            calculateVatPrice();
-          });
+            vatCodeController.addListener(() {
+              calculateVatPrice();
+            });
+
             return Dialog(
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
               insetPadding: EdgeInsets.symmetric(horizontal: 20, vertical: 24), elevation: 10,
@@ -1218,11 +1265,11 @@ Future<double> _getVatRate(String vatCode, String storeNumber) async {
                                   "📦 Product Details",
                                   style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: primaryColor),
                                 ),
-                                if (_isStoreManager && _hasAdminAccess) // Só edita se for Admin
+                                if (_isStoreManager && _hasAdminAccess)
                                 IconButton(
                                   icon: Icon(isEditing ? Icons.save : Icons.edit, color: isEditing ? Colors.green : Colors.blue),
                                   onPressed: () async {
-                                    if (isEditing) { // Create a map to track changed fields
+                                    if (isEditing) {
                                       Map<String, Map<String, dynamic>> changedFields = {};
                                       
                                       if (nameController.text != productModel.name) {
@@ -1285,16 +1332,18 @@ Future<double> _getVatRate(String vatCode, String storeNumber) async {
                                           'old': productModel.vatCode, 'new': vatCodeController.text
                                         };
                                       }
-                                      if (productLocationController.text != productModel.productLocation) {
-                                        changedFields['Product Location'] = {
-                                          'old': productModel.productLocation, 'new': productLocationController.text
+                                      if (locationsList.join(',') != productModel.productLocations.join(',')) {
+                                        changedFields['Product Locations'] = {
+                                          'old': productModel.productLocations.join(', '), 
+                                          'new': locationsList.join(', ')
                                         };
                                       }
 
                                       if (changedFields.isEmpty) {
-                                        CustomSnackbar.show(context: context, message: 'No changes were made to the product'); return;
+                                        CustomSnackbar.show(context: context, message: 'No changes were made to the product'); 
+                                        return;
                                       }
-                                      // Validate all required fields
+                                      
                                       if (nameController.text.isEmpty ||
                                           descriptionController.text.isEmpty ||
                                           categoryController.text.isEmpty ||
@@ -1305,7 +1354,8 @@ Future<double> _getVatRate(String vatCode, String storeNumber) async {
                                           stockMinController.text.isEmpty ||
                                           lastPurchasePriceController.text.isEmpty ||
                                           vatCodeController.text.isEmpty) {
-                                        CustomSnackbar.show(context: context, message: 'Please fill in all required fields'); return;
+                                        CustomSnackbar.show(context: context, message: 'Please fill in all required fields'); 
+                                        return;
                                       }
 
                                       int stockMax = int.tryParse(stockMaxController.text) ?? 0;
@@ -1314,11 +1364,13 @@ Future<double> _getVatRate(String vatCode, String storeNumber) async {
                                       int wareHouseStock = int.tryParse(wareHouseStockController.text) ?? productModel.wareHouseStock;
 
                                       if (stockMin >= stockMax) {
-                                        CustomSnackbar.show(context: context, message: 'Minimum stock must be less than maximum stock'); return;
+                                        CustomSnackbar.show(context: context, message: 'Minimum stock must be less than maximum stock'); 
+                                        return;
                                       }
 
                                       if (wareHouseStock + stockCurrent > stockMax) {
-                                        CustomSnackbar.show(context: context, message: 'Warehouse stock cannot exceed maximum stock'); return;
+                                        CustomSnackbar.show(context: context, message: 'Warehouse stock cannot exceed maximum stock'); 
+                                        return;
                                       }
 
                                       try {
@@ -1326,9 +1378,8 @@ Future<double> _getVatRate(String vatCode, String storeNumber) async {
                                         final user = FirebaseAuth.instance.currentUser;
                                         if (user == null) throw Exception("No user logged in");
 
-                                        // Get current VAT rate and calculate new vatPrice
                                         final vatRate = await _viewModel._getVatRate(
-                                        vatCodeController.text, storeNumber);
+                                          vatCodeController.text, storeNumber);
                                         final basePrice = double.tryParse(basePriceController.text) ?? 0.0;
                                         final vatPrice = basePrice * (1 + vatRate);
 
@@ -1350,9 +1401,7 @@ Future<double> _getVatRate(String vatCode, String storeNumber) async {
                                           vatCode: vatCodeController.text,
                                           vatPrice: vatPrice,
                                           storeNumber: storeNumber,
-                                          productLocation: productLocationController.text.isNotEmpty 
-                                              ? productLocationController.text 
-                                              : 'Not Located',
+                                          productLocations: locationsList.isNotEmpty ? locationsList : ['Not Located'],
                                           createdAt: productModel.createdAt,
                                         );
 
@@ -1382,7 +1431,9 @@ Future<double> _getVatRate(String vatCode, String storeNumber) async {
                                         print("Error updating product: $e");
                                         CustomSnackbar.show(context: context, message: 'Error updating product');
                                       }
-                                    } else {setState(() => isEditing = true);}
+                                    } else {
+                                      setState(() => isEditing = true);
+                                    }
                                   },
                                 ),
                               ],
@@ -1428,16 +1479,18 @@ Future<double> _getVatRate(String vatCode, String storeNumber) async {
                                 lastPurchasePriceController,
                                 basePriceController,
                                 highlightColor,
-                                vatCodeController.text, // Código VAT
-                                vatPrice, // Preço com VAT calculado
+                                vatCodeController.text,
+                                vatPrice,
                               ),
                               SizedBox(height: 16),
                               _buildEditableAdditionalInfoSection(
                                 isEditing,
                                 vatCodeController,
-                                productLocationController,
-                                productModel,
+                                locationController,
+                                locationsList,
                                 highlightColor,
+                                setState,
+                                productModel,
                               ),
                               SizedBox(height: 24),
                             ],
@@ -1686,9 +1739,11 @@ Future<double> _getVatRate(String vatCode, String storeNumber) async {
   Widget _buildEditableAdditionalInfoSection(
     bool isEditing,
     TextEditingController vatCodeController,
-    TextEditingController productLocationController,
-    ProductModel productModel,
+    TextEditingController locationController,
+    List<String> locationsList,
     Color highlightColor,
+    StateSetter setState,
+    ProductModel productModel,
   ) {
     return Container(
       decoration: BoxDecoration(color: Colors.white,
@@ -1710,30 +1765,125 @@ Future<double> _getVatRate(String vatCode, String storeNumber) async {
                   ),
                   keyboardType: TextInputType.number,
                   inputFormatters: [
-                  FilteringTextInputFormatter.allow(RegExp(r'[1-4]')), // Esta é a linha crucial!
-                  LengthLimitingTextInputFormatter(1),
-                ],
-                  validator: (value) {if (value == null || value.isEmpty) return 'VAT Code is required'; return null;},
+                    FilteringTextInputFormatter.allow(RegExp(r'[1-4]')),
+                    LengthLimitingTextInputFormatter(1),
+                  ],
+                  validator: (value) {
+                    if (value == null || value.isEmpty) return 'VAT Code is required';
+                    return null;
+                  },
                 )
               : _buildDetailRow(
                   Icons.confirmation_number,
                   "VAT Code", vatCodeController.text, highlightColor,
                 ),
-          const Divider(height: 24, thickness: 1),
-          
-          _buildEditableDetailRow(
-            isEditing,
-            Icons.location_on,
-            "Product Location", productLocationController, highlightColor,
-          ),
           Divider(height: 24, thickness: 1),
           
+          isEditing 
+              ? _buildEditableLocationsField(locationsList, setState)
+              : _buildLocationsDisplay(locationsList, highlightColor),
+          
+          Divider(height: 24, thickness: 1),
           _buildDetailRow(
             Icons.calendar_today,
             "Created At", _formatDate(productModel.createdAt), highlightColor,
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildLocationsDisplay(List<String> locations, Color highlightColor) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          padding: EdgeInsets.all(8),
+          decoration: BoxDecoration(
+            color: highlightColor.withOpacity(0.1),
+            shape: BoxShape.circle,
+          ),
+          child: Icon(Icons.location_on, size: 20, color: highlightColor),
+        ),
+        SizedBox(width: 16),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text("Product Locations", style: TextStyle(fontSize: 14, color: Colors.grey[600])),
+              SizedBox(height: 4),
+              locations.isEmpty
+                  ? Text("Not Located", style: TextStyle(fontSize: 16, color: Colors.grey[800]))
+                  : Wrap(
+                      spacing: 8,
+                      runSpacing: 4,
+                      children: locations.map((location) => Chip(
+                        label: Text(location),
+                      )).toList(),
+                    ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildEditableLocationsField(List<String> locations, StateSetter setState) {
+    final locationController = TextEditingController();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Icon(Icons.location_on, size: 20, color: Colors.blue),
+            SizedBox(width: 16),
+            Text("Product Locations", style: TextStyle(fontSize: 14, color: Colors.grey[600])),
+          ],
+        ),
+        SizedBox(height: 8),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            for (var location in locations)
+              Chip(
+                label: Text(location),
+                onDeleted: () {
+                  setState(() {
+                    locations.remove(location);
+                  });
+                },
+              ),
+          ],
+        ),
+        SizedBox(height: 8),
+        Row(
+          children: [
+            Expanded(
+              child: TextField(
+                controller: locationController,
+                decoration: InputDecoration(
+                  hintText: "Add location (e.g., AD-20)",
+                  border: OutlineInputBorder(),
+                  isDense: true,
+                ),
+              ),
+            ),
+            IconButton(
+              icon: Icon(Icons.add),
+              onPressed: () {
+                if (locationController.text.isNotEmpty) {
+                  setState(() {
+                    locations.add(locationController.text);
+                    locationController.clear();
+                  });
+                }
+              },
+            ),
+          ],
+        ),
+      ],
     );
   }
 
