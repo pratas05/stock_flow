@@ -37,7 +37,7 @@ class ProductModel {
     required this.vatCode,
     required this.vatPrice,
     required this.storeNumber,
-    required this.productLocations, // Changed from productLocation
+    required this.productLocations, 
     required this.createdAt,
   });
 
@@ -68,24 +68,11 @@ class ProductModel {
 
   Map<String, dynamic> toMap() {
     return {
-      'name': name,
-      'description': description,
-      'category': category,
-      'subCategory': subCategory,
-      'brand': brand,
-      'model': model,
-      'stockMax': stockMax,
-      'stockCurrent': stockCurrent,
-      'stockMin': stockMin,
-      'wareHouseStock': wareHouseStock,
-      'stockBreak': stockBreak,
-      'lastPurchasePrice': lastPurchasePrice,
-      'basePrice': basePrice,
-      'vatCode': vatCode,
-      'vatPrice': vatPrice,
-      'storeNumber': storeNumber,
-      'productLocations': productLocations, // Changed
-      'createdAt': createdAt,
+      'name': name, 'description': description, 'category': category, 'subCategory': subCategory,
+      'brand': brand, 'model': model, 'stockMax': stockMax, 'stockCurrent': stockCurrent, 'stockMin': stockMin,
+      'wareHouseStock': wareHouseStock, 'stockBreak': stockBreak, 'lastPurchasePrice': lastPurchasePrice,
+      'basePrice': basePrice, 'vatCode': vatCode, 'vatPrice': vatPrice, 'storeNumber': storeNumber,
+      'productLocations': productLocations, 'createdAt': createdAt,
     };
   }
 }
@@ -95,6 +82,7 @@ class ProductViewModel {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final FirebaseAuth _auth = FirebaseAuth.instance;
   
+// AUTENTICATION AND PERMISSIONS (hasFullAdminAccess(); getUserStoreNumber(); getUserStoreCurrency()) ------------------------------
   Future<bool> hasFullAdminAccess() async {
     try {
       final user = _auth.currentUser;
@@ -109,9 +97,16 @@ class ProductViewModel {
 
       return isStoreManager && adminPermission == storeNumber;
     } catch (e) {
-      debugPrint("Error checking admin access: $e");
-      return false;
+      debugPrint("Error checking admin access: $e"); return false;
     }
+  }
+
+  Future<String> getUserStoreNumber() async {
+    final user = _auth.currentUser;
+    if (user == null) throw Exception("No user is logged in.");
+
+    final userDoc = await _firestore.collection('users').doc(user.uid).get();
+    return userDoc.data()?['storeNumber'] ?? '';
   }
 
   Future<String> getUserStoreCurrency() async {
@@ -122,6 +117,7 @@ class ProductViewModel {
     return userDoc.data()?['storeCurrency'] ?? 'EUR'; // Valor padrão caso não exista
   }
 
+// PRODUCTS OPERATIONS (SAVE, UPDATE, DELETE AND GET) ------------------------------------------
   Future<DocumentReference> saveProduct(ProductModel product) async {
     try {
       final user = _auth.currentUser;
@@ -143,11 +139,36 @@ class ProductViewModel {
 
       return productRef;
     } catch (e) {
-      print("Error saving product: $e"); 
-      throw e;
+      print("Error saving product: $e"); throw e;
     }
   }
 
+  Future<void> updateProduct(String productId, ProductModel product) async {
+    try {
+      final storeNumber = await getUserStoreNumber();
+      final vatRate = await _getVatRate(product.vatCode, storeNumber);
+      
+      final updatedProduct = product.toMap();
+      updatedProduct['vatPrice'] = product.basePrice * (1 + vatRate);
+      
+      await _firestore.collection('products').doc(productId).update(updatedProduct);
+    } catch (e) {
+      print("Error updating product: $e"); throw e;
+    }
+  }
+
+  Future<void> deleteProduct(String productId) async {await _firestore.collection('products').doc(productId).delete();}
+
+  Stream<QuerySnapshot> getProductsStream(String storeNumber) {
+    // Limpa promoções expiradas sempre que o stream for requisitado
+    _cleanupExpiredDiscounts(storeNumber);
+    return _firestore
+        .collection('products')
+        .where('storeNumber', isEqualTo: storeNumber)
+        .snapshots();
+  }
+
+// VAT RATE OPERATIONS (_getVatRate(); updateProductsVatPrices()) -------------------------------------------------------
   Future<double> _getVatRate(String vatCode, String storeNumber) async {
     try {
       final doc = await _firestore
@@ -158,17 +179,14 @@ class ProductViewModel {
       if (!doc.exists) return 0.0;
 
       final data = doc.data() ?? {};
-      final rateKeys = [
-        'VAT$vatCode', 'vat$vatCode', 'IVA$vatCode'
-      ];
+      final rateKeys = ['VAT$vatCode', 'vat$vatCode'];
 
       for (final key in rateKeys) {
         if (data.containsKey(key)) {
           final rateValue = data[key];
           final double rate = rateValue is int ? rateValue.toDouble() :
                           rateValue is double ? rateValue :
-                          rateValue is String ? double.tryParse(rateValue) ?? 0.0 :
-                          0.0;
+                          rateValue is String ? double.tryParse(rateValue) ?? 0.0 : 0.0;
           return rate / 100;
         }
       }
@@ -202,36 +220,14 @@ class ProductViewModel {
         }
 
         final newVatPrice = basePrice * (1 + newRate);
-
-        await productDoc.reference.update({
-          'vatPrice': double.parse(newVatPrice.toStringAsFixed(2)),
-        });
+        await productDoc.reference.update({'vatPrice': double.parse(newVatPrice.toStringAsFixed(2))});
       }
     } catch (e) {
-      print('Error updating products VAT prices: $e');
-      throw e;
+      print('Error updating products VAT prices: $e'); throw e;
     }
   }
 
-
-  Future<void> updateProduct(String productId, ProductModel product) async {
-    try {
-      final storeNumber = await getUserStoreNumber();
-      final vatRate = await _getVatRate(product.vatCode, storeNumber);
-      
-      final updatedProduct = product.toMap();
-      updatedProduct['vatPrice'] = product.basePrice * (1 + vatRate);
-      
-      await _firestore.collection('products').doc(productId).update(updatedProduct);
-    } catch (e) {
-      print("Error updating product: $e"); throw e;
-    }
-  }
-
-  Future<void> deleteProduct(String productId) async {
-    await _firestore.collection('products').doc(productId).delete();
-  }
-
+// NOTIFICATION OPERATIONS (createNotification();)------------------------------------------------
   Future<void> createNotification({
     required String message,
     required String notificationType,
@@ -250,34 +246,15 @@ class ProductViewModel {
     });
   }
 
-  // Data Retrieval
-  Future<String> getUserStoreNumber() async {
-    final user = _auth.currentUser;
-    if (user == null) throw Exception("No user is logged in.");
-
-    final userDoc = await _firestore.collection('users').doc(user.uid).get();
-    return userDoc.data()?['storeNumber'] ?? '';
-  }
-
-  Stream<QuerySnapshot> getProductsStream(String storeNumber) {
-    // Limpa promoções expiradas sempre que o stream for requisitado
-    _cleanupExpiredDiscounts(storeNumber);
-    return _firestore
-        .collection('products')
-        .where('storeNumber', isEqualTo: storeNumber)
-        .snapshots();
-  }
-
+// CLEANUP EXPIRED DISCOUNTS (_cleanupExpiredDiscounts();) ------------------------------------------
   Future<void> _cleanupExpiredDiscounts(String storeNumber) async {
     try {
       final now = Timestamp.now();
 
-      // Busca produtos que possuem 'endDate' menor que agora (promoções expiradas)
-      // Note: Pode precisar criar índice no Firestore para essa query.
+      // Busca produtos que possuem 'endDate' menor que agora (promoções expiradas) 
       final querySnapshot = await _firestore
           .collection('products')
           .where('storeNumber', isEqualTo: storeNumber)
-          // Considerando que nem todos tem 'endDate', vamos tentar filtrar por existência primeiro:
           .where('endDate', isLessThan: now)
           .get();
 
@@ -287,7 +264,6 @@ class ProductViewModel {
 
         final Timestamp endDate = data['endDate'];
         if (endDate.compareTo(now) < 0) {
-          // Remove campo 'endDate' e outros relacionados à promoção
           await doc.reference.update({
             'startDate': FieldValue.delete(),
             'endDate': FieldValue.delete(),
@@ -295,9 +271,7 @@ class ProductViewModel {
           });
         }
       }
-    } catch (e) {
-      // print('Error cleaning up expired discounts: $e');
-    }
+    } catch (e) {/* print('Error cleaning up expired discounts: $e');*/}
   }
 }
 
@@ -337,10 +311,57 @@ class _ProductDatabasePageState extends State<ProductDatabasePage> with TickerPr
   bool _isStoreManager = false;
   bool _isLoading = true;
   bool _hasAdminAccess = false;
-
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
-Future<void> _cleanupExpiredDiscounts() async {
+// CONFIGURAÇÃO INICIAL (initState(); dispose(); _loadUserData(); _cleanupExpiredDiscounts(); _getVatRate())----------------------
+  @override
+  void initState() {
+    super.initState();
+    int tabCount = _isStoreManager && _hasAdminAccess ? 2 : 1;
+    _tabController = TabController(length: tabCount, vsync: this);
+    
+    _searchController.addListener(() {
+      setState(() {_searchText = _searchController.text;});
+    });
+    _cleanupExpiredDiscounts();
+    _loadUserData();
+  }
+
+  @override
+  void dispose() {
+    _vatMonitor.stopMonitoring();
+    _tabController.dispose();
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _loadUserData() async {
+    setState(() => _isLoading = true);
+    try {
+      final storeNumber = await _viewModel.getUserStoreNumber();
+      final userDoc = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(FirebaseAuth.instance.currentUser?.uid)
+          .get();
+      
+      final isStoreManager = userDoc.data()?['isStoreManager'] ?? false;
+      final adminPermission = userDoc.data()?['adminPermission'] as String?;
+      
+      setState(() {
+        _storeNumber = storeNumber;
+        _isStoreManager = isStoreManager;
+        _hasAdminAccess = isStoreManager && adminPermission == storeNumber;
+      });
+      
+      if (_storeNumber != null && _storeNumber!.isNotEmpty) {
+        _vatMonitor.startMonitoring(_storeNumber!);
+      }
+    } catch (e) {
+      debugPrint("Error loading user data: $e");
+    } finally {setState(() => _isLoading = false);}
+  }
+
+  Future<void> _cleanupExpiredDiscounts() async {
   try {
     final now = Timestamp.now();
     final batch = _firestore.batch();
@@ -377,84 +398,105 @@ Future<void> _cleanupExpiredDiscounts() async {
       }
     }
 
-    if (querySnapshot.docs.isNotEmpty) {
-      await batch.commit();
-    }
-  } catch (e) {
-    print('Error cleaning up expired discounts: $e');
-  }
+    if (querySnapshot.docs.isNotEmpty) {await batch.commit();}
+  } catch (e) {print('Error cleaning up expired discounts: $e');}
 }
 
-
-Future<double> _getVatRate(String vatCode, String storeNumber) async {
-  try {
-    final snapshot = await _firestore
-        .collection('vatRates')
-        .doc(storeNumber)
-        .collection('rates')
-        .doc(vatCode)
-        .get();
-
-    if (snapshot.exists) {
-      return (snapshot.data()?['rate'] as num?)?.toDouble() ?? 0.0;
-    }
-  } catch (e) {
-    print('Error fetching VAT rate: $e');
-  }
-  return 0.0;
-}
-
-
-  Future<void> _loadUserData() async {
-    setState(() => _isLoading = true);
+  Future<double> _getVatRate(String vatCode, String storeNumber) async {
     try {
-      final storeNumber = await _viewModel.getUserStoreNumber();
-      final userDoc = await FirebaseFirestore.instance
-          .collection('users')
-          .doc(FirebaseAuth.instance.currentUser?.uid)
+      final snapshot = await _firestore
+          .collection('vatRates')
+          .doc(storeNumber)
+          .collection('rates')
+          .doc(vatCode)
           .get();
-      
-      final isStoreManager = userDoc.data()?['isStoreManager'] ?? false;
-      final adminPermission = userDoc.data()?['adminPermission'] as String?;
-      
-      setState(() {
-        _storeNumber = storeNumber;
-        _isStoreManager = isStoreManager;
-        _hasAdminAccess = isStoreManager && adminPermission == storeNumber;
-      });
-      
-      if (_storeNumber != null && _storeNumber!.isNotEmpty) {
-        _vatMonitor.startMonitoring(_storeNumber!);
-      }
-    } catch (e) {
-      debugPrint("Error loading user data: $e");
-    } finally {
-      setState(() => _isLoading = false);
-    }
+
+      if (snapshot.exists) {return (snapshot.data()?['rate'] as num?)?.toDouble() ?? 0.0;}
+    } catch (e) {print('Error fetching VAT rate: $e');} return 0.0;
   }
 
-  @override
-  void initState() {
-    super.initState();
-    // Inicializa com o número correto de abas
-    int tabCount = _isStoreManager && _hasAdminAccess ? 2 : 1;
-    _tabController = TabController(length: tabCount, vsync: this);
-    
-    _searchController.addListener(() {
-      setState(() {
-        _searchText = _searchController.text;
-      });
-    });
-    _cleanupExpiredDiscounts();
-    _loadUserData();
+// FORMULÁRIO DOS PRODUTOS (_buildProductForm(); _buildProductFields(); _buildLocationField(); _saveProduct(); _clearFields()) -----
+  Widget _buildProductForm({bool isEditing = false}) {
+    return SingleChildScrollView(
+      padding: EdgeInsets.all(16.0),
+      child: Column(
+        children: [
+          ..._buildProductFields(),
+          const SizedBox(height: 20),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              if (!isEditing)
+                _buildButton("Save Product", _saveProduct, width: 140),
+              _buildButton("Clear Fields", _clearFields, color: Colors.red),
+            ],
+          ),
+        ],
+      ),
+    );
   }
 
-  @override
-  void dispose() {
-    _vatMonitor.stopMonitoring();
-    _tabController.dispose();
-    _searchController.dispose();
-    super.dispose();
+  List<Widget> _buildProductFields() {
+    return [
+      _buildTextField(_nameController, "Product Name"),
+      _buildTextField(_descriptionController, "Description", maxLength: 300),
+      _buildTextField(_categoryController, "Category"),
+      _buildTextField(_subCategoryController, "Subcategory"),
+      _buildTextField(_brandController, "Brand"),
+      _buildTextField(_modelController, "Model"),
+      _buildTextField(_stockMaxController, "Max Stock", isNumber: true),
+      _buildTextField(_stockMinController, "Min Stock", isNumber: true),
+      _buildTextField(_wareHouseStockController, "WareHouse Stock", isNumber: true),
+      // _buildTextField(_stockCurrentController, "Current Stock", isNumber: true, readOnly: true),
+      // _buildTextField(_stockBreakController, "Stock Break", isNumber: true, readOnly: true),
+      _buildTextField(_lastPurchasePriceController, "Last Purchase Price", isNumber: true),
+      _buildTextField(_basePriceController, "Base Price", isNumber: true,),
+      _buildTextField(_vatCodeController, "VAT Code (1, 2, 3, or 4)", isNumber: true, maxLength: 1),
+      _buildLocationField(),
+    ];
+  }
+
+  Widget _buildLocationField() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8.0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 8, runSpacing: 8,
+            children: [
+              for (var location in _productLocations)
+                Chip(label: Text(location), onDeleted: () {setState(() {_productLocations.remove(location);});}),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: _locationInputController,
+                  decoration: InputDecoration(
+                    labelText: "Add location (e.g., AD-20)", border: OutlineInputBorder(),
+                  ),
+                ),
+              ),
+              IconButton(
+                icon: Icon(Icons.add),
+                onPressed: () {
+                  if (_locationInputController.text.isNotEmpty) {
+                    setState(() {
+                      _productLocations.add(_locationInputController.text);
+                      _locationInputController.clear();
+                    });
+                  }
+                },
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
   }
 
   Future<void> _saveProduct() async {
@@ -478,51 +520,41 @@ Future<double> _getVatRate(String vatCode, String storeNumber) async {
         .toList();
 
     if (emptyFields.isNotEmpty) {
-      _showSnackBar("Please fill all required fields: ${emptyFields.join(', ')}");
-      return;
+      _showSnackBar("Please fill all required fields: ${emptyFields.join(', ')}"); return;
     }
 
     // Validate VAT Code
     final vatCode = _vatCodeController.text;
     if (!['1', '2', '3', '4'].contains(vatCode)) {
-      _showSnackBar("VAT Code must be 1, 2, 3 or 4");
-      return;
+      _showSnackBar("VAT Code must be 1, 2, 3 or 4"); return;
     }
 
     // Parse numeric values
     final stockMax = int.tryParse(_stockMaxController.text) ?? 0;
     final stockMin = int.tryParse(_stockMinController.text) ?? 0;
-    final wareHouseStock = _wareHouseStockController.text.isEmpty
-        ? 0
+    final wareHouseStock = _wareHouseStockController.text.isEmpty ? 0
         : int.tryParse(_wareHouseStockController.text) ?? 0;
     final lastPurchasePrice = double.tryParse(_lastPurchasePriceController.text) ?? 0.0;
     final basePrice = double.tryParse(_basePriceController.text) ?? 0.0;
 
     // Validate stock values
     if (stockMin >= stockMax) {
-      _showSnackBar("Stock Min must be less than Stock Max");
-      return;
+      _showSnackBar("Stock Min must be less than Stock Max"); return;
     }
     if (wareHouseStock > stockMax) {
-      _showSnackBar("Warehouse Stock cannot exceed Max Stock");
-      return;
+      _showSnackBar("Warehouse Stock cannot exceed Max Stock"); return;
     }
     if (lastPurchasePrice > basePrice) {
-      _showSnackBar("Last Purchase Price cannot exceed Base Price");
-      return;
+      _showSnackBar("Last Purchase Price cannot exceed Base Price"); return;
     }
     if (basePrice <= 0) {
-      _showSnackBar("Base Price must be greater than 0");
-      return;
+      _showSnackBar("Base Price must be greater than 0"); return;
     }
 
     try {
       final storeNumber = await _viewModel.getUserStoreNumber();
       final user = FirebaseAuth.instance.currentUser;
-      if (user == null) {
-        _showSnackBar("No user is logged in.");
-        return;
-      }
+      if (user == null) {_showSnackBar("No user is logged in."); return;}
 
       // Get VAT rate with proper error handling
       double vatRate;
@@ -580,12 +612,6 @@ Future<double> _getVatRate(String vatCode, String storeNumber) async {
     }
   }
 
-  void _showSnackBar(String message) {
-    CustomSnackbar.show(
-      context: context, message: message,
-    );
-  }
-
   void _clearFields() {
     _nameController.clear();
     _descriptionController.clear();
@@ -602,255 +628,7 @@ Future<double> _getVatRate(String vatCode, String storeNumber) async {
     _basePriceController.clear();
   }
 
-  @override
-  Widget build(BuildContext context) {
-    // Atualiza o comprimento do controlador se necessário
-    if (_tabController.length != (_isStoreManager && _hasAdminAccess ? 2 : 1)) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        setState(() {
-          _tabController.dispose();
-          _tabController = TabController(length: _isStoreManager && _hasAdminAccess ? 2 : 1, vsync: this);
-        });
-      });
-    }
-
-    if (_isLoading) {return Center(child: CircularProgressIndicator());}
-
-    if (_storeNumber == null || _storeNumber!.isEmpty) {
-      return ErrorScreen(
-        icon: Icons.warning_amber_rounded,
-        title: "Store Access Required",
-        message: "Your account is not associated with any store. Please contact admin.",
-      );
-    }
-
-    // Atualiza o comprimento do controlador se necessário
-    if (_tabController.length != (_isStoreManager && _hasAdminAccess ? 2 : 1)) {
-      _tabController.dispose();
-      _tabController = TabController(length: _isStoreManager && _hasAdminAccess ? 2 : 1, vsync: this);
-    }
-
-    return Scaffold(
-      appBar: AppBar(
-        title: Text("Products Management", style: TextStyle(color: Colors.white)),
-        backgroundColor: Colors.transparent, elevation: 0, 
-        flexibleSpace: _buildGradientContainer(),
-        bottom: TabBar(
-          controller: _tabController,
-          tabs: _buildTabs(),  // Tabs baseadas na condição _isStoreManager
-        ),
-      ),
-      body: _buildGradientContainer(
-        child: TabBarView(
-          controller: _tabController,
-          children: [
-            _buildProductList(),  // Edit & Search primeiro
-            if (_isStoreManager && _hasAdminAccess) _buildProductForm(),  // Register depois, se aplicável
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildGradientContainer({Widget? child}) {
-    return Container(
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [
-            hexStringToColor("CB2B93"),
-            hexStringToColor("9546C4"),
-            hexStringToColor("5E61F4"),
-          ],
-          begin: Alignment.topLeft, end: Alignment.bottomRight,
-        ),
-      ),
-      child: child,
-    );
-  }
-
-  List<Widget> _buildTabs() {
-    List<Widget> tabs = [
-      // Sempre exibe "Edit & Search Products" primeiro
-      Tab(
-        child: Padding(
-          padding: EdgeInsets.symmetric(vertical: 5),
-          child: Text("Edit & Search Products", style: TextStyle(color: Colors.white)),
-        ),
-      ),
-    ];
-
-    // Se for Store Manager, adiciona a aba "Register Products" depois
-    if (_isStoreManager && _hasAdminAccess) {
-      tabs.add(
-        Tab(
-          child: Padding(
-            padding: EdgeInsets.symmetric(vertical: 5),
-            child: Text("Register Products", style: TextStyle(color: Colors.white)),
-          ),
-        ),
-      );
-    }
-    return tabs;
-  }
-
-  Widget _buildProductForm({bool isEditing = false}) {
-    return SingleChildScrollView(
-      padding: EdgeInsets.all(16.0),
-      child: Column(
-        children: [
-          ..._buildProductFields(),
-          const SizedBox(height: 20),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              if (!isEditing)
-                _buildButton("Save Product", _saveProduct, width: 140),
-              _buildButton("Clear Fields", _clearFields, color: Colors.red),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  List<Widget> _buildProductFields() {
-    return [
-      _buildTextField(_nameController, "Product Name"),
-      _buildTextField(_descriptionController, "Description", maxLength: 300),
-      _buildTextField(_categoryController, "Category"),
-      _buildTextField(_subCategoryController, "Subcategory"),
-      _buildTextField(_brandController, "Brand"),
-      _buildTextField(_modelController, "Model"),
-      _buildTextField(_stockMaxController, "Max Stock", isNumber: true),
-      _buildTextField(_stockMinController, "Min Stock", isNumber: true),
-      _buildTextField(_wareHouseStockController, "WareHouse Stock", isNumber: true),
-      // _buildTextField(_stockCurrentController, "Current Stock", isNumber: true, readOnly: true),
-      // _buildTextField(_stockBreakController, "Stock Break", isNumber: true, readOnly: true),
-      _buildTextField(_lastPurchasePriceController, "Last Purchase Price", isNumber: true),
-      _buildTextField(_basePriceController, "Base Price", isNumber: true,),
-      _buildTextField(_vatCodeController, "VAT Code (1, 2, 3, or 4)", isNumber: true, maxLength: 1),
-      _buildLocationField(),
-    ];
-  }
-
-  Widget _buildLocationField() {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8.0),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          SizedBox(height: 8),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              for (var location in _productLocations)
-                Chip(
-                  label: Text(location),
-                  onDeleted: () {
-                    setState(() {
-                      _productLocations.remove(location);
-                    });
-                  },
-                ),
-            ],
-          ),
-          SizedBox(height: 8),
-          Row(
-            children: [
-              Expanded(
-                child: TextField(
-                  controller: _locationInputController,
-                  decoration: InputDecoration(
-                    labelText: "Add location (e.g., AD-20)",
-                    border: OutlineInputBorder(),
-                  ),
-                ),
-              ),
-              IconButton(
-                icon: Icon(Icons.add),
-                onPressed: () {
-                  if (_locationInputController.text.isNotEmpty) {
-                    setState(() {
-                      _productLocations.add(_locationInputController.text);
-                      _locationInputController.clear();
-                    });
-                  }
-                },
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildButton(String label, VoidCallback onPressed, {Color? color, double? width}) {
-    return Container(width: width,
-      child: ElevatedButton(
-        onPressed: onPressed, style: ElevatedButton.styleFrom(foregroundColor: color), child: Text(label),
-      ),
-    );
-  }
-
-  Widget _buildTextField(TextEditingController controller, String label,
-      {bool isNumber = false, int maxLength = 0, bool readOnly = false}) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8.0),
-      child: SizedBox(width: 1000,
-        child: TextFormField(
-          controller: controller,
-          keyboardType: isNumber
-              ? TextInputType.numberWithOptions(decimal: true)
-              : TextInputType.text,
-          maxLength: maxLength > 0 ? maxLength : null,
-          inputFormatters: _getInputFormatters(label),
-          decoration: _getInputDecoration(label),
-          readOnly: readOnly,
-          onChanged: (value) {
-            if (isNumber && value.isEmpty) {
-              controller.text = '';
-              controller.selection = TextSelection.collapsed(offset: 0);
-            }
-          },
-        ),
-      ),
-    );
-  }
-
-  List<TextInputFormatter> _getInputFormatters(String label) {
-    final filters = {
-      "Product Name": '[.,a-zA-Z0-9 ]',
-      "Model": '[.,a-zA-Z0-9 ]',
-      "Description": '[.,a-zA-Z0-9 ]',
-      "Brand": '[a-zA-Z ]',
-      "Category": '[a-zA-Z ]',
-      "Subcategory": '[a-zA-Z ]',
-      "WareHouse Stock": '[0-9]',
-      "Max Stock": '[0-9]',
-      "Order Stock": '[0-9]',
-      "Min Stock": '[0-9]',
-      "Last Purchase Price": '[0-9]',
-      "VAT Code (1, 2, 3, or 4)": r'[1-4]', 
-      "Product Location": '[ -_a-zA-Z0-9]',
-      "Base Price": r'[0-9]',
-    };
-    return filters.containsKey(label)
-        ? [FilteringTextInputFormatter.allow(RegExp(filters[label]!))]
-        : [];
-  }
-
-  InputDecoration _getInputDecoration(String label) {
-    return InputDecoration(
-      labelText: label, fillColor: Colors.grey[100], filled: true,
-      border: OutlineInputBorder(),
-      labelStyle: TextStyle(color: Colors.black),
-      hintStyle: TextStyle(color: Colors.grey),
-      counterText: label == "Description" ? null : '',
-      counterStyle: TextStyle(color: Colors.white),
-    );
-  }
-
+// LISTAGEM DE PRODUTOS (_buildProductList(); _buildSearchBar(); _buildProductCard())-------------------------------------------
   Widget _buildProductList() {
     return Column(
       children: [
@@ -893,8 +671,7 @@ Future<double> _getVatRate(String vatCode, String storeNumber) async {
                       ? Center(child: Text("No products found"))
                       : ListView.builder(
                           itemCount: filteredProducts.length,
-                          itemBuilder: (context, index) =>
-                              _buildProductCard(filteredProducts[index]),
+                          itemBuilder: (context, index) => _buildProductCard(filteredProducts[index]),
                         );
                 },
               );
@@ -938,9 +715,7 @@ Future<double> _getVatRate(String vatCode, String storeNumber) async {
           .doc(productId)
           .snapshots(),
       builder: (context, productSnapshot) {
-        if (!productSnapshot.hasData) {
-          return const Center(child: CircularProgressIndicator());
-        }
+        if (!productSnapshot.hasData) {return const Center(child: CircularProgressIndicator());}
 
         final productData = productSnapshot.data!.data() as Map<String, dynamic>;
         bool hasValidDiscount = false;
@@ -965,11 +740,8 @@ Future<double> _getVatRate(String vatCode, String storeNumber) async {
         return Center(
           child: SizedBox(
             width: MediaQuery.of(context).size.width * 0.5,
-            child: Card(
-              elevation: 4,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-              ),
+            child: Card(elevation: 4,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
               margin: const EdgeInsets.symmetric(vertical: 8.0, horizontal: 8.0),
               child: InkWell(
                 borderRadius: BorderRadius.circular(12),
@@ -986,8 +758,7 @@ Future<double> _getVatRate(String vatCode, String storeNumber) async {
                             child: Text(
                               product['name'],
                               style: theme.textTheme.titleLarge?.copyWith(
-                                fontWeight: FontWeight.bold,
-                                color: theme.colorScheme.primary,
+                                fontWeight: FontWeight.bold, color: theme.colorScheme.primary,
                               ),
                               overflow: TextOverflow.ellipsis,
                             ),
@@ -998,19 +769,14 @@ Future<double> _getVatRate(String vatCode, String storeNumber) async {
                               if (hasValidDiscount)
                                 Tooltip(
                                   message: 'Promotion ends ${DateFormat('dd/MM HH:mm').format(endDate!.toDate())}',
-                                  child: Icon(
-                                    Icons.local_offer,
-                                    color: Colors.deepPurple,
-                                    size: 24,
-                                  ),
+                                  child: Icon(Icons.local_offer, color: Colors.deepPurple, size: 24),
                                 ),
                               const SizedBox(width: 8),
                               Tooltip(
                                 message: 'View Barcode',
                                 child: IconButton(
                                   icon: Icon(Icons.barcode_reader, 
-                                    size: 20,
-                                    color: Colors.blue[700]),
+                                    size: 20, color: Colors.blue[700]),
                                   onPressed: () => BarcodePage.showBarcodeDialog(
                                     context, 
                                     product.id, 
@@ -1044,9 +810,7 @@ Future<double> _getVatRate(String vatCode, String storeNumber) async {
                         children: [
                           Tooltip(
                             message: 'Product Brand',
-                            child: Icon(Icons.branding_watermark, 
-                              size: 16, 
-                              color: theme.colorScheme.secondary),
+                            child: Icon(Icons.branding_watermark,  size: 16, color: theme.colorScheme.secondary),
                           ),
                           const SizedBox(width: 4),
                           Text('${product['brand'] ?? ''}', 
@@ -1054,13 +818,10 @@ Future<double> _getVatRate(String vatCode, String storeNumber) async {
                           const SizedBox(width: 16),
                           Tooltip(
                             message: 'Product Category',
-                            child: Icon(Icons.category, 
-                              size: 16, 
-                              color: theme.colorScheme.secondary),
+                            child: Icon(Icons.category,  size: 16, color: theme.colorScheme.secondary),
                           ),
                           const SizedBox(width: 4),
-                          Text('${product['category'] ?? ''}', 
-                            style: theme.textTheme.bodyMedium),
+                          Text('${product['category'] ?? ''}', style: theme.textTheme.bodyMedium),
                         ],
                       ),
                       const SizedBox(height: 8),
@@ -1074,31 +835,25 @@ Future<double> _getVatRate(String vatCode, String storeNumber) async {
                               Row(
                                 children: [
                                   Icon(Icons.euro_symbol, 
-                                    size: 16, 
-                                    color: hasValidDiscount ? Colors.red : Colors.green[700]),
+                                    size: 16, color: hasValidDiscount ? Colors.red : Colors.green[700]),
                                   const SizedBox(width: 4),
                                   if (hasValidDiscount) ...[
                                     Text(
                                       "€${(vatPrice! / (1 - (discountPercent! / 100))).toStringAsFixed(2)}",
-                                      style: theme.textTheme.bodyMedium?.copyWith(
-                                        decoration: TextDecoration.lineThrough,
-                                        color: Colors.grey,
-                                      ),
+                                      style: theme.textTheme.bodyMedium?.copyWith(decoration: TextDecoration.lineThrough, color: Colors.grey),
                                     ),
                                     const SizedBox(width: 8),
                                     Text(
                                       '€${vatPrice.toStringAsFixed(2)}',
                                       style: theme.textTheme.titleMedium?.copyWith(
-                                        fontWeight: FontWeight.bold,
-                                        color: Colors.red,
+                                        fontWeight: FontWeight.bold, color: Colors.red,
                                       ),
                                     ),
                                   ] else
                                     Text(
                                       '${product['vatPrice'].toStringAsFixed(2)}',
                                       style: theme.textTheme.titleMedium?.copyWith(
-                                        fontWeight: FontWeight.bold,
-                                        color: Colors.green[700],
+                                        fontWeight: FontWeight.bold, color: Colors.green[700],
                                       ),
                                     ),
                                 ],
@@ -1106,15 +861,11 @@ Future<double> _getVatRate(String vatCode, String storeNumber) async {
                               const SizedBox(height: 6),
                               Row(
                                 children: [
-                                  Icon(Icons.location_on, 
-                                    size: 16, 
-                                    color: Colors.blue[700]),
+                                  Icon(Icons.location_on, size: 16, color: Colors.blue[700]),
                                   const SizedBox(width: 4),
                                   Text(
                                     (product['productLocations'] as List<dynamic>?)?.join(', ') ?? 'Not Located',
-                                    style: theme.textTheme.bodyMedium?.copyWith(
-                                      color: Colors.blue[700],
-                                    ),
+                                    style: theme.textTheme.bodyMedium?.copyWith(color: Colors.blue[700]),
                                   ),
                                 ],
                               ),
@@ -1128,8 +879,7 @@ Future<double> _getVatRate(String vatCode, String storeNumber) async {
                                 children: [
                                   Tooltip(
                                     message: 'Shop Stock',
-                                    child: Icon(Icons.store, 
-                                      size: 16, 
+                                    child: Icon(Icons.store, size: 16, 
                                       color: isOutOfStock
                                         ? Colors.red
                                         : isLowStock
@@ -1155,16 +905,12 @@ Future<double> _getVatRate(String vatCode, String storeNumber) async {
                                 children: [
                                   Tooltip(
                                     message: 'Warehouse Stock',
-                                    child: Icon(Icons.warehouse, 
-                                      size: 16, 
-                                      color: theme.colorScheme.secondary),
+                                    child: Icon(Icons.warehouse, size: 16, color: theme.colorScheme.secondary),
                                   ),
                                   const SizedBox(width: 4),
                                   Text(
                                     '${product['wareHouseStock']}',
-                                    style: theme.textTheme.bodyMedium?.copyWith(
-                                      fontWeight: FontWeight.bold,
-                                    ),
+                                    style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.bold),
                                   ),
                                 ],
                               ),
@@ -1182,7 +928,10 @@ Future<double> _getVatRate(String vatCode, String storeNumber) async {
       },
     );
   }
-
+  
+/* DIÁLOGO E DETALHES (_showProductDetailsDialog(); _showDeleteConfirmationDialog(); _showSecondConfirmationDialog();
+  _buildEditableProductInfoSection(); _buildEditableStockInfoSection(); _buildEditablePricingSection(); 
+  _buildEditableAdditionalInfoSection(); _buildLocationsDisplay(); _buildEditableLocationsField() */
   Future<void> _showProductDetailsDialog(BuildContext context, DocumentSnapshot product) async {
     final Color primaryColor = Theme.of(context).primaryColor;
     final Color highlightColor = Colors.blueAccent;
@@ -1213,29 +962,19 @@ Future<double> _getVatRate(String vatCode, String storeNumber) async {
         final storeNumber = await _viewModel.getUserStoreNumber();
         final vatRate = await _viewModel._getVatRate(vatCodeController.text, storeNumber);
         final basePrice = double.tryParse(basePriceController.text) ?? 0.0;
-        setState(() {
-          vatPrice = basePrice * (1 + vatRate);
-        });
+        setState(() {vatPrice = basePrice * (1 + vatRate);});
       } catch (e) {
         print('Error calculating VAT price: $e');
-        setState(() {
-          vatPrice = double.tryParse(basePriceController.text) ?? 0.0;
-        });
+        setState(() {vatPrice = double.tryParse(basePriceController.text) ?? 0.0;});
       }
     }
-
     await showDialog(
       context: context,
       builder: (context) {
         return StatefulBuilder(
           builder: (context, setState) {
-            basePriceController.addListener(() {
-              calculateVatPrice();
-            });
-
-            vatCodeController.addListener(() {
-              calculateVatPrice();
-            });
+            basePriceController.addListener(() {calculateVatPrice();});
+            vatCodeController.addListener(() {calculateVatPrice();});
 
             return Dialog(
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
@@ -1340,8 +1079,7 @@ Future<double> _getVatRate(String vatCode, String storeNumber) async {
                                       }
 
                                       if (changedFields.isEmpty) {
-                                        CustomSnackbar.show(context: context, message: 'No changes were made to the product'); 
-                                        return;
+                                        CustomSnackbar.show(context: context, message: 'No changes were made to the product'); return;
                                       }
                                       
                                       if (nameController.text.isEmpty ||
@@ -1354,8 +1092,7 @@ Future<double> _getVatRate(String vatCode, String storeNumber) async {
                                           stockMinController.text.isEmpty ||
                                           lastPurchasePriceController.text.isEmpty ||
                                           vatCodeController.text.isEmpty) {
-                                        CustomSnackbar.show(context: context, message: 'Please fill in all required fields'); 
-                                        return;
+                                        CustomSnackbar.show(context: context, message: 'Please fill in all required fields'); return;
                                       }
 
                                       int stockMax = int.tryParse(stockMaxController.text) ?? 0;
@@ -1364,13 +1101,11 @@ Future<double> _getVatRate(String vatCode, String storeNumber) async {
                                       int wareHouseStock = int.tryParse(wareHouseStockController.text) ?? productModel.wareHouseStock;
 
                                       if (stockMin >= stockMax) {
-                                        CustomSnackbar.show(context: context, message: 'Minimum stock must be less than maximum stock'); 
-                                        return;
+                                        CustomSnackbar.show(context: context, message: 'Minimum stock must be less than maximum stock'); return;
                                       }
 
                                       if (wareHouseStock + stockCurrent > stockMax) {
-                                        CustomSnackbar.show(context: context, message: 'Warehouse stock cannot exceed maximum stock'); 
-                                        return;
+                                        CustomSnackbar.show(context: context, message: 'Warehouse stock cannot exceed maximum stock'); return;
                                       }
 
                                       try {
@@ -1422,18 +1157,14 @@ Future<double> _getVatRate(String vatCode, String storeNumber) async {
                                           userId: user.uid,
                                         );
 
-                                        CustomSnackbar.show(
-                                          context: context, message: "Product updated successfully!",
-                                        );
+                                        CustomSnackbar.show(context: context, message: "Product updated successfully!");
                                         
                                         setState(() => isEditing = false);
                                       } catch (e) {
                                         print("Error updating product: $e");
                                         CustomSnackbar.show(context: context, message: 'Error updating product');
                                       }
-                                    } else {
-                                      setState(() => isEditing = true);
-                                    }
+                                    } else {setState(() => isEditing = true);}
                                   },
                                 ),
                               ],
@@ -1464,7 +1195,7 @@ Future<double> _getVatRate(String vatCode, String storeNumber) async {
                                 modelController,
                                 highlightColor,
                               ),
-                              SizedBox(height: 16),
+                              const SizedBox(height: 16),
                               _buildEditableStockInfoSection(
                                 isEditing,
                                 stockMaxController,
@@ -1473,7 +1204,7 @@ Future<double> _getVatRate(String vatCode, String storeNumber) async {
                                 productModel,
                                 highlightColor,
                               ),
-                              SizedBox(height: 16),
+                              const SizedBox(height: 16),
                               _buildEditablePricingSection(
                                 isEditing,
                                 lastPurchasePriceController,
@@ -1482,7 +1213,7 @@ Future<double> _getVatRate(String vatCode, String storeNumber) async {
                                 vatCodeController.text,
                                 vatPrice,
                               ),
-                              SizedBox(height: 16),
+                              const SizedBox(height: 16),
                               _buildEditableAdditionalInfoSection(
                                 isEditing,
                                 vatCodeController,
@@ -1492,7 +1223,7 @@ Future<double> _getVatRate(String vatCode, String storeNumber) async {
                                 setState,
                                 productModel,
                               ),
-                              SizedBox(height: 24),
+                              const SizedBox(height: 24),
                             ],
                           ),
                         ),
@@ -1721,21 +1452,6 @@ Future<double> _getVatRate(String vatCode, String storeNumber) async {
     );
   }
 
-  Widget _buildPriceRow(String label, String value, Color color) {
-  return Row(
-    children: [
-      const SizedBox(width: 40),
-      Expanded(flex: 2, child: Text(label, style: TextStyle(fontSize: 14, color: Colors.grey[600]))),
-      Expanded(flex: 1,
-        child: Text(
-          value, style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: color),
-          textAlign: TextAlign.right,
-        ),
-      ),
-    ],
-  );
-}
-
   Widget _buildEditableAdditionalInfoSection(
     bool isEditing,
     TextEditingController vatCodeController,
@@ -1841,23 +1557,20 @@ Future<double> _getVatRate(String vatCode, String storeNumber) async {
             Text("Product Locations", style: TextStyle(fontSize: 14, color: Colors.grey[600])),
           ],
         ),
-        SizedBox(height: 8),
+        const SizedBox(height: 8),
         Wrap(
-          spacing: 8,
-          runSpacing: 8,
+          spacing: 8, runSpacing: 8,
           children: [
             for (var location in locations)
               Chip(
                 label: Text(location),
                 onDeleted: () {
-                  setState(() {
-                    locations.remove(location);
-                  });
+                  setState(() {locations.remove(location);});
                 },
               ),
           ],
         ),
-        SizedBox(height: 8),
+        const SizedBox(height: 8),
         Row(
           children: [
             Expanded(
@@ -1882,6 +1595,98 @@ Future<double> _getVatRate(String vatCode, String storeNumber) async {
               },
             ),
           ],
+        ),
+      ],
+    );
+  }
+
+  Future<bool> _showDeleteConfirmationDialog(BuildContext context, productName) async {
+    return (await showDialog<bool>(context: context,
+          barrierDismissible: false,
+          builder: (context) => AlertDialog(
+            title: Text("Confirm Deletion"),
+            content: Text("Are you sure you want to delete this product?"),
+            actions: [
+              TextButton(onPressed: () => Navigator.of(context).pop(false), child: Text("No")),
+              TextButton(onPressed: () => Navigator.of(context).pop(true), child: Text("Yes", style: TextStyle(fontWeight: FontWeight.bold))),
+            ],
+          ),
+        )) ?? false;
+  }
+
+  Future<bool> _showSecondConfirmationDialog(BuildContext context, String productName) async {
+    return (await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        title: Text("Final Confirmation"),
+        content: Text("You are about to permanently delete '$productName'. This action cannot be undone. Are you absolutely sure?"),
+        actions: [
+          TextButton(onPressed: () => Navigator.of(context).pop(false), child: Text("Cancel")),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: Text("Delete Permanently", style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    )) ?? false;
+  }
+
+// COMPONENTES REUTILIZÁVEIS (_buildTextField(); _buildButton(); _buildDetailRow(); _buildEditableDetailRow();
+  // _buildStockRow(); _buildPriceRow(); _buildEditableStockRow(); _buildEditablePriceRow();
+  Widget _buildTextField(TextEditingController controller, String label,
+      {bool isNumber = false, int maxLength = 0, bool readOnly = false}) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8.0),
+      child: SizedBox(width: 1000,
+        child: TextFormField(
+          controller: controller,
+          keyboardType: isNumber
+              ? TextInputType.numberWithOptions(decimal: true)
+              : TextInputType.text,
+          maxLength: maxLength > 0 ? maxLength : null,
+          inputFormatters: _getInputFormatters(label),
+          decoration: _getInputDecoration(label),
+          readOnly: readOnly,
+          onChanged: (value) {
+            if (isNumber && value.isEmpty) {
+              controller.text = ''; controller.selection = TextSelection.collapsed(offset: 0);
+            }
+          },
+        ),
+      ),
+    );
+  }
+
+  Widget _buildButton(String label, VoidCallback onPressed, {Color? color, double? width}) {
+    return Container(width: width,
+      child: ElevatedButton(
+        onPressed: onPressed, style: ElevatedButton.styleFrom(foregroundColor: color), child: Text(label),
+      ),
+    );
+  }
+
+  Widget _buildDetailRow(IconData icon, String label, String value, Color highlightColor) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          padding: EdgeInsets.all(8),
+          decoration: BoxDecoration(color: highlightColor.withOpacity(0.1), shape: BoxShape.circle),
+          child: Icon(icon, size: 20, color: highlightColor),
+        ),
+        const SizedBox(width: 16),
+        Expanded(
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(label, style: TextStyle(fontSize: 14, color: Colors.grey[600], fontWeight: FontWeight.w500)),
+              SizedBox(height: 4),
+              Text(
+                value.isNotEmpty ? value : 'Not specified',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: Colors.grey[800]),
+              ),
+            ],
+          ),
         ),
       ],
     );
@@ -1934,6 +1739,35 @@ Future<double> _getVatRate(String vatCode, String storeNumber) async {
     );
   }
 
+  Widget _buildStockRow(String label, String value, Color color) {
+    return Row(
+      children: [
+        const SizedBox(width: 40),
+        Expanded(flex: 2, child: Text(label, style: TextStyle(fontSize: 14, color: Colors.grey[600]))),
+        Expanded(flex: 1,
+          child: Text(value, style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: color),
+            textAlign: TextAlign.right,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildPriceRow(String label, String value, Color color) {
+    return Row(
+      children: [
+        const SizedBox(width: 40),
+        Expanded(flex: 2, child: Text(label, style: TextStyle(fontSize: 14, color: Colors.grey[600]))),
+        Expanded(flex: 1,
+          child: Text(
+            value, style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: color),
+            textAlign: TextAlign.right,
+          ),
+        ),
+      ],
+    );
+  }
+
   Widget _buildEditableStockRow(
     bool isEditing,
     String label,
@@ -1961,8 +1795,7 @@ Future<double> _getVatRate(String vatCode, String storeNumber) async {
                   ),
                 )
               : Text(
-                  controller.text,
-                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: color),
+                  controller.text, style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: color),
                   textAlign: TextAlign.right,
                 ),
         ),
@@ -2007,80 +1840,135 @@ Future<double> _getVatRate(String vatCode, String storeNumber) async {
     );
   }
 
-  Widget _buildDetailRow(IconData icon, String label, String value, Color highlightColor) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Container(
-          padding: EdgeInsets.all(8),
-          decoration: BoxDecoration(color: highlightColor.withOpacity(0.1), shape: BoxShape.circle),
-          child: Icon(icon, size: 20, color: highlightColor),
-        ),
-        const SizedBox(width: 16),
-        Expanded(
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(label, style: TextStyle(fontSize: 14, color: Colors.grey[600], fontWeight: FontWeight.w500)),
-              SizedBox(height: 4),
-              Text(
-                value.isNotEmpty ? value : 'Not specified',
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: Colors.grey[800]),
-              ),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildStockRow(String label, String value, Color color) {
-    return Row(
-      children: [
-        const SizedBox(width: 40),
-        Expanded(flex: 2, child: Text(label, style: TextStyle(fontSize: 14, color: Colors.grey[600]))),
-        Expanded(flex: 1,
-          child: Text(value, style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: color),
-            textAlign: TextAlign.right,
-          ),
-        ),
-      ],
-    );
-  }
+// FUNÇÕES AUXILIARES (_showSnackBar(); _formatDate(); _getInputFormatters(); _getInputDecoration())
+  void _showSnackBar(String message) {CustomSnackbar.show(context: context, message: message);}
 
   String _formatDate(Timestamp timestamp) {
     final date = timestamp.toDate();
     return '${date.day}/${date.month}/${date.year} ${date.hour}:${date.minute.toString().padLeft(2, '0')}';
   }
 
-  Future<bool> _showDeleteConfirmationDialog(BuildContext context, productName) async {
-    return (await showDialog<bool>(context: context,
-          barrierDismissible: false,
-          builder: (context) => AlertDialog(
-            title: Text("Confirm Deletion"),
-            content: Text("Are you sure you want to delete this product?"),
-            actions: [
-              TextButton(onPressed: () => Navigator.of(context).pop(false), child: Text("No")),
-              TextButton(onPressed: () => Navigator.of(context).pop(true), child: Text("Yes", style: TextStyle(fontWeight: FontWeight.bold))),
-            ],
-          ),
-        )) ?? false;
+  List<TextInputFormatter> _getInputFormatters(String label) {
+    final filters = {
+      "Product Name": '[.,a-zA-Z0-9 ]',
+      "Model": '[.,a-zA-Z0-9 ]',
+      "Description": '[.,a-zA-Z0-9 ]',
+      "Brand": '[a-zA-Z ]',
+      "Category": '[a-zA-Z ]',
+      "Subcategory": '[a-zA-Z ]',
+      "WareHouse Stock": '[0-9]',
+      "Max Stock": '[0-9]',
+      "Order Stock": '[0-9]',
+      "Min Stock": '[0-9]',
+      "Last Purchase Price": '[0-9]',
+      "VAT Code (1, 2, 3, or 4)": r'[1-4]', 
+      "Product Location": '[ -_a-zA-Z0-9]',
+      "Base Price": r'[0-9]',
+    };
+    return filters.containsKey(label)
+        ? [FilteringTextInputFormatter.allow(RegExp(filters[label]!))]
+        : [];
   }
 
-  Future<bool> _showSecondConfirmationDialog(BuildContext context, String productName) async {
-    return (await showDialog<bool>(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) => AlertDialog(
-        title: Text("Final Confirmation"),
-        content: Text("You are about to permanently delete '$productName'. This action cannot be undone. Are you absolutely sure?"),
-        actions: [
-          TextButton(onPressed: () => Navigator.of(context).pop(false), child: Text("Cancel")),
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(true),
-            child: Text("Delete Permanently", style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
-          ),
-        ],
+  InputDecoration _getInputDecoration(String label) {
+    return InputDecoration(
+      labelText: label, fillColor: Colors.grey[100], filled: true,
+      border: OutlineInputBorder(),
+      labelStyle: TextStyle(color: Colors.black),
+      hintStyle: TextStyle(color: Colors.grey),
+      counterText: label == "Description" ? null : '',
+      counterStyle: TextStyle(color: Colors.white),
+    );
+  }
+
+// FRONT-END DA PÁGINA INICIAL (build(); _tabController; _buildGradientContainer(); _buildTabs();) -------------------------------
+  @override
+  Widget build(BuildContext context) {
+    // Atualiza o comprimento do controlador se necessário
+    if (_tabController.length != (_isStoreManager && _hasAdminAccess ? 2 : 1)) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        setState(() {
+          _tabController.dispose();
+          _tabController = TabController(length: _isStoreManager && _hasAdminAccess ? 2 : 1, vsync: this);
+        });
+      });
+    }
+
+    if (_isLoading) {return Center(child: CircularProgressIndicator());}
+
+    if (_storeNumber == null || _storeNumber!.isEmpty) {
+      return ErrorScreen(
+        icon: Icons.warning_amber_rounded,
+        title: "Store Access Required",
+        message: "Your account is not associated with any store. Please contact admin.",
+      );
+    }
+
+    // Atualiza o comprimento do controlador se necessário
+    if (_tabController.length != (_isStoreManager && _hasAdminAccess ? 2 : 1)) {
+      _tabController.dispose();
+      _tabController = TabController(length: _isStoreManager && _hasAdminAccess ? 2 : 1, vsync: this);
+    }
+
+    return Scaffold(
+      appBar: AppBar(
+        title: Text("Products Management", style: TextStyle(color: Colors.white)),
+        backgroundColor: Colors.transparent, elevation: 0, 
+        flexibleSpace: _buildGradientContainer(),
+        bottom: TabBar(
+          controller: _tabController,
+          tabs: _buildTabs(),  // Tabs baseadas na condição _isStoreManager
+        ),
       ),
-    )) ?? false;
+      body: _buildGradientContainer(
+        child: TabBarView(
+          controller: _tabController,
+          children: [
+            _buildProductList(),  // Edit & Search primeiro
+            if (_isStoreManager && _hasAdminAccess) _buildProductForm(),  // Register depois, se aplicável
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildGradientContainer({Widget? child}) {
+    return Container(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [
+            hexStringToColor("CB2B93"),
+            hexStringToColor("9546C4"),
+            hexStringToColor("5E61F4"),
+          ],
+          begin: Alignment.topLeft, end: Alignment.bottomRight,
+        ),
+      ),
+      child: child,
+    );
+  }
+
+  List<Widget> _buildTabs() {
+    List<Widget> tabs = [
+      // Sempre exibe "Edit & Search Products" primeiro
+      Tab(
+        child: Padding(
+          padding: EdgeInsets.symmetric(vertical: 5),
+          child: Text("Edit & Search Products", style: TextStyle(color: Colors.white)),
+        ),
+      ),
+    ];
+
+    // Se for Store Manager, adiciona a aba "Register Products" depois
+    if (_isStoreManager && _hasAdminAccess) {
+      tabs.add(
+        Tab(
+          child: Padding(
+            padding: EdgeInsets.symmetric(vertical: 5),
+            child: Text("Register Products", style: TextStyle(color: Colors.white)),
+          ),
+        ),
+      );
+    } return tabs;
   }
 }
