@@ -433,9 +433,7 @@ class _WarehouseManagementPageState extends State<WarehouseManagementPage>
           .doc(productId)
           .snapshots(),
       builder: (context, snapshot) {
-        if (!snapshot.hasData) {
-          return const Center(child: CircularProgressIndicator());
-        }
+        if (!snapshot.hasData) {return const Center(child: CircularProgressIndicator());}
 
         return Center(
           child: Container(
@@ -474,8 +472,7 @@ class _WarehouseManagementPageState extends State<WarehouseManagementPage>
                                 fontWeight: FontWeight.bold,
                                 color: Colors.deepPurple,
                               ),
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
+                              maxLines: 2, overflow: TextOverflow.ellipsis,
                             ),
                           ),
                           Container(
@@ -510,8 +507,7 @@ class _WarehouseManagementPageState extends State<WarehouseManagementPage>
 
                       // Basic info with tooltips
                       Wrap(
-                        spacing: 6,
-                        runSpacing: 6,
+                        spacing: 6, runSpacing: 6,
                         children: [
                           Tooltip(
                             message: 'Product brand',
@@ -519,8 +515,7 @@ class _WarehouseManagementPageState extends State<WarehouseManagementPage>
                               visualDensity: VisualDensity.compact,
                               backgroundColor: Colors.blue[50],
                               label: Text(
-                                product['brand'],
-                                style: theme.textTheme.bodySmall,
+                                product['brand'], style: theme.textTheme.bodySmall,
                               ),
                             ),
                           ),
@@ -1325,8 +1320,7 @@ class _WarehouseManagementPageState extends State<WarehouseManagementPage>
                       var filteredProducts = productSnapshot.data!.docs.where((product) {
                         final productName = product['name'].toString().toLowerCase();
                         final searchLower = searchText.toLowerCase();
-                        return (product['stockCurrent'] as int) > 0 &&
-                            productName.contains(searchLower);
+                        return productName.contains(searchLower);
                       }).toList();
 
                       if (filteredProducts.isEmpty) {
@@ -1338,7 +1332,7 @@ class _WarehouseManagementPageState extends State<WarehouseManagementPage>
                               const SizedBox(height: 16),
                               Text(
                                 searchText.isEmpty
-                                    ? "No products with shop stock available"
+                                    ? "No products available"
                                     : "No matching products found",
                                 style: TextStyle(color: Colors.grey[600]),
                               ),
@@ -1366,9 +1360,10 @@ class _WarehouseManagementPageState extends State<WarehouseManagementPage>
     );
   }
 
-  Widget _buildTransferCard(BuildContext context, QueryDocumentSnapshot product) { // SHOP TO WAREHOUSE
+  Widget _buildTransferCard(BuildContext context, QueryDocumentSnapshot product) {
     final theme = Theme.of(context);
     final shopStock = product['stockCurrent'] as int;
+    final warehouseStock = product['wareHouseStock'] as int;
     final minStock = product['stockMin'] as int;
     final productId = product.id;
 
@@ -1383,9 +1378,7 @@ class _WarehouseManagementPageState extends State<WarehouseManagementPage>
           .doc(productId)
           .snapshots(),
       builder: (context, snapshot) {
-        if (!snapshot.hasData) {
-          return const Center(child: CircularProgressIndicator());
-        }
+        if (!snapshot.hasData) {return const Center(child: CircularProgressIndicator());}
 
         return Center(
           child: Container(
@@ -1395,10 +1388,7 @@ class _WarehouseManagementPageState extends State<WarehouseManagementPage>
               elevation: 0,
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(8),
-                side: BorderSide(
-                  color: Colors.grey[200]!,
-                  width: 1,
-                ),
+                side: BorderSide(color: Colors.grey[200]!, width: 1),
               ),
               child: InkWell(
                 borderRadius: BorderRadius.circular(8),
@@ -1406,7 +1396,23 @@ class _WarehouseManagementPageState extends State<WarehouseManagementPage>
                 splashColor: Colors.transparent,
                 highlightColor: Colors.transparent,
                 onTap: () async {
-                  await _showTransferToWarehouseDialog(context, product);
+                  if (shopStock <= 0) {
+                    if (warehouseStock > 0) {
+                      CustomSnackbar.show(
+                        context: context,
+                        icon: Icons.warning_amber_rounded,
+                        message: "You have $warehouseStock of this product in Warehouse, you need to restore the shop stock",
+                        backgroundColor: const Color.fromARGB(255, 255, 146, 4)
+                      );
+                    } else {
+                      CustomSnackbar.show(
+                        context: context,
+                        icon: Icons.error,
+                        message: "You don't have stock of this product neither in shop nor in warehouse. You need to order new stock",
+                        backgroundColor: Colors.red,
+                      );
+                    }
+                  } else {await _showTransferToWarehouseDialog(context, product);}
                 },
                 child: Padding(
                   padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
@@ -1507,7 +1513,7 @@ class _WarehouseManagementPageState extends State<WarehouseManagementPage>
                       ),
                       const SizedBox(height: 8),
 
-                      // Shop stock information
+                      // Stock information
                       Column(
                         children: [
                           _buildStockInfoRow(
@@ -1518,7 +1524,6 @@ class _WarehouseManagementPageState extends State<WarehouseManagementPage>
                             isCritical: isOutOfStock,
                             isLow: isLowStock || isBelowMin,
                           ),
-                          const SizedBox(height: 6),
                         ],
                       ),
                     ],

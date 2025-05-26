@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-/* Nesta página está apenas o Search Controller, correspondente a barra de pesquisa que é usado em muitas páginas */
+/* Nesta página está apenas o Search Controller, correspondente a barra de pesquisa que é usado no BuyTrade e WareHouse Pages*/
 
 class SearchControllerPage extends StatefulWidget {
   final String initialText;

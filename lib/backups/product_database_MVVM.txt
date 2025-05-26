@@ -399,7 +399,7 @@ class _ProductDatabasePageState extends State<ProductDatabasePage> with TickerPr
     }
 
     if (querySnapshot.docs.isNotEmpty) {await batch.commit();}
-  } catch (e) {print('Error cleaning up expired discounts: $e');}
+  } catch (e) {/*print('Error cleaning up expired discounts: $e');*/}
 }
 
   Future<double> _getVatRate(String vatCode, String storeNumber) async {
@@ -518,7 +518,6 @@ class _ProductDatabasePageState extends State<ProductDatabasePage> with TickerPr
         .where((entry) => entry.value.isEmpty)
         .map((entry) => entry.key)
         .toList();
-
     if (emptyFields.isNotEmpty) {
       _showSnackBar("Please fill all required fields: ${emptyFields.join(', ')}"); return;
     }

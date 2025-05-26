@@ -447,6 +447,7 @@ class _StockBreakFilteredPageState extends State<StockBreakFilteredPage> {
                     } else {
                       CustomSnackbar.show(
                         context: context,
+                        icon: Icons.warning_amber_rounded,
                         message: "You don't have permission to modify stock.",
                         backgroundColor: Colors.red
                       );
@@ -572,6 +573,7 @@ class _StockBreakFilteredPageState extends State<StockBreakFilteredPage> {
     if (!_hasModificationPermission) {
       CustomSnackbar.show(
         context: context,
+        icon: Icons.warning_amber_rounded,
         message: "You don't have permission to modify breakage stock.",
         backgroundColor: Colors.red,
       ); return;
@@ -605,19 +607,13 @@ class _StockBreakFilteredPageState extends State<StockBreakFilteredPage> {
                       padding: const EdgeInsets.only(top: 10),
                       child: Text(
                         message!,
-                        style: TextStyle(
-                          color: messageColor,
-                          fontWeight: FontWeight.bold,
-                        ),
+                        style: TextStyle(color: messageColor, fontWeight: FontWeight.bold),
                       ),
                     ),
                 ],
               ),
               actions: [
-                TextButton(
-                  onPressed: () => Navigator.of(context).pop(),
-                  child: Text('Cancel'),
-                ),
+                TextButton(onPressed: () => Navigator.of(context).pop(), child: Text('Cancel')),
                 ElevatedButton(
                   onPressed: () async {
                     final returnQuantity = int.tryParse(quantityController.text) ?? 0;
@@ -650,12 +646,16 @@ class _StockBreakFilteredPageState extends State<StockBreakFilteredPage> {
                       Navigator.of(context).pop();
                       CustomSnackbar.show(
                         context: context,
+                        icon: Icons.check_circle,
                         message: "Product returned successfully!",
+                        backgroundColor: Colors.green,
                       );
                     } catch (e) {
                       CustomSnackbar.show(
                         context: context,
+                        icon: Icons.error,
                         message: "Error returning product: $e",
+                        backgroundColor: Colors.red,
                       );
                     }
                   },
