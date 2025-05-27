@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'package:stockflow/reusable_widgets/colors_utils.dart';
 import 'package:stockflow/reusable_widgets/custom_snackbar.dart';
@@ -40,12 +41,67 @@ class Product {
   );
 }
 
+class CartItem {
+  final Product product;
+  int quantity;
+
+  CartItem({
+    required this.product,
+    this.quantity = 1,
+  });
+
+  double get totalPrice => product.vatPrice * quantity;
+}
+
 // [2. VIEWMODEL]
 class BuyTradeViewModel {
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  final List<CartItem> _cartItems = [];
 
-  // No BuyTradeViewModel
+  List<CartItem> get cartItems => _cartItems;
+
+  void addToCart(Product product) {
+  final existingItem = _cartItems.firstWhere(
+    (item) => item.product.id == product.id,
+    orElse: () => CartItem(product: Product(id: '', name: '', model: '', basePrice: 0, vatPrice: 0, stockCurrent: 0, wareHouseStock: 0, stockBreak: 0, storeNumber: '')),
+  );
+
+  if (existingItem.product.id.isNotEmpty) {
+    // Only increment if we haven't reached the available stock
+    if (existingItem.quantity < product.stockCurrent + existingItem.quantity) {
+      existingItem.quantity++;
+    }
+  } else {
+    // Only add to cart if there's at least 1 in stock
+    if (product.stockCurrent > 0) {
+      _cartItems.add(CartItem(product: product));
+    }
+  }
+}
+
+  void removeFromCart(String productId) {
+    _cartItems.removeWhere((item) => item.product.id == productId);
+  }
+
+  void updateQuantity(String productId, int newQuantity) {
+    final item = _cartItems.firstWhere((item) => item.product.id == productId);
+    if (newQuantity > 0) {
+      item.quantity = newQuantity;
+    } else {
+      removeFromCart(productId);
+    }
+  }
+
+  void clearCart() {
+    _cartItems.clear();
+  }
+
+  double get cartTotal => _cartItems.fold(
+    0,
+    (total, item) => total + (item.product.vatPrice * item.quantity),
+  );
+
   Future<bool> hasFullAdminAccess() async {
     try {
       final userData = await getUserData();
@@ -76,6 +132,20 @@ class BuyTradeViewModel {
     await _firestore.collection('products').doc(productId).update({
       'stockCurrent': currentStock - 1,
     });
+  }
+
+  Future<void> buyProductsInCart() async {
+    final batch = _firestore.batch();
+    
+    for (final item in _cartItems) {
+      final productRef = _firestore.collection('products').doc(item.product.id);
+      batch.update(productRef, {
+        'stockCurrent': FieldValue.increment(-item.quantity),
+      });
+    }
+    
+    await batch.commit();
+    clearCart();
   }
 
   Future<void> processBreak(
@@ -190,16 +260,12 @@ class _BuyTradePageState extends State<BuyTradePage> with SingleTickerProviderSt
     try {
       final userData = await _viewModel.getUserData();
       if (userData != null) {
-        // Primeiro atualizamos os dados básicos
         setState(() {
           storeNumber = userData['storeNumber'];
           _isStoreManager = userData['isStoreManager'] ?? false;
         });
         
-        // Depois verificamos a permissão (fora do setState)
         final hasPermission = await _viewModel.hasFullAdminAccess();
-        
-        // Finalmente atualizamos o estado completo
         setState(() {
           _hasFullPermission = hasPermission;
         });
@@ -222,12 +288,6 @@ class _BuyTradePageState extends State<BuyTradePage> with SingleTickerProviderSt
     _vatMonitor.stopMonitoring();
     _tabController.dispose();
     super.dispose();
-  }
-
-  void _showSafeSnackBar(String message) {
-    if (mounted) {
-      CustomSnackbar.show(context: context, message: message);
-    }
   }
 
   @override
@@ -330,10 +390,39 @@ class _BuyTradePageState extends State<BuyTradePage> with SingleTickerProviderSt
   Widget _buildBuyTab() {
     return Column(
       children: [
-        SearchControllerPage(
-          initialText: searchQuery,
-          onSearchChanged: (value) => setState(() => searchQuery = value),
-          hintText: "Search Product",
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 8.0),
+          child: Row(
+            children: [
+              Expanded(
+                child: SearchControllerPage(
+                  initialText: searchQuery,
+                  onSearchChanged: (value) => setState(() => searchQuery = value),
+                  hintText: "Search Product",
+                ),
+              ),
+              const SizedBox(width: 8),
+              AnimatedSwitcher(
+                duration: const Duration(milliseconds: 300),
+                child: _viewModel.cartItems.isNotEmpty
+                    ? Container(
+                        key: const ValueKey('cart-button'),
+                        decoration: BoxDecoration(
+                          color: Colors.blue,
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        child: IconButton(
+                          icon: Badge(
+                            label: Text(_viewModel.cartItems.length.toString()),
+                            child: const Icon(Icons.shopping_cart, color: Colors.white),
+                          ),
+                          onPressed: () => _showCartDialog(),
+                        ),
+                      )
+                    : const SizedBox.shrink(key: ValueKey('empty-cart')),
+              ),
+            ],
+          ),
         ),
         Expanded(
           child: _buildProductList(
@@ -373,12 +462,18 @@ class _BuyTradePageState extends State<BuyTradePage> with SingleTickerProviderSt
                     }
                   }
 
+                  final isInCart = _viewModel.cartItems.any((item) => item.product.id == product.id);
                   return ListTile(
                     title: Text(
                       "${product.name} - ${product.model}",
-                      style: const TextStyle(
-                        fontWeight: FontWeight.bold,
-                        color: Colors.black87,
+                      style: TextStyle(fontWeight: FontWeight.bold, color: isInCart ? Colors.blue : Colors.black87),
+                    ),
+                    tileColor: isInCart ? Colors.blue.withOpacity(0.1) : Colors.white,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      side: BorderSide(
+                        color: isInCart ? Colors.blue : Colors.grey.withOpacity(0.2),
+                        width: 1,
                       ),
                     ),
                     subtitle: Row(
@@ -392,18 +487,12 @@ class _BuyTradePageState extends State<BuyTradePage> with SingleTickerProviderSt
                           Text(
                             // make the inverse operation to get the original price
                             "€${(vatPrice / (1 - (discountPercent! / 100))).toStringAsFixed(2)}",
-                            style: const TextStyle(
-                              color: Colors.red,
-                              decoration: TextDecoration.lineThrough,
-                            ),
+                            style: const TextStyle(color: Colors.red, decoration: TextDecoration.lineThrough),
                           ),
                           const SizedBox(width: 6),
                           Text(
                             "€${priceToShow.toStringAsFixed(2)}",
-                            style: const TextStyle(
-                              color: Colors.red,
-                              fontWeight: FontWeight.bold,
-                            ),
+                            style: const TextStyle(color: Colors.red, fontWeight: FontWeight.bold),
                           ),
                           const SizedBox(width: 6),
                           Tooltip(
@@ -423,14 +512,25 @@ class _BuyTradePageState extends State<BuyTradePage> with SingleTickerProviderSt
                         ],
                       ],
                     ),
-                    trailing: IconButton(
-                      icon: Icon(
-                        Icons.add_shopping_cart,
-                        color: product.stockCurrent > 0 ? Colors.green : Colors.grey,
-                      ),
-                      onPressed: product.stockCurrent > 0
-                          ? () => _showBuyConfirmationDialog(product.id, product.stockCurrent)
-                          : null,
+                    trailing: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        if (isInCart) ...[
+                          const Icon(Icons.check, color: Colors.green),
+                          Text(
+                            "(${_viewModel.cartItems.firstWhere((item) => item.product.id == product.id).quantity})",
+                            style: const TextStyle(color: Colors.blue),
+                          ),
+                        ] else if (product.stockCurrent > 0)
+                          IconButton(
+                            icon: const Icon(Icons.add_shopping_cart),
+                            onPressed: () {
+                              _viewModel.addToCart(product);
+                              setState(() {});
+                            },
+                            color: Colors.green,
+                          ),
+                      ],
                     ),
                   );
                 },
@@ -511,31 +611,201 @@ class _BuyTradePageState extends State<BuyTradePage> with SingleTickerProviderSt
     );
   }
 
-  Future<void> _showBuyConfirmationDialog(String productId, int stockCurrent) async {
-    if (!mounted) return;
+  void _resetCartVisuals() {
+    _viewModel.clearCart(); // Limpa o carrinho no ViewModel
     
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text("Confirm Purchase"),
-        content: const Text("Are you sure you want to purchase this product?"),
-        actions: [
-          TextButton(onPressed: () => Navigator.of(dialogContext).pop(false), child: const Text("Cancel")),
-          ElevatedButton(
-            onPressed: () => Navigator.of(dialogContext).pop(true),
-            child: const Text("Buy", style: TextStyle(fontWeight: FontWeight.bold)),
-          ),
-        ],
-      ),
-    );
-    if (confirmed != true || !mounted) return;
-    
-    try {
-      await _viewModel.buyProduct(productId, stockCurrent);
-      _showSafeSnackBar("Product purchased successfully!"); 
-    } catch (e) {
-      _showSafeSnackBar("Error purchasing product: $e");
+    // Força a reconstrução da tela para remover os visuais do carrinho
+    if (mounted) {
+      setState(() {
+        // Esta reconstrução irá:
+        // 1. Remover o badge do ícone do carrinho
+        // 2. Remover os highlights dos produtos no carrinho
+        // 3. Remover os ícones de checkmark e quantidades
+      });
     }
+  }
+
+  void _showCartDialog() {
+    showDialog(
+      context: context,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (dialogContext, setState) {
+            return AlertDialog(
+              title: const Text("Your Cart"),
+              content: SizedBox(
+                width: double.maxFinite,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (_viewModel.cartItems.isEmpty)
+                      const Text("Your cart is empty")
+                    else ...[
+                      ConstrainedBox(
+                        constraints: const BoxConstraints(maxHeight: 300),
+                        child: ListView.builder(
+                          shrinkWrap: true,
+                          itemCount: _viewModel.cartItems.length,
+                          itemBuilder: (context, index) {
+                            final item = _viewModel.cartItems[index];
+                            final maxQuantity = item.product.stockCurrent;
+                            
+                            return ListTile(
+                              title: Text("${item.product.name} - ${item.product.model}"),
+                              subtitle: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    "€${item.product.vatPrice.toStringAsFixed(2)} x ${item.quantity} = "
+                                    "€${(item.product.vatPrice * item.quantity).toStringAsFixed(2)}",
+                                  ),
+                                  Text(
+                                    "Available: ${maxQuantity - item.quantity}",
+                                    style: TextStyle(color: Colors.grey[600], fontSize: 12),
+                                  ),
+                                ],
+                              ),
+                              trailing: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  IconButton(
+                                    icon: const Icon(Icons.remove),
+                                    onPressed: () {
+                                      setState(() {
+                                        if (item.quantity > 1) {
+                                          item.quantity--;
+                                        } else {
+                                          _viewModel.removeFromCart(item.product.id);
+                                          if (_viewModel.cartItems.isEmpty) {
+                                            Navigator.pop(dialogContext);
+                                          }
+                                        }
+                                      });
+                                    },
+                                  ),
+                                  Text(item.quantity.toString()),
+                                  IconButton(
+                                    icon: const Icon(Icons.add),
+                                    onPressed: maxQuantity > item.quantity
+                                        ? () {
+                                            setState(() {
+                                              item.quantity++;
+                                            });
+                                          }
+                                        : null,
+                                  ),
+                                  IconButton(
+                                    icon: const Icon(Icons.delete),
+                                    onPressed: () {
+                                      setState(() {
+                                        _viewModel.removeFromCart(item.product.id);
+                                        if (_viewModel.cartItems.isEmpty) {
+                                          Navigator.pop(dialogContext);
+                                        }
+                                      });
+                                    },
+                                  ),
+                                ],
+                              ),
+                            );
+                          },
+                        ),
+                      ),
+                      const Divider(),
+                      Text(
+                        "Total: €${_viewModel.cartTotal.toStringAsFixed(2)}",
+                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text("Continue Shopping"),
+                ),
+                if (_viewModel.cartItems.isNotEmpty) ...[
+                  TextButton(
+                    onPressed: () {
+                      _viewModel.clearCart();
+                      Navigator.pop(context);
+                      if (mounted) setState(() {});
+                    },
+                    child: const Text("Clear Cart"),
+                  ),
+                  ElevatedButton(
+                    onPressed: () async {
+                      // First validate all quantities
+                      bool allValid = true;
+                      for (final item in _viewModel.cartItems) {
+                        if (item.quantity > item.product.stockCurrent) {
+                          allValid = false;
+                          CustomSnackbar.show(
+                            context: context,
+                            message: "Not enough stock for ${item.product.name}. Available: ${item.product.stockCurrent}",
+                            backgroundColor: Colors.red
+                          );
+                          break;
+                        }
+                      }
+                      if (!allValid) return;
+                      
+                      // Calculate total quantity
+                      final totalQuantity = _viewModel.cartItems.fold(0, (sum, item) => sum + item.quantity);
+
+                      // Show confirmation dialog
+                      final confirmed = await showDialog<bool>(
+                        context: context,
+                        builder: (context) => AlertDialog(
+                          title: const Text("Confirm Purchase"),
+                          content: Text(
+                            "Are you sure you want to purchase $totalQuantity items for "
+                            "€${_viewModel.cartTotal.toStringAsFixed(2)}?",
+                          ),
+                          actions: [
+                            TextButton(onPressed: () => Navigator.pop(context, false), child: const Text("Cancel")),
+                            ElevatedButton(
+                              onPressed: () => Navigator.pop(context, true),
+                              child: const Text("Confirm"),
+                            ),
+                          ],
+                        ),
+                      );
+
+                        // Close the cart dialog only after confirmation
+                        if (confirmed == true) {
+                        Navigator.pop(dialogContext); // Fecha o popup
+
+                        try {
+                          await _viewModel.buyProductsInCart();
+
+                          if (mounted) {
+                            _resetCartVisuals();
+                            CustomSnackbar.show(
+                              context: context,
+                              message: "Purchase completed successfully!", backgroundColor: Colors.green,
+                            );
+                          }
+                        } catch (e) {
+                          if (mounted) {
+                            CustomSnackbar.show(
+                              context: context,
+                              message: "Error during purchase: $e", backgroundColor: Colors.red,
+                            );
+                        }
+                        }
+                      }
+                    },
+                    child: const Text("Check Out"),
+                  ),
+                ],
+              ],
+            );
+          },
+        );
+      },
+    ).then((_) {if (mounted) setState(() {});});
   }
 
   void _showTradeOptions(Product product) {
@@ -685,9 +955,15 @@ class _BuyTradePageState extends State<BuyTradePage> with SingleTickerProviderSt
                         productName: product.name,
                         storeNumber: product.storeNumber,
                       );
-                      _showSafeSnackBar("Product break recorded successfully!");
+                      CustomSnackbar.show(
+                        context: context, 
+                        message:  "Product break recorded successfully!", backgroundColor: Colors.green,
+                      );
                     } catch (e) {
-                      _showSafeSnackBar("Error recording product break: $e");
+                      CustomSnackbar.show(
+                        context: context, 
+                        message: "Error recording product break: $e", backgroundColor: Colors.red,
+                      );
                     }
                   }, child: const Text("Confirm"),
                 ),
@@ -844,8 +1120,16 @@ class _BuyTradePageState extends State<BuyTradePage> with SingleTickerProviderSt
                   tradedProductId: tradeProduct.id,
                   tradedShopStock: tradeProduct.stockCurrent,
                 );
-                _showSafeSnackBar("Trade completed successfully!");
-              } catch (e) {_showSafeSnackBar("Error during trade: $e");}
+                CustomSnackbar.show(
+                  context: context, 
+                  message: "Trade completed successfully!", backgroundColor: Colors.green,
+                );
+              } catch (e) {
+                CustomSnackbar.show(
+                  context: context, 
+                  message: "Error during trade: $e", backgroundColor: Colors.red,
+                );
+              }
             }, 
             child: const Text("Confirm"),
           ),
