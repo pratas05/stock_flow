@@ -4,6 +4,7 @@
 
 import 'package:flutter/material.dart';
 import 'package:flutter_paypal_payment/flutter_paypal_payment.dart';
+import 'package:stockflow/reusable_widgets/secrets.dart';
 import 'package:stockflow/screens_main/buy_trade.dart';
 
 Future<bool?> processPaypalPayment({
@@ -17,8 +18,8 @@ Future<bool?> processPaypalPayment({
       MaterialPageRoute(
         builder: (BuildContext context) => PaypalCheckoutView(
           sandboxMode: true,
-          clientId: "ATBJQijKrqA15oox5NOP8ndG7oQ7wdeW1_g5VuKHqnjQvE0pex4jDH9_qkBNQGnHmvOQs2o3Ssik2Z5g",
-          secretKey: "ED8yKANlBttX--ze-CeiqqlqHAd6t2nfOLq0teDp3QaZyxbfpzJ-TwGfxPuNKJBmSoFw9LXGZVc6Inbo",
+          clientId: paypalClientId,
+          secretKey: paypalSecretKey,
           transactions: [
             {
               "amount": {
