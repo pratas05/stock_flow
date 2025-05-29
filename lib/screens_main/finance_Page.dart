@@ -75,9 +75,10 @@ class UserModel {
 }
 
 class VatModel {
-  final String vat1, vat2, vat3, vat4;
+  final String vat0, vat1, vat2, vat3, vat4;
 
   VatModel({
+    required this.vat0,
     required this.vat1,
     required this.vat2,
     required this.vat3,
@@ -86,6 +87,7 @@ class VatModel {
 
   factory VatModel.fromMap(Map<String, dynamic> data) {
     return VatModel(
+      vat0: data['VAT0']?.toString() ?? '0',
       vat1: data['VAT1']?.toString() ?? '0',
       vat2: data['VAT2']?.toString() ?? '0',
       vat3: data['VAT3']?.toString() ?? '0',
@@ -95,6 +97,7 @@ class VatModel {
 
   Map<String, String> toMap() {
     return {
+      'VAT0': vat0,
       'VAT1': vat1,
       'VAT2': vat2,
       'VAT3': vat3,
@@ -103,10 +106,11 @@ class VatModel {
   }
 
   bool isEqual(VatModel other) {
-    return vat1 == other.vat1 &&
-        vat2 == other.vat2 &&
-        vat3 == other.vat3 &&
-        vat4 == other.vat4;
+    return vat0 == other.vat0 &&
+           vat1 == other.vat1 &&
+           vat2 == other.vat2 &&
+           vat3 == other.vat3 &&
+           vat4 == other.vat4;
   }
 }
 
@@ -173,14 +177,14 @@ class FinanceAndHRViewModel {
   Future<VatModel> getVatValues(String? storeNumber) async {
     try {
       if (storeNumber == null || storeNumber.isEmpty) {
-        return VatModel(vat1: '0', vat2: '0', vat3: '0', vat4: '0');
+        return VatModel(vat0: '0', vat1: '0', vat2: '0', vat3: '0', vat4: '0');
       }
 
       final doc = await _firestore.collection('iva').doc(storeNumber).get();
       return VatModel.fromMap(doc.data() ?? {});
     } catch (e) {
       debugPrint("Error fetching VAT values: $e");
-      return VatModel(vat1: '0', vat2: '0', vat3: '0', vat4: '0');
+      return VatModel(vat0: '0', vat1: '0', vat2: '0', vat3: '0', vat4: '0');
     }
   }
 
@@ -244,7 +248,7 @@ class _FinanceAndHumanResourcesPageState
     _viewModel = FinanceAndHRViewModel();
     _loadUserData();
     _tabController = TabController(length: 2, vsync: this);
-    _initialVatValues = VatModel(vat1: '0', vat2: '0', vat3: '0', vat4: '0');
+    _initialVatValues = VatModel(vat0: '0', vat1: '0', vat2: '0', vat3: '0', vat4: '0');
     _initializePermissions();
   }
 
@@ -439,17 +443,19 @@ class _FinanceAndHumanResourcesPageState
 
           if (snapshot.hasError) {
             return const Center(
-              child: Text('Error to load financial data', style: TextStyle(fontSize: 18, color: Colors.white)),
+              child: Text('Error to load financial data', 
+                  style: TextStyle(fontSize: 18, color: Colors.white)),
             );
           }
 
           final vat = snapshot.data?.$1 ??
-              VatModel(vat1: '0', vat2: '0', vat3: '0', vat4: '0');
+              VatModel(vat0: '0', vat1: '0', vat2: '0', vat3: '0', vat4: '0');
           final currentCurrency = snapshot.data?.$2;
           _initialVatValues = vat;
           _selectedCurrency = currentCurrency;
 
           final controllers = {
+            'VAT0': TextEditingController(text: vat.vat0),
             'VAT1': TextEditingController(text: vat.vat1),
             'VAT2': TextEditingController(text: vat.vat2),
             'VAT3': TextEditingController(text: vat.vat3),
@@ -470,34 +476,61 @@ class _FinanceAndHumanResourcesPageState
                     child: Column(
                       children: [
                         const Text(
-                          'VAT Configuration', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                          'VAT Configuration', 
+                          style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                         ),
                         const SizedBox(height: 16),
-                        for (var entry in controllers.entries)
-                          Padding(
-                            padding: const EdgeInsets.only(bottom: 12.0),
-                            child: TextField(
-                              controller: entry.value,
-                              decoration: InputDecoration(
-                                labelText: entry.key,
-                                border: OutlineInputBorder(borderRadius: BorderRadius.circular(8.0),
-                                ),
-                                filled: true,
-                                fillColor: Colors.grey[100],
+                        // VAT0 - Read only field
+                        AbsorbPointer(
+                          child: TextField(
+                            controller: controllers['VAT0'],
+                            decoration: InputDecoration(
+                              labelText: 'VAT0 (No Tax)',
+                              labelStyle: TextStyle(color: Colors.grey[600]),
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(8.0),
                               ),
-                              keyboardType: TextInputType.number,
+                              filled: true,
+                              fillColor: Colors.grey[200],
+                              contentPadding: const EdgeInsets.all(12),
                             ),
+                            style: TextStyle(color: Colors.grey[700]),
+                            keyboardType: TextInputType.number,
                           ),
+                        ),
+                        const SizedBox(height: 12),
+                        // VAT1-VAT4 - Editable fields
+                        for (var entry in controllers.entries)
+                          if (entry.key != 'VAT0')
+                            Padding(
+                              padding: const EdgeInsets.only(bottom: 12.0),
+                              child: TextField(
+                                controller: entry.value,
+                                decoration: InputDecoration(
+                                  labelText: entry.key,
+                                  border: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(8.0),
+                                  ),
+                                  filled: true,
+                                  fillColor: Colors.grey[100],
+                                  contentPadding: const EdgeInsets.all(12),
+                                ),
+                                keyboardType: TextInputType.number,
+                              ),
+                            ),
+                        const SizedBox(height: 8),
                         ElevatedButton(
                           style: ElevatedButton.styleFrom(
-                            backgroundColor:const Color.fromARGB(255, 179, 67, 199),
+                            backgroundColor: const Color.fromARGB(255, 179, 67, 199),
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(8.0),
                             ),
-                            padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 12),
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 32, vertical: 12),
                           ),
                           onPressed: () => _updateVatValues(storeNumber, controllers),
-                          child: const Text('Save', style: TextStyle(color: Color.fromARGB(255, 255, 255, 255))),
+                          child: const Text('Save VAT Rates',
+                              style: TextStyle(color: Colors.white)),
                         ),
                       ],
                     ),
@@ -506,15 +539,18 @@ class _FinanceAndHumanResourcesPageState
                 const SizedBox(height: 24),
 
                 // Currency Section
-                Card(elevation: 8,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12.0)),
+                Card(
+                  elevation: 8,
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12.0)),
                   child: Padding(
                     padding: const EdgeInsets.all(16.0),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         const Text(
-                          'Store Currency', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                          'Store Currency',
+                          style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                         ),
                         const SizedBox(height: 8),
                         if (currentCurrency != null)
@@ -522,7 +558,8 @@ class _FinanceAndHumanResourcesPageState
                             padding: const EdgeInsets.only(bottom: 12.0),
                             child: RichText(
                               text: TextSpan(
-                                style: const TextStyle(fontSize: 16, color: Colors.black87),
+                                style: const TextStyle(
+                                    fontSize: 16, color: Colors.black87),
                                 children: [
                                   const TextSpan(
                                       text: 'Current Currency: ',
@@ -542,7 +579,8 @@ class _FinanceAndHumanResourcesPageState
                             filled: true,
                             fillColor: Colors.grey[100],
                           ),
-                          items: CurrencyConstants.currencyMap.entries.map((entry) {
+                          items: CurrencyConstants.currencyMap.entries
+                              .map((entry) {
                             return DropdownMenuItem<String>(
                               value: entry.value,
                               child: Text(entry.key),
@@ -551,51 +589,32 @@ class _FinanceAndHumanResourcesPageState
                           onChanged: (value) async {
                             if (value == null || value == _selectedCurrency) return;
 
-                            final previousValue = _selectedCurrency; // Armazena o valor anterior
+                            final previousValue = _selectedCurrency;
 
-                            // Primeira confirmação
-                            final firstConfirm = await showDialog<bool>(
-                              context: context,
-                              builder: (context) => AlertDialog(
-                                title: const Text('Change Currency?'),
-                                content: Text('You are about to change the store currency to $value. Are you sure?'),
-                                actions: [
-                                  TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
-                                  TextButton(onPressed: () => Navigator.pop(context, true), child: const Text('Continue')),
-                                ],
-                              ),
-                            );
-
-                            if (firstConfirm != true) {
-                              // Volta ao valor anterior visualmente
-                              setState(() {
-                                _selectedCurrency = previousValue;
-                              });
-                              CustomSnackbar.show(
-                                context: context,
-                                message: 'No changes applied',
-                              ); return;
-                            }
-
-                            final secondConfirm = await showDialog<bool>(
+                            final confirm = await showDialog<bool>(
                               context: context,
                               builder: (context) => AlertDialog(
                                 title: const Text('Confirm Currency Change'),
-                                content: Text('This will affect all financial calculations. Confirm change to $value?'),
+                                content: Text(
+                                    'This will change the currency to $value for all financial calculations. Continue?'),
                                 actions: [
-                                  TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+                                  TextButton(
+                                      onPressed: () => Navigator.pop(context, false),
+                                      child: const Text('Cancel')),
                                   TextButton(
                                     onPressed: () => Navigator.pop(context, true),
-                                    child: const Text('Confirm change', style: TextStyle(color: Colors.red)),
+                                    child: const Text('Confirm',
+                                        style: TextStyle(color: Colors.red)),
                                   ),
                                 ],
                               ),
                             );
-                            if (secondConfirm != true) {
-                              // Volta ao valor anterior visualmente
+
+                            if (confirm != true) {
                               setState(() {
                                 _selectedCurrency = previousValue;
-                              }); return;
+                              });
+                              return;
                             }
 
                             setState(() {
@@ -606,16 +625,16 @@ class _FinanceAndHumanResourcesPageState
                               await _viewModel.updateStoreCurrency(value);
                               CustomSnackbar.show(
                                 context: context,
-                                message: 'Currency successfully changed to $value',
+                                message: 'Currency changed to $value',
                                 backgroundColor: Colors.green,
                               );
                             } catch (_) {
-                              setState(() { // Em caso de erro, reverte também
+                              setState(() {
                                 _selectedCurrency = previousValue;
                               });
                               CustomSnackbar.show(
                                 context: context,
-                                message: 'Error saving currency.',
+                                message: 'Error saving currency',
                                 backgroundColor: Colors.red,
                               );
                             }
@@ -661,6 +680,7 @@ class _FinanceAndHumanResourcesPageState
       Map<String, TextEditingController> controllers) async {
     try {
       final newVat = VatModel(
+        vat0: _initialVatValues.vat0, 
         vat1: controllers['VAT1']!.text,
         vat2: controllers['VAT2']!.text,
         vat3: controllers['VAT3']!.text,

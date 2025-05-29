@@ -2,9 +2,11 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/services.dart';
+import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:intl/intl.dart';
 import 'package:stockflow/reusable_widgets/colors_utils.dart';
 import 'package:stockflow/reusable_widgets/custom_snackbar.dart';
+import 'package:stockflow/reusable_widgets/paypal.dart';
 import 'package:stockflow/screens_main/discounts_page.dart';
 import 'package:stockflow/reusable_widgets/error_screen.dart';
 import 'package:stockflow/reusable_widgets/search_controller.dart';
@@ -625,6 +627,20 @@ class _BuyTradePageState extends State<BuyTradePage> with SingleTickerProviderSt
     }
   }
 
+  // Add this helper function in your widget class
+  void _showSafeSnackbar(String message, {bool isError = false}) {
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(message),
+          backgroundColor: isError ? Colors.red : Colors.green,
+          duration: const Duration(seconds: 3),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
+  }
+
   void _showCartDialog() {
     showDialog(
       context: context,
@@ -736,25 +752,22 @@ class _BuyTradePageState extends State<BuyTradePage> with SingleTickerProviderSt
                   ),
                   ElevatedButton(
                     onPressed: () async {
-                      // First validate all quantities
+                      // Validate quantities
                       bool allValid = true;
                       for (final item in _viewModel.cartItems) {
                         if (item.quantity > item.product.stockCurrent) {
                           allValid = false;
-                          CustomSnackbar.show(
-                            context: context,
-                            message: "Not enough stock for ${item.product.name}. Available: ${item.product.stockCurrent}",
-                            backgroundColor: Colors.red
+                          _showSafeSnackbar(
+                            "Not enough stock for ${item.product.name}. Available: ${item.product.stockCurrent}",
+                            isError: true
                           );
                           break;
                         }
                       }
                       if (!allValid) return;
                       
-                      // Calculate total quantity
                       final totalQuantity = _viewModel.cartItems.fold(0, (sum, item) => sum + item.quantity);
 
-                      // Show confirmation dialog
                       final confirmed = await showDialog<bool>(
                         context: context,
                         builder: (context) => AlertDialog(
@@ -765,35 +778,45 @@ class _BuyTradePageState extends State<BuyTradePage> with SingleTickerProviderSt
                           ),
                           actions: [
                             TextButton(onPressed: () => Navigator.pop(context, false), child: const Text("Cancel")),
-                            ElevatedButton(
+                            ElevatedButton.icon(
                               onPressed: () => Navigator.pop(context, true),
-                              child: const Text("Confirm"),
+                              icon: const FaIcon(FontAwesomeIcons.paypal),
+                              label: const Text("Proceed to Payment"),
                             ),
                           ],
                         ),
                       );
 
-                        // Close the cart dialog only after confirmation
-                        if (confirmed == true) {
-                        Navigator.pop(dialogContext); // Fecha o popup
-
+                      if (confirmed == true) {
+                        Navigator.pop(dialogContext); // Close cart dialog
+                        
                         try {
-                          await _viewModel.buyProductsInCart();
+                          final paymentSuccess = await processPaypalPayment(
+                            context: context,
+                            cartItems: _viewModel.cartItems,
+                            cartTotal: _viewModel.cartTotal,
+                            onSuccess: () async {
+                              await _viewModel.buyProductsInCart();
+                              if (mounted) {
+                                _resetCartVisuals();
+                                _showSafeSnackbar("Purchase completed successfully!");
+                              }
+                            },
+                          );
 
-                          if (mounted) {
-                            _resetCartVisuals();
-                            CustomSnackbar.show(
-                              context: context,
-                              message: "Purchase completed successfully!", backgroundColor: Colors.green,
+                          if (paymentSuccess != true && mounted) {
+                            _showSafeSnackbar(
+                              "Payment was not completed",
+                              isError: true
                             );
                           }
                         } catch (e) {
                           if (mounted) {
-                            CustomSnackbar.show(
-                              context: context,
-                              message: "Error during purchase: $e", backgroundColor: Colors.red,
+                            _showSafeSnackbar(
+                              "Error completing purchase: ${e.toString()}",
+                              isError: true
                             );
-                        }
+                          }
                         }
                       }
                     },
@@ -805,7 +828,9 @@ class _BuyTradePageState extends State<BuyTradePage> with SingleTickerProviderSt
           },
         );
       },
-    ).then((_) {if (mounted) setState(() {});});
+    ).then((_) {
+      if (mounted) setState(() {});
+    });
   }
 
   void _showTradeOptions(Product product) {

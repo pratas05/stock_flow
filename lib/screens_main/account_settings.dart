@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:ui';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -197,8 +198,12 @@ class AccountSettingsViewModel {
   Future<Set<DateTime>> getDaysWithActivities(String storeNumber) async {
     final activityRef = _firestore.collection('user_activity');
     final userRef = _firestore.collection('users');
-    final limitDate = DateTime.now().subtract(Duration(days: 30));
+    final limitDate = DateTime.now().subtract(const Duration(days: 30));
 
+    // Primeiro, limpe as atividades antigas
+    await _cleanOldActivities(storeNumber, limitDate);
+
+    // Depois obtenha as atividades recentes
     final usersSnapshot = await userRef.where('storeNumber', isEqualTo: storeNumber).get();
     final userIds = usersSnapshot.docs.map((doc) => doc.id).toList();
     if (userIds.isEmpty) return {};
@@ -215,6 +220,64 @@ class AccountSettingsViewModel {
       daysWithActivities.add(DateTime(date.year, date.month, date.day));
     }
     return daysWithActivities;
+  }
+
+  Future<void> scheduleActivityCleanup() async {
+    await _cleanOldActivitiesForAllStores(); // Executar uma vez por dia
+  }
+
+  Future<void> _cleanOldActivitiesForAllStores() async {
+    try {
+      final limitDate = DateTime.now().subtract(const Duration(days: 30));
+      final storesSnapshot = await _firestore.collection('users')
+          .where('isStoreManager', isEqualTo: true)
+          .get();
+
+      for (var storeDoc in storesSnapshot.docs) {
+        final storeNumber = storeDoc.data()['storeNumber'] as String?;
+        if (storeNumber != null) {
+          await _cleanOldActivities(storeNumber, limitDate);
+        }
+      }
+    } catch (e) {
+      debugPrint('Error in periodic activity cleanup: $e');
+    }
+  }
+
+  Future<void> _cleanOldActivities(String storeNumber, DateTime limitDate) async {
+    try {
+      final userRef = _firestore.collection('users');
+      final activityRef = _firestore.collection('user_activity');
+      
+      // Obter todos os usuários da loja
+      final usersSnapshot = await userRef.where('storeNumber', isEqualTo: storeNumber).get();
+      final userIds = usersSnapshot.docs.map((doc) => doc.id).toList();
+      
+      if (userIds.isEmpty) return;
+
+      // Consultar atividades antigas
+      final query = activityRef
+          .where('userId', whereIn: userIds)
+          .where('timestamp', isLessThan: Timestamp.fromDate(limitDate));
+
+      // Obter um lote de atividades antigas (para não sobrecarregar)
+      final snapshot = await query.limit(500).get();
+
+      // Excluir em lotes para evitar timeout
+      final batch = _firestore.batch();
+      for (var doc in snapshot.docs) {
+        batch.delete(doc.reference);
+      }
+
+      await batch.commit();
+
+      // Log para debug (opcional)
+      if (snapshot.docs.isNotEmpty) {
+        debugPrint('Removed ${snapshot.docs.length} old activities for store $storeNumber');
+      }
+    } catch (e) {
+      debugPrint('Error cleaning old activities: $e');
+    }
   }
 }
 
@@ -238,11 +301,27 @@ class _AccountSettingsState extends State<AccountSettings> {
   bool get isSetupComplete => _storeNumber != null && _nickname != null;
   bool _isStoreManager = false;
   bool _hasActivityPermission = false;
+  Timer? _cleanupTimer;
 
   @override
   void initState() {
     super.initState();
     _loadUserData();
+    _startCleanupTimer();
+  }
+
+  @override
+  void dispose() {
+    _cleanupTimer?.cancel();
+    super.dispose();
+  }
+
+  void _startCleanupTimer() {
+    // Executar a limpeza imediatamente e depois a cada 24 horas
+    _viewModel.scheduleActivityCleanup();
+    _cleanupTimer = Timer.periodic(const Duration(hours: 24), (timer) {
+      _viewModel.scheduleActivityCleanup();
+    });
   }
 
   Future<void> _loadUserData() async {

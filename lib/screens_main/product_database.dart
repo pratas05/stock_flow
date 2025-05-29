@@ -451,7 +451,7 @@ class _ProductDatabasePageState extends State<ProductDatabasePage> with TickerPr
       // _buildTextField(_stockBreakController, "Stock Break", isNumber: true, readOnly: true),
       _buildTextField(_lastPurchasePriceController, "Last Purchase Price", isNumber: true),
       _buildTextField(_basePriceController, "Base Price", isNumber: true,),
-      _buildTextField(_vatCodeController, "VAT Code (1, 2, 3, or 4)", isNumber: true, maxLength: 1),
+      _buildTextField(_vatCodeController, "VAT Code (0, 1, 2, 3, or 4)", isNumber: true, maxLength: 1),
       _buildLocationField(),
     ];
   }
@@ -463,8 +463,7 @@ class _ProductDatabasePageState extends State<ProductDatabasePage> with TickerPr
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const SizedBox(height: 8),
-          Wrap(
-            spacing: 8, runSpacing: 8,
+          Wrap(spacing: 8, runSpacing: 8,
             children: [
               for (var location in _productLocations)
                 Chip(label: Text(location), onDeleted: () {setState(() {_productLocations.remove(location);});}),
@@ -524,9 +523,6 @@ class _ProductDatabasePageState extends State<ProductDatabasePage> with TickerPr
 
     // Validate VAT Code
     final vatCode = _vatCodeController.text;
-    if (!['1', '2', '3', '4'].contains(vatCode)) {
-      _showSnackBar("VAT Code must be 1, 2, 3 or 4"); return;
-    }
 
     // Parse numeric values
     final stockMax = int.tryParse(_stockMaxController.text) ?? 0;
@@ -1103,8 +1099,12 @@ class _ProductDatabasePageState extends State<ProductDatabasePage> with TickerPr
                                         CustomSnackbar.show(context: context, message: 'Minimum stock must be less than maximum stock'); return;
                                       }
 
-                                      if (wareHouseStock + stockCurrent > stockMax) {
+                                      if (wareHouseStock > stockMax) {
                                         CustomSnackbar.show(context: context, message: 'Warehouse stock cannot exceed maximum stock'); return;
+                                      }
+
+                                      if (wareHouseStock + stockCurrent > stockMax) {
+                                        CustomSnackbar.show(context: context, message: 'All stock cannot exceed maximum stock'); return;
                                       }
 
                                       try {
@@ -1480,7 +1480,7 @@ class _ProductDatabasePageState extends State<ProductDatabasePage> with TickerPr
                   ),
                   keyboardType: TextInputType.number,
                   inputFormatters: [
-                    FilteringTextInputFormatter.allow(RegExp(r'[1-4]')),
+                    FilteringTextInputFormatter.allow(RegExp(r'[0-4]')),
                     LengthLimitingTextInputFormatter(1),
                   ],
                   validator: (value) {
@@ -1500,8 +1500,7 @@ class _ProductDatabasePageState extends State<ProductDatabasePage> with TickerPr
           
           Divider(height: 24, thickness: 1),
           _buildDetailRow(
-            Icons.calendar_today,
-            "Created At", _formatDate(productModel.createdAt), highlightColor,
+            Icons.calendar_today, "Created At", _formatDate(productModel.createdAt), highlightColor,
           ),
         ],
       ),
@@ -1530,8 +1529,7 @@ class _ProductDatabasePageState extends State<ProductDatabasePage> with TickerPr
               locations.isEmpty
                   ? Text("Not Located", style: TextStyle(fontSize: 16, color: Colors.grey[800]))
                   : Wrap(
-                      spacing: 8,
-                      runSpacing: 4,
+                      spacing: 8, runSpacing: 4,
                       children: locations.map((location) => Chip(
                         label: Text(location),
                       )).toList(),
@@ -1860,7 +1858,7 @@ class _ProductDatabasePageState extends State<ProductDatabasePage> with TickerPr
       "Order Stock": '[0-9]',
       "Min Stock": '[0-9]',
       "Last Purchase Price": '[0-9]',
-      "VAT Code (1, 2, 3, or 4)": r'[1-4]', 
+      "VAT Code (0, 1, 2, 3, or 4)": r'[0-4]', 
       "Product Location": '[ -_a-zA-Z0-9]',
       "Base Price": r'[0-9]',
     };
