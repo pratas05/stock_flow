@@ -265,9 +265,7 @@ class AccountSettingsViewModel {
 
       // Excluir em lotes para evitar timeout
       final batch = _firestore.batch();
-      for (var doc in snapshot.docs) {
-        batch.delete(doc.reference);
-      }
+      for (var doc in snapshot.docs) {batch.delete(doc.reference);}
 
       await batch.commit();
 
@@ -275,9 +273,7 @@ class AccountSettingsViewModel {
       if (snapshot.docs.isNotEmpty) {
         debugPrint('Removed ${snapshot.docs.length} old activities for store $storeNumber');
       }
-    } catch (e) {
-      debugPrint('Error cleaning old activities: $e');
-    }
+    } catch (e) {debugPrint('Error cleaning old activities: $e');}
   }
 }
 

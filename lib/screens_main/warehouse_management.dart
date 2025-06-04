@@ -93,6 +93,14 @@ class WarehouseViewModel {
     }
   }
 
+  Future<void> updateWarehouseStock({
+    required String productId,
+    required int newStock,
+    required int maxStock,
+  }) async {
+    await _firestore.collection('products').doc(productId).update({'wareHouseStock': newStock,});
+  }
+
   // Add this method to WarehouseViewModel class
   Future<bool> hasAdminPermission() async {
     try {
@@ -410,6 +418,171 @@ class _WarehouseManagementPageState extends State<WarehouseManagementPage>
     );
   }
 
+  Widget _buildWarehouseStockEditorDialog(
+    BuildContext context, {
+    required int wareHouseStock,
+    required int maxStock,
+    required String productId,
+    required String productName,
+    required int stockCurrent, 
+  }) {
+    final TextEditingController _controller = TextEditingController(text: '');
+
+    return StatefulBuilder(
+      builder: (context, setState) {
+        Future<void> _updateStock() async {
+          if (_controller.text.isEmpty) {
+            CustomSnackbar.show(
+              context: context,
+              icon: Icons.error,
+              message: 'Please enter a value', 
+              duration: const Duration(seconds: 1),
+              backgroundColor: Colors.red,
+            );
+            return;
+          }
+          
+          final increment = int.tryParse(_controller.text);
+          
+          if (increment == null) {
+            CustomSnackbar.show(
+              context: context,
+              icon: Icons.error,
+              message: 'Invalid value', duration: const Duration(seconds: 1),
+              backgroundColor: Colors.red,
+            );
+            return;
+          }
+          
+          if (increment == 0) {
+            CustomSnackbar.show(
+              context: context,
+              icon: Icons.error,
+              message: 'Value cannot be zero', duration: const Duration(seconds: 1),
+              backgroundColor: Colors.red,
+            );
+            return;
+          }
+          
+          final newWareHouseStock = wareHouseStock + increment;
+
+          // Fixed validation logic - now using direct int comparison
+          if (newWareHouseStock + stockCurrent > maxStock) {
+            CustomSnackbar.show(
+              context: context,
+              icon: Icons.error,
+              message: 'Total stock (${newWareHouseStock + stockCurrent}) exceeds maximum limit of $maxStock',
+              backgroundColor: Colors.red, 
+              duration: const Duration(seconds: 1),
+            );
+            return;
+          }
+          
+          if (increment < 0 ) {
+            CustomSnackbar.show(
+              context: context,
+              icon: Icons.error,
+              message: 'Please enter a positive number', 
+              duration: const Duration(seconds: 1),
+              backgroundColor: Colors.red,
+            );
+            return;
+          }
+
+          if (newWareHouseStock < 0) {
+            CustomSnackbar.show(
+              context: context,
+              icon: Icons.error,
+              message: 'Stock cannot be negative', 
+              duration: const Duration(seconds: 1),
+              backgroundColor: Colors.red,
+            );
+            return;
+          }
+
+          try {
+            await _viewModel.updateWarehouseStock(
+              productId: productId,
+              newStock: newWareHouseStock, 
+              maxStock: maxStock,
+            );
+
+            final user = _viewModel._auth.currentUser;
+            final storeNumber = await _viewModel.getCurrentUserStoreNumber();
+            if (user != null && storeNumber != null) {
+              await _viewModel.createNotification(
+                message: 'Warehouse stock for $productName updated from $wareHouseStock to $newWareHouseStock (added: $increment)',
+                productId: productId,
+                storeNumber: storeNumber,
+                userId: user.uid,
+                notificationType: 'Update',
+              );
+            }
+            
+            if (mounted) {
+              Navigator.of(context).pop();
+              CustomSnackbar.show(
+                context: context,
+                icon: Icons.check_circle,
+                message: "Stock updated successfully!", 
+                duration: const Duration(seconds: 1), backgroundColor: Colors.green,
+              );
+            }
+          } catch (e) {
+            if (mounted) {
+              CustomSnackbar.show(
+                context: context,
+                icon: Icons.error,
+                message: "Error: ${e.toString()}", 
+                duration: const Duration(seconds: 1), backgroundColor: Colors.red,
+              );
+            }
+          }
+        }
+
+        return AlertDialog(
+          title: const Text('Add to Warehouse Stock'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Product: $productName', 
+                    style: const TextStyle(fontWeight: FontWeight.bold)),
+                const SizedBox(height: 8),
+                Text('Current warehouse stock: $wareHouseStock'),
+                Text('Current shop stock: $stockCurrent'),
+                Text('Maximum allowed: $maxStock'),
+                const SizedBox(height: 16),
+                TextField(
+                  controller: _controller,
+                  keyboardType: TextInputType.number,
+                  decoration: const InputDecoration(
+                    labelText: 'Amount to add',
+                    hintText: 'Enter positive number',
+                    border: OutlineInputBorder(),
+                  ),
+                  autofocus: true,
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Cancel')),
+            ElevatedButton(
+              onPressed: _updateStock,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.deepPurple,
+                foregroundColor: Colors.white,
+              ),
+              child: const Text('Add'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
   Widget _buildProductCard(BuildContext context, QueryDocumentSnapshot product) {
     final theme = Theme.of(context);
     final warehouseStock = product['wareHouseStock'] as int;
@@ -423,190 +596,278 @@ class _WarehouseManagementPageState extends State<WarehouseManagementPage>
     // Warehouse progress bar color logic
     final warehouseProgressColor = isOutOfStock
         ? Colors.red
-        : isLowStock
-            ? Colors.orange
-            : Colors.green;
+        : isLowStock ? Colors.orange : Colors.green;
 
-    return StreamBuilder<DocumentSnapshot>(
-      stream: _viewModel._firestore
-          .collection('products')
-          .doc(productId)
-          .snapshots(),
-      builder: (context, snapshot) {
-        if (!snapshot.hasData) {return const Center(child: CircularProgressIndicator());}
+    return StatefulBuilder(
+      builder: (context, setState) {
+        return StreamBuilder<DocumentSnapshot>(
+          stream: _viewModel._firestore
+              .collection('products')
+              .doc(productId)
+              .snapshots(),
+          builder: (context, snapshot) {
+            if (!snapshot.hasData) {return const Center(child: CircularProgressIndicator());}
 
-        return Center(
-          child: Container(
-            width: MediaQuery.of(context).size.width * 0.6,
-            margin: const EdgeInsets.symmetric(vertical: 2.0),
-            child: Card(
-              elevation: 0,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(8),
-                side: BorderSide(
-                  color: Colors.grey[200]!,
-                  width: 1,
-                ),
-              ),
-              child: InkWell(
-                borderRadius: BorderRadius.circular(8),
-                hoverColor: Colors.transparent,
-                splashColor: Colors.transparent,
-                highlightColor: Colors.transparent,
-                onTap: () async {
-                  await _showProductDetailsDialog(context, product);
-                },
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      // Product name and status
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Expanded(
-                            child: Text(
-                              product['name'],
-                              style: theme.textTheme.titleMedium?.copyWith(
-                                fontWeight: FontWeight.bold,
-                                color: Colors.deepPurple,
-                              ),
-                              maxLines: 2, overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                            decoration: BoxDecoration(
-                              color: isOutOfStock
-                                  ? Colors.red.withOpacity(0.2)
-                                  : isLowStock
-                                      ? Colors.orange.withOpacity(0.2)
-                                      : Colors.green.withOpacity(0.2),
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            child: Text(
-                              isOutOfStock
-                                  ? 'OUT OF STOCK IN WAREHOUSE'
-                                  : isLowStock
-                                      ? 'LOW STOCK IN WAREHOUSE'
-                                      : 'IN STOCK IN WAREHOUSE',
-                              style: theme.textTheme.labelSmall?.copyWith(
-                                color: isOutOfStock
-                                    ? Colors.red
-                                    : isLowStock
-                                        ? Colors.orange
-                                        : Colors.green,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 6),
-
-                      // Basic info with tooltips
-                      Wrap(
-                        spacing: 6, runSpacing: 6,
-                        children: [
-                          Tooltip(
-                            message: 'Product brand',
-                            child: Chip(
-                              visualDensity: VisualDensity.compact,
-                              backgroundColor: Colors.blue[50],
-                              label: Text(
-                                product['brand'], style: theme.textTheme.bodySmall,
-                              ),
-                            ),
-                          ),
-                          Tooltip(
-                            message: 'Product category',
-                            child: Chip(
-                              visualDensity: VisualDensity.compact,
-                              backgroundColor: Colors.purple[50],
-                              label: Text(
-                                product['category'],
-                                style: theme.textTheme.bodySmall,
-                              ),
-                            ),
-                          ),
-                          if (product['model'] != null && product['model'].toString().isNotEmpty)
-                            Tooltip(
-                              message: 'Product model',
-                              child: Chip(
-                                visualDensity: VisualDensity.compact,
-                                backgroundColor: Colors.green[50],
-                                label: Text(
-                                  product['model'],
-                                  style: theme.textTheme.bodySmall,
-                                ),
-                              ),
-                            ),
-                        ],
-                      ),
-                      const SizedBox(height: 8),
-
-                      // Warehouse stock information
-                      Column(
-                        children: [
-                          _buildStockInfoRow(
-                            context,
-                            icon: Icons.warehouse,
-                            label: 'Warehouse Stock',
-                            value: '$warehouseStock units',
-                            isCritical: isOutOfStock,
-                            isLow: isLowStock,
-                          ),
-                          const SizedBox(height: 6),
-                          Text(
-                            'Max: $maxStock',
-                            style: theme.textTheme.labelSmall,
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 8),
-
-                      // Warehouse stock progress bar
-                      Column(
+            return Center(
+              child: Container(
+                width: MediaQuery.of(context).size.width * 0.6,
+                margin: const EdgeInsets.symmetric(vertical: 2.0),
+                child: Card(elevation: 0,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8),
+                    side: BorderSide(
+                      color: Colors.grey[200]!,
+                      width: 1,
+                    ),
+                  ),
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(8),
+                    hoverColor: Colors.transparent,
+                    splashColor: Colors.transparent,
+                    highlightColor: Colors.transparent,
+                    onTap: () async {
+                      await _showProductDetailsDialog(context, product);
+                    },
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
+                      child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(
-                            'Warehouse Stock Level',
-                            style: theme.textTheme.bodySmall?.copyWith(
-                              fontWeight: FontWeight.bold,
-                            ),
+                          // Product name and status
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  product['name'],
+                                  style: theme.textTheme.titleMedium?.copyWith(
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.deepPurple,
+                                  ),
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 8, vertical: 4),
+                                decoration: BoxDecoration(
+                                  color: isOutOfStock
+                                      ? Colors.red.withOpacity(0.2)
+                                      : isLowStock
+                                          ? Colors.orange.withOpacity(0.2)
+                                          : Colors.green.withOpacity(0.2),
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                child: Text(
+                                  isOutOfStock
+                                      ? 'OUT OF STOCK IN WAREHOUSE'
+                                      : isLowStock
+                                          ? 'LOW STOCK IN WAREHOUSE'
+                                          : 'IN STOCK IN WAREHOUSE',
+                                  style: theme.textTheme.labelSmall?.copyWith(
+                                    color: isOutOfStock
+                                        ? Colors.red
+                                        : isLowStock
+                                            ? Colors.orange
+                                            : Colors.green,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ),
+                            ],
                           ),
-                          const SizedBox(height: 4),
-                          LinearProgressIndicator(
-                            value: warehouseStock / (maxStock * 1.0),
-                            backgroundColor: Colors.grey[200],
-                            color: warehouseProgressColor,
-                            minHeight: 6,
+                          const SizedBox(height: 6),
+
+                          // Basic info with tooltips
+                          Wrap(
+                            spacing: 6,
+                            runSpacing: 6,
+                            children: [
+                              Tooltip(
+                                message: 'Product brand',
+                                child: Chip(
+                                  visualDensity: VisualDensity.compact,
+                                  backgroundColor: Colors.blue[50],
+                                  label: Text(
+                                    product['brand'],
+                                    style: theme.textTheme.bodySmall,
+                                  ),
+                                ),
+                              ),
+                              Tooltip(
+                                message: 'Product category',
+                                child: Chip(
+                                  visualDensity: VisualDensity.compact,
+                                  backgroundColor: Colors.purple[50],
+                                  label: Text(
+                                    product['category'],
+                                    style: theme.textTheme.bodySmall,
+                                  ),
+                                ),
+                              ),
+                              if (product['model'] != null &&
+                                  product['model'].toString().isNotEmpty)
+                                Tooltip(
+                                  message: 'Product model',
+                                  child: Chip(
+                                    visualDensity: VisualDensity.compact,
+                                    backgroundColor: Colors.green[50],
+                                    label: Text(
+                                      product['model'],
+                                      style: theme.textTheme.bodySmall,
+                                    ),
+                                  ),
+                                ),
+                            ],
                           ),
-                          Padding(
-                            padding: const EdgeInsets.only(top: 4),
-                            child: Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              children: [
-                                Text('0', style: theme.textTheme.labelSmall),
-                                Text('${(maxStock * 0.5).toInt()}', style: theme.textTheme.labelSmall),
-                                Text('$maxStock', style: theme.textTheme.labelSmall),
-                              ],
-                            ),
+                          const SizedBox(height: 8),
+
+                          // Warehouse stock information - ÚNICA ALTERAÇÃO FEITA
+                          Column(
+                            children: [
+                              _buildStockInfoRowWithEdit(
+                                context,
+                                icon: Icons.warehouse,
+                                label: 'Warehouse Stock',
+                                value: '$warehouseStock units',
+                                isCritical: isOutOfStock,
+                                isLow: isLowStock,
+                                onEdit: () {
+                                  showDialog(
+                                    context: context,
+                                    builder: (context) {
+                                      return _buildWarehouseStockEditorDialog(
+                                        context,
+                                        wareHouseStock: warehouseStock,
+                                        maxStock: maxStock,
+                                        productId: productId,
+                                        productName: product['name'],
+                                        stockCurrent: product['stockCurrent'] as int,                                    
+                                      );
+                                    },
+                                  );
+                                },
+                              ),
+                              const SizedBox(height: 6),
+                              Text(
+                                'Max: $maxStock',
+                                style: theme.textTheme.labelSmall,
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 8),
+
+                          // Warehouse stock progress bar
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Warehouse Stock Level',
+                                style: theme.textTheme.bodySmall?.copyWith(
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              LinearProgressIndicator(
+                                value: warehouseStock / (maxStock * 1.0),
+                                backgroundColor: Colors.grey[200],
+                                color: warehouseProgressColor,
+                                minHeight: 6,
+                              ),
+                              Padding(
+                                padding: const EdgeInsets.only(top: 4),
+                                child: Row(
+                                  mainAxisAlignment:
+                                      MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    Text('0', style: theme.textTheme.labelSmall),
+                                    Text('${(maxStock * 0.5).toInt()}',
+                                        style: theme.textTheme.labelSmall),
+                                    Text('$maxStock',
+                                        style: theme.textTheme.labelSmall),
+                                  ],
+                                ),
+                              ),
+                            ],
                           ),
                         ],
                       ),
-                    ],
+                    ),
                   ),
                 ),
               ),
-            ),
-          ),
+            );
+          },
         );
       },
     );
   }
 
+  // Novo método auxiliar para a linha com ícone de edição
+  Widget _buildStockInfoRowWithEdit(
+    BuildContext context, {
+    required IconData icon,
+    required String label,
+    required String value,
+    required VoidCallback onEdit,
+    bool isCritical = false,
+    bool isLow = false,
+  }) {
+    final theme = Theme.of(context);
+    Color statusColor = Colors.grey;
+    
+    if (isCritical) {
+      statusColor = Colors.red;
+    } else if (isLow) {
+      statusColor = Colors.orange;
+    } else {
+      statusColor = Colors.green;
+    }
+
+    return Container(
+      padding: const EdgeInsets.fromLTRB(8, 6, 8, 6),
+      decoration: BoxDecoration(
+        color: Colors.grey[50],
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Row(
+        children: [
+          Icon(icon, size: 16, color: statusColor),
+          const SizedBox(width: 6),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label,
+                  style: theme.textTheme.bodySmall?.copyWith(fontWeight: FontWeight.bold),
+                ),
+                Row(
+                  children: [
+                    Text(
+                      value,
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        fontWeight: FontWeight.bold, color: statusColor,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    GestureDetector(
+                      onTap: onEdit,
+                      child: Icon(
+                        Icons.edit,
+                        size: 21, color: Colors.deepPurple,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 
   Widget _buildTransferBetweenWarehouses() {
     return Center(
@@ -1559,8 +1820,7 @@ class _WarehouseManagementPageState extends State<WarehouseManagementPage>
     return Container(
       padding: const EdgeInsets.fromLTRB(8, 6, 8, 6),
       decoration: BoxDecoration(
-        color: Colors.grey[50],
-        borderRadius: BorderRadius.circular(6),
+        color: Colors.grey[50], borderRadius: BorderRadius.circular(6),
       ),
       child: Row(
         children: [
@@ -1571,9 +1831,7 @@ class _WarehouseManagementPageState extends State<WarehouseManagementPage>
             children: [
               Text(
                 label,
-                style: theme.textTheme.bodySmall?.copyWith(
-                  fontWeight: FontWeight.bold,
-                ),
+                style: theme.textTheme.bodySmall?.copyWith(fontWeight: FontWeight.bold),
               ),
               Text(
                 value,

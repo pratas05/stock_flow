@@ -138,9 +138,7 @@ class ProductViewModel {
       });
 
       return productRef;
-    } catch (e) {
-      print("Error saving product: $e"); throw e;
-    }
+    } catch (e) {print("Error saving product: $e"); throw e;}
   }
 
   Future<void> updateProduct(String productId, ProductModel product) async {
@@ -205,7 +203,6 @@ class ProductViewModel {
 
       final now = Timestamp.now();
 
-      // Atualiza cada produto, se não estiver em promoção
       for (final productDoc in products.docs) {
         final productData = productDoc.data();
         final basePrice = productData['basePrice']?.toDouble() ?? 0.0;
@@ -215,15 +212,21 @@ class ProductViewModel {
             (productData['endDate'] as Timestamp).compareTo(now) >= 0;
 
         if (hasActiveDiscount) {
-          // Pula produtos com desconto ativo
-          continue;
+          continue; // Pula produtos com desconto ativo
         }
 
-        final newVatPrice = basePrice * (1 + newRate);
-        await productDoc.reference.update({'vatPrice': double.parse(newVatPrice.toStringAsFixed(2))});
+        // Special handling for zero-tax products
+        final newVatPrice = vatCode == '0' 
+            ? basePrice 
+            : basePrice * (1 + newRate);
+
+        await productDoc.reference.update({
+          'vatPrice': double.parse(newVatPrice.toStringAsFixed(2))
+        });
       }
     } catch (e) {
-      print('Error updating products VAT prices: $e'); throw e;
+      print('Error updating products VAT prices: $e');
+      throw e;
     }
   }
 
@@ -362,45 +365,62 @@ class _ProductDatabasePageState extends State<ProductDatabasePage> with TickerPr
   }
 
   Future<void> _cleanupExpiredDiscounts() async {
-  try {
-    final now = Timestamp.now();
-    final batch = _firestore.batch();
+    try {
+      final now = Timestamp.now();
+      final batch = _firestore.batch();
 
-    final querySnapshot = await _firestore
-        .collection('products')
-        .where('storeNumber', isEqualTo: _storeNumber)
-        .where('endDate', isLessThan: now)
-        .get();
+      final querySnapshot = await _firestore
+          .collection('products')
+          .where('storeNumber', isEqualTo: _storeNumber)
+          .where('endDate', isLessThan: now)
+          .get();
 
-    for (var productDoc in querySnapshot.docs) {
-      final data = productDoc.data();
-      final discountPercent = data['discountPercent'];
-      final vatCode = data['vatCode'];
-      final basePrice = data['basePrice']?.toDouble() ?? 0.0;
+      for (var productDoc in querySnapshot.docs) {
+        final data = productDoc.data();
+        final discountPercent = data['discountPercent'];
+        final vatCode = data['vatCode'];
+        final basePrice = data['basePrice']?.toDouble() ?? 0.0;
 
-      if (discountPercent != null && vatCode != null && basePrice > 0) {
-        final vatRate = await _getVatRate(vatCode, _storeNumber!);
-        final recalculatedVatPrice = basePrice * (1 + vatRate);
+        if (discountPercent != null && basePrice > 0) {
+          // Special handling for zero-tax products
+          if (vatCode == '0') {
+            batch.update(productDoc.reference, {
+              'vatPrice': basePrice, // Directly set to basePrice for zero-tax
+              'startDate': FieldValue.delete(),
+              'endDate': FieldValue.delete(),
+              'discountPercent': FieldValue.delete(),
+            });
+          } else {
+            // Normal VAT calculation for other products
+            final vatRate = await _getVatRate(vatCode, _storeNumber!);
+            final recalculatedVatPrice = basePrice * (1 + vatRate);
 
-        batch.update(productDoc.reference, {
-          'vatPrice': double.parse(recalculatedVatPrice.toStringAsFixed(2)),
-          'startDate': FieldValue.delete(),
-          'endDate': FieldValue.delete(),
-          'discountPercent': FieldValue.delete(),
-        });
-      } else if (data.containsKey('startDate') || data.containsKey('endDate') || data.containsKey('discountPercent')) {
-        // In case discount fields exist but cannot recalculate vatPrice
-        batch.update(productDoc.reference, {
-          'startDate': FieldValue.delete(),
-          'endDate': FieldValue.delete(),
-          'discountPercent': FieldValue.delete(),
-        });
+            batch.update(productDoc.reference, {
+              'vatPrice': double.parse(recalculatedVatPrice.toStringAsFixed(2)),
+              'startDate': FieldValue.delete(),
+              'endDate': FieldValue.delete(),
+              'discountPercent': FieldValue.delete(),
+            });
+          }
+        } else if (data.containsKey('startDate') || 
+                  data.containsKey('endDate') || 
+                  data.containsKey('discountPercent')) {
+          // Cleanup discount fields even if we can't recalculate
+          batch.update(productDoc.reference, {
+            'startDate': FieldValue.delete(),
+            'endDate': FieldValue.delete(),
+            'discountPercent': FieldValue.delete(),
+          });
+        }
       }
-    }
 
-    if (querySnapshot.docs.isNotEmpty) {await batch.commit();}
-  } catch (e) {/*print('Error cleaning up expired discounts: $e');*/}
-}
+      if (querySnapshot.docs.isNotEmpty) {
+        await batch.commit();
+      }
+    } catch (e) {
+      print('Error cleaning up expired discounts: $e');
+    }
+  }
 
   Future<double> _getVatRate(String vatCode, String storeNumber) async {
     try {
@@ -718,7 +738,11 @@ class _ProductDatabasePageState extends State<ProductDatabasePage> with TickerPr
         Timestamp? endDate;
         int? discountPercent;
 
-        if (productData.containsKey('vatPrice') && 
+        final vatCodeRaw = productData['vatCode'];
+        final vatCode = int.tryParse(vatCodeRaw?.toString() ?? '');
+        final isZeroVat = vatCode == 0;
+
+        if (productData.containsKey('vatPrice') &&
             productData['vatPrice'] != null &&
             productData.containsKey('endDate') &&
             productData['endDate'] != null) {
@@ -735,7 +759,8 @@ class _ProductDatabasePageState extends State<ProductDatabasePage> with TickerPr
         return Center(
           child: SizedBox(
             width: MediaQuery.of(context).size.width * 0.5,
-            child: Card(elevation: 4,
+            child: Card(
+              elevation: 4,
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
               margin: const EdgeInsets.symmetric(vertical: 8.0, horizontal: 8.0),
               child: InkWell(
@@ -753,7 +778,8 @@ class _ProductDatabasePageState extends State<ProductDatabasePage> with TickerPr
                             child: Text(
                               product['name'],
                               style: theme.textTheme.titleLarge?.copyWith(
-                                fontWeight: FontWeight.bold, color: theme.colorScheme.primary,
+                                fontWeight: FontWeight.bold,
+                                color: theme.colorScheme.primary,
                               ),
                               overflow: TextOverflow.ellipsis,
                             ),
@@ -770,16 +796,16 @@ class _ProductDatabasePageState extends State<ProductDatabasePage> with TickerPr
                               Tooltip(
                                 message: 'View Barcode',
                                 child: IconButton(
-                                  icon: Icon(Icons.barcode_reader, 
-                                    size: 20, color: Colors.blue[700]),
+                                  icon: Icon(Icons.barcode_reader,
+                                      size: 20, color: Colors.blue[700]),
                                   onPressed: () => BarcodePage.showBarcodeDialog(
-                                    context, 
-                                    product.id, 
-                                    product['name']
+                                    context,
+                                    product.id,
+                                    product['name'],
                                   ),
                                 ),
                               ),
-                              if (_isStoreManager && _hasAdminAccess) 
+                              if (_isStoreManager && _hasAdminAccess)
                                 Tooltip(
                                   message: 'Delete Product',
                                   child: IconButton(
@@ -800,27 +826,24 @@ class _ProductDatabasePageState extends State<ProductDatabasePage> with TickerPr
                         ],
                       ),
                       const SizedBox(height: 8),
-
                       Row(
                         children: [
                           Tooltip(
                             message: 'Product Brand',
-                            child: Icon(Icons.branding_watermark,  size: 16, color: theme.colorScheme.secondary),
+                            child: Icon(Icons.branding_watermark, size: 16, color: theme.colorScheme.secondary),
                           ),
                           const SizedBox(width: 4),
-                          Text('${product['brand'] ?? ''}', 
-                            style: theme.textTheme.bodyMedium),
+                          Text('${product['brand'] ?? ''}', style: theme.textTheme.bodyMedium),
                           const SizedBox(width: 16),
                           Tooltip(
                             message: 'Product Category',
-                            child: Icon(Icons.category,  size: 16, color: theme.colorScheme.secondary),
+                            child: Icon(Icons.category, size: 16, color: theme.colorScheme.secondary),
                           ),
                           const SizedBox(width: 4),
                           Text('${product['category'] ?? ''}', style: theme.textTheme.bodyMedium),
                         ],
                       ),
                       const SizedBox(height: 8),
-
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
@@ -829,26 +852,53 @@ class _ProductDatabasePageState extends State<ProductDatabasePage> with TickerPr
                             children: [
                               Row(
                                 children: [
-                                  Icon(Icons.euro_symbol, 
-                                    size: 16, color: hasValidDiscount ? Colors.red : Colors.green[700]),
+                                  Icon(Icons.euro_symbol, size: 16,
+                                    color: hasValidDiscount ? Colors.red : Colors.green[700]),
                                   const SizedBox(width: 4),
                                   if (hasValidDiscount) ...[
                                     Text(
-                                      "€${(vatPrice! / (1 - (discountPercent! / 100))).toStringAsFixed(2)}",
-                                      style: theme.textTheme.bodyMedium?.copyWith(decoration: TextDecoration.lineThrough, color: Colors.grey),
-                                    ),
-                                    const SizedBox(width: 8),
-                                    Text(
-                                      '€${vatPrice.toStringAsFixed(2)}',
+                                      '${vatPrice?.toStringAsFixed(2)}',
                                       style: theme.textTheme.titleMedium?.copyWith(
                                         fontWeight: FontWeight.bold, color: Colors.red,
                                       ),
                                     ),
+                                    const SizedBox(width: 8),
+                                    Text(
+                                      "${(vatPrice! / (1 - (discountPercent! / 100))).toStringAsFixed(2)}",
+                                      style: theme.textTheme.bodyMedium?.copyWith(
+                                        decoration: TextDecoration.lineThrough, color: const Color.fromARGB(227, 35, 34, 34),
+                                      ),
+                                    ),                     
                                   ] else
                                     Text(
                                       '${product['vatPrice'].toStringAsFixed(2)}',
                                       style: theme.textTheme.titleMedium?.copyWith(
-                                        fontWeight: FontWeight.bold, color: Colors.green[700],
+                                        fontWeight: FontWeight.bold,color: Colors.green[700],
+                                      ),
+                                    ),
+                                  if (isZeroVat)
+                                    Padding(
+                                      padding: const EdgeInsets.only(left: 12),
+                                      child: Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                        decoration: BoxDecoration(
+                                          color: Colors.green[50],
+                                          borderRadius: BorderRadius.circular(8),
+                                          border: Border.all(color: Colors.red),
+                                        ),
+                                        child: Row(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            Icon(Icons.money_off_csred, size: 16, color: Colors.red),
+                                            const SizedBox(width: 4),
+                                            Text(
+                                              'Zero Taxes',
+                                              style: theme.textTheme.labelMedium?.copyWith(
+                                                color: Colors.red, fontWeight: FontWeight.bold,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
                                       ),
                                     ),
                                 ],
@@ -866,7 +916,6 @@ class _ProductDatabasePageState extends State<ProductDatabasePage> with TickerPr
                               ),
                             ],
                           ),
-                          
                           Column(
                             crossAxisAlignment: CrossAxisAlignment.end,
                             children: [
@@ -874,12 +923,12 @@ class _ProductDatabasePageState extends State<ProductDatabasePage> with TickerPr
                                 children: [
                                   Tooltip(
                                     message: 'Shop Stock',
-                                    child: Icon(Icons.store, size: 16, 
+                                    child: Icon(Icons.store, size: 16,
                                       color: isOutOfStock
-                                        ? Colors.red
-                                        : isLowStock
-                                            ? Colors.amber
-                                            : Colors.green),
+                                          ? Colors.red
+                                          : isLowStock
+                                              ? Colors.amber
+                                              : Colors.green),
                                   ),
                                   const SizedBox(width: 4),
                                   Text(
@@ -887,10 +936,10 @@ class _ProductDatabasePageState extends State<ProductDatabasePage> with TickerPr
                                     style: theme.textTheme.bodyMedium?.copyWith(
                                       fontWeight: FontWeight.bold,
                                       color: isOutOfStock
-                                        ? Colors.red
-                                        : isLowStock
-                                            ? Colors.amber[800]
-                                            : Colors.green,
+                                          ? Colors.red
+                                          : isLowStock
+                                              ? Colors.amber[800]
+                                              : Colors.green,
                                     ),
                                   ),
                                 ],
@@ -1046,11 +1095,6 @@ class _ProductDatabasePageState extends State<ProductDatabasePage> with TickerPr
                                           'old': productModel.stockMin.toString(), 'new': stockMinController.text
                                         };
                                       }
-                                      if (int.tryParse(wareHouseStockController.text) != productModel.wareHouseStock) {
-                                        changedFields['Warehouse Stock'] = {
-                                          'old': productModel.wareHouseStock.toString(), 'new': wareHouseStockController.text
-                                        };
-                                      }
                                       if (double.tryParse(lastPurchasePriceController.text) != productModel.lastPurchasePrice) {
                                         changedFields['Last Purchase Price'] = {
                                           'old': productModel.lastPurchasePrice.toString(), 'new': lastPurchasePriceController.text
@@ -1074,7 +1118,8 @@ class _ProductDatabasePageState extends State<ProductDatabasePage> with TickerPr
                                       }
 
                                       if (changedFields.isEmpty) {
-                                        CustomSnackbar.show(context: context, message: 'No changes were made to the product'); return;
+                                        CustomSnackbar.show(context: context, message: 'No changes were made to the product',
+                                        icon: Icons.error, backgroundColor: Colors.red, duration: Duration(seconds: 1)); return;
                                       }
                                       
                                       if (nameController.text.isEmpty ||
@@ -1087,24 +1132,16 @@ class _ProductDatabasePageState extends State<ProductDatabasePage> with TickerPr
                                           stockMinController.text.isEmpty ||
                                           lastPurchasePriceController.text.isEmpty ||
                                           vatCodeController.text.isEmpty) {
-                                        CustomSnackbar.show(context: context, message: 'Please fill in all required fields'); return;
+                                        CustomSnackbar.show(context: context, message: 'Please fill in all required fields',
+                                        duration: Duration(seconds: 1)); return;
                                       }
 
                                       int stockMax = int.tryParse(stockMaxController.text) ?? 0;
                                       int stockMin = int.tryParse(stockMinController.text) ?? 0;
-                                      int stockCurrent = productModel.stockCurrent;
-                                      int wareHouseStock = int.tryParse(wareHouseStockController.text) ?? productModel.wareHouseStock;
 
                                       if (stockMin >= stockMax) {
-                                        CustomSnackbar.show(context: context, message: 'Minimum stock must be less than maximum stock'); return;
-                                      }
-
-                                      if (wareHouseStock > stockMax) {
-                                        CustomSnackbar.show(context: context, message: 'Warehouse stock cannot exceed maximum stock'); return;
-                                      }
-
-                                      if (wareHouseStock + stockCurrent > stockMax) {
-                                        CustomSnackbar.show(context: context, message: 'All stock cannot exceed maximum stock'); return;
+                                        CustomSnackbar.show(context: context, message: 'Minimum stock must be less than maximum stock',
+                                        icon: Icons.error, backgroundColor: Colors.red, duration: Duration(seconds: 1)); return;
                                       }
 
                                       try {
@@ -1112,8 +1149,7 @@ class _ProductDatabasePageState extends State<ProductDatabasePage> with TickerPr
                                         final user = FirebaseAuth.instance.currentUser;
                                         if (user == null) throw Exception("No user logged in");
 
-                                        final vatRate = await _viewModel._getVatRate(
-                                          vatCodeController.text, storeNumber);
+                                        final vatRate = await _viewModel._getVatRate(vatCodeController.text, storeNumber);
                                         final basePrice = double.tryParse(basePriceController.text) ?? 0.0;
                                         final vatPrice = basePrice * (1 + vatRate);
 
@@ -1128,7 +1164,7 @@ class _ProductDatabasePageState extends State<ProductDatabasePage> with TickerPr
                                           stockMax: stockMax,
                                           stockCurrent: productModel.stockCurrent,
                                           stockMin: stockMin,
-                                          wareHouseStock: wareHouseStock,
+                                          wareHouseStock: productModel.wareHouseStock,
                                           stockBreak: productModel.stockBreak,
                                           lastPurchasePrice: double.tryParse(lastPurchasePriceController.text) ?? 0.0,
                                           basePrice: double.tryParse(basePriceController.text) ?? 0.0,
@@ -1156,12 +1192,14 @@ class _ProductDatabasePageState extends State<ProductDatabasePage> with TickerPr
                                           userId: user.uid,
                                         );
 
-                                        CustomSnackbar.show(context: context, message: "Product updated successfully!");
+                                        CustomSnackbar.show(context: context, message: "Product updated successfully!", 
+                                        icon: Icons.check_circle, backgroundColor: Colors.green, duration: Duration(seconds: 1));
                                         
                                         setState(() => isEditing = false);
                                       } catch (e) {
                                         print("Error updating product: $e");
-                                        CustomSnackbar.show(context: context, message: 'Error updating product');
+                                        CustomSnackbar.show(context: context, message: 'Error updating product', 
+                                        icon: Icons.error, backgroundColor: Colors.red, duration: Duration(seconds: 1));
                                       }
                                     } else {setState(() => isEditing = true);}
                                   },
@@ -1171,9 +1209,7 @@ class _ProductDatabasePageState extends State<ProductDatabasePage> with TickerPr
                             SizedBox(height: 16),
                             Container(height: 2,
                               decoration: BoxDecoration(
-                                gradient: LinearGradient(
-                                  colors: [primaryColor.withOpacity(0.3), Colors.transparent],
-                                ),
+                                gradient: LinearGradient(colors: [primaryColor.withOpacity(0.3), Colors.transparent]),
                               ),
                             ),
                           ],
@@ -1336,7 +1372,8 @@ class _ProductDatabasePageState extends State<ProductDatabasePage> with TickerPr
     Color highlightColor,
   ) {
     return Container(
-      decoration: BoxDecoration(color: Colors.white,
+      decoration: BoxDecoration(
+        color: Colors.white,
         borderRadius: BorderRadius.circular(12),
         boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 6, offset: Offset(0, 2))],
       ),
@@ -1347,7 +1384,9 @@ class _ProductDatabasePageState extends State<ProductDatabasePage> with TickerPr
             children: [
               Container(
                 padding: EdgeInsets.all(8),
-                decoration: BoxDecoration(color: highlightColor.withOpacity(0.1), shape: BoxShape.circle),
+                decoration: BoxDecoration(
+                  color: highlightColor.withOpacity(0.1), shape: BoxShape.circle,
+                ),
                 child: Icon(Icons.inventory, size: 20, color: highlightColor),
               ),
               const SizedBox(width: 16),
@@ -1357,25 +1396,22 @@ class _ProductDatabasePageState extends State<ProductDatabasePage> with TickerPr
               ),
             ],
           ),
-          SizedBox(height: 16),
+          const SizedBox(height: 16),
           _buildEditableStockRow(
             isEditing,
             "Max Stock",
-            stockMaxController,
-            Colors.blue,
+            stockMaxController,Colors.blue,
             isRequired: true, isNumber: true,
           ),
           Divider(height: 16, thickness: 1),
-          _buildEditableStockRow(
-            isEditing,
+          // Alterado para visualização apenas do Warehouse Stock
+          _buildStockRow(
             "Warehouse Stock",
-            wareHouseStockController,
-            Colors.green,
-            isNumber: true, isRequired: true,
+            productModel.wareHouseStock.toString(),Colors.green,
           ),
           Divider(height: 16, thickness: 1),
           _buildStockRow(
-            "Current Stock",
+            "Current Shop Stock",
             productModel.stockCurrent.toString(),
             productModel.stockCurrent <= productModel.stockMin ? Colors.orange : Colors.green,
           ),
@@ -1383,8 +1419,7 @@ class _ProductDatabasePageState extends State<ProductDatabasePage> with TickerPr
           _buildEditableStockRow(
             isEditing,
             "Min Stock",
-            stockMinController,
-            Colors.blue,
+            stockMinController,Colors.blue,
             isRequired: true, isNumber: true,
           ),
         ],
