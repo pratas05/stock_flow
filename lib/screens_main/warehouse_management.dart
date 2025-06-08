@@ -593,11 +593,6 @@ class _WarehouseManagementPageState extends State<WarehouseManagementPage>
     final isOutOfStock = warehouseStock <= 0;
     final isLowStock = warehouseStock > 0 && warehouseStock <= 10;
 
-    // Warehouse progress bar color logic
-    final warehouseProgressColor = isOutOfStock
-        ? Colors.red
-        : isLowStock ? Colors.orange : Colors.green;
-
     return StatefulBuilder(
       builder: (context, setState) {
         return StreamBuilder<DocumentSnapshot>(
@@ -625,9 +620,7 @@ class _WarehouseManagementPageState extends State<WarehouseManagementPage>
                     hoverColor: Colors.transparent,
                     splashColor: Colors.transparent,
                     highlightColor: Colors.transparent,
-                    onTap: () async {
-                      await _showProductDetailsDialog(context, product);
-                    },
+                    onTap: () async {await _showProductDetailsDialog(context, product);},
                     child: Padding(
                       padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
                       child: Column(
@@ -641,8 +634,7 @@ class _WarehouseManagementPageState extends State<WarehouseManagementPage>
                                 child: Text(
                                   product['name'],
                                   style: theme.textTheme.titleMedium?.copyWith(
-                                    fontWeight: FontWeight.bold,
-                                    color: Colors.deepPurple,
+                                    fontWeight: FontWeight.bold, color: Colors.deepPurple,
                                   ),
                                   maxLines: 2,
                                   overflow: TextOverflow.ellipsis,
@@ -681,8 +673,7 @@ class _WarehouseManagementPageState extends State<WarehouseManagementPage>
 
                           // Basic info with tooltips
                           Wrap(
-                            spacing: 6,
-                            runSpacing: 6,
+                            spacing: 6, runSpacing: 6,
                             children: [
                               Tooltip(
                                 message: 'Product brand',
@@ -749,11 +740,6 @@ class _WarehouseManagementPageState extends State<WarehouseManagementPage>
                                   );
                                 },
                               ),
-                              const SizedBox(height: 6),
-                              Text(
-                                'Max: $maxStock',
-                                style: theme.textTheme.labelSmall,
-                              ),
                             ],
                           ),
                           const SizedBox(height: 8),
@@ -763,31 +749,62 @@ class _WarehouseManagementPageState extends State<WarehouseManagementPage>
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(
-                                'Warehouse Stock Level',
-                                style: theme.textTheme.bodySmall?.copyWith(
-                                  fontWeight: FontWeight.bold,
-                                ),
+                                'Stock Level',
+                                style: theme.textTheme.bodySmall?.copyWith(fontWeight: FontWeight.bold),
                               ),
                               const SizedBox(height: 4),
-                              LinearProgressIndicator(
-                                value: warehouseStock / (maxStock * 1.0),
-                                backgroundColor: Colors.grey[200],
-                                color: warehouseProgressColor,
-                                minHeight: 6,
+                              Stack(
+                                children: [
+                                  // Background of the progress bar
+                                  LinearProgressIndicator(
+                                    value: 1.0, // Full width background
+                                    backgroundColor: Colors.grey[200],
+                                    minHeight: 6,
+                                  ),
+                                  // Shop stock portion (bottom layer)
+                                  LinearProgressIndicator(
+                                    value: (product['stockCurrent'] as int) / (maxStock * 1.0),
+                                    color: const Color.fromARGB(255, 0, 140, 255), // Color for shop stock
+                                    minHeight: 6,
+                                  ),
+                                  // Warehouse stock portion (top layer)
+                                  LinearProgressIndicator(
+                                    value: (warehouseStock + (product['stockCurrent'] as int)) / (maxStock * 1.0),
+                                    backgroundColor: Colors.transparent,
+                                    color: Colors.purple.withOpacity(0.5), // Color for warehouse stock
+                                    minHeight: 6,
+                                  ),
+                                ],
                               ),
                               Padding(
                                 padding: const EdgeInsets.only(top: 4),
                                 child: Row(
-                                  mainAxisAlignment:
-                                      MainAxisAlignment.spaceBetween,
+                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                   children: [
                                     Text('0', style: theme.textTheme.labelSmall),
-                                    Text('${(maxStock * 0.5).toInt()}',
-                                        style: theme.textTheme.labelSmall),
-                                    Text('$maxStock',
-                                        style: theme.textTheme.labelSmall),
+                                    Text('${(maxStock * 0.5).toInt()}', style: theme.textTheme.labelSmall),
+                                    Text('$maxStock', style: theme.textTheme.labelSmall),
                                   ],
                                 ),
+                              ),
+                              const SizedBox(height: 8),
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                children: [
+                                  Row(
+                                    children: [
+                                      Container(
+                                        width: 12, height: 12,
+                                        color: const Color.fromARGB(255, 8, 86, 151),
+                                        margin: const EdgeInsets.only(right: 4),
+                                      ),
+                                      Text(
+                                        'Shop: ${product['stockCurrent']}',
+                                        style: theme.textTheme.labelSmall,
+                                      ),
+                                    ],
+                                  ),                            
+                                ],
                               ),
                             ],
                           ),

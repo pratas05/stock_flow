@@ -211,22 +211,17 @@ class ProductViewModel {
         final hasActiveDiscount = productData.containsKey('endDate') &&
             (productData['endDate'] as Timestamp).compareTo(now) >= 0;
 
-        if (hasActiveDiscount) {
-          continue; // Pula produtos com desconto ativo
-        }
+        if (hasActiveDiscount) {continue;} // Pula produtos com desconto ativo
 
         // Special handling for zero-tax products
         final newVatPrice = vatCode == '0' 
             ? basePrice 
             : basePrice * (1 + newRate);
 
-        await productDoc.reference.update({
-          'vatPrice': double.parse(newVatPrice.toStringAsFixed(2))
-        });
+        await productDoc.reference.update({'vatPrice': double.parse(newVatPrice.toStringAsFixed(2))});
       }
     } catch (e) {
-      print('Error updating products VAT prices: $e');
-      throw e;
+      print('Error updating products VAT prices: $e'); throw e;
     }
   }
 
@@ -482,36 +477,51 @@ class _ProductDatabasePageState extends State<ProductDatabasePage> with TickerPr
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const SizedBox(height: 8),
-          Wrap(spacing: 8, runSpacing: 8,
-            children: [
-              for (var location in _productLocations)
-                Chip(label: Text(location), onDeleted: () {setState(() {_productLocations.remove(location);});}),
-            ],
-          ),
-          const SizedBox(height: 8),
           Row(
             children: [
+              SizedBox(width: 35), // <-- Espaço à esquerda para centralizar o campo
               Expanded(
                 child: TextField(
-                  controller: _locationInputController,
                   decoration: InputDecoration(
-                    labelText: "Add location (e.g., AD-20)", border: OutlineInputBorder(),
+                    labelText: "Product Location",
+                    fillColor: Colors.grey[100],
+                    filled: true,
+                    border: OutlineInputBorder(),
+                    labelStyle: TextStyle(color: Colors.black),
+                    hintStyle: TextStyle(color: Colors.grey),
+                    contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                   ),
+                  controller: _locationInputController,
                 ),
               ),
+              const SizedBox(width: 8),
               IconButton(
                 icon: Icon(Icons.add),
                 onPressed: () {
                   if (_locationInputController.text.isNotEmpty) {
                     setState(() {
-                      _productLocations.add(_locationInputController.text);
+                      _productLocations.add(_locationInputController.text.trim());
                       _locationInputController.clear();
                     });
                   }
                 },
+                tooltip: 'Add location',
               ),
             ],
+          ),
+          const SizedBox(height: 8),
+          Padding(
+            padding: const EdgeInsets.only(left: 100), // Alinha os chips com o campo
+            child: Wrap(
+              spacing: 8, runSpacing: 8,
+              children: [
+                for (var location in _productLocations)
+                  Chip(
+                    label: Text(location),
+                    onDeleted: () {setState(() {_productLocations.remove(location);});},
+                  ),
+              ],
+            ),
           ),
         ],
       ),
@@ -1667,7 +1677,7 @@ class _ProductDatabasePageState extends State<ProductDatabasePage> with TickerPr
 // COMPONENTES REUTILIZÁVEIS (_buildTextField(); _buildButton(); _buildDetailRow(); _buildEditableDetailRow();
   // _buildStockRow(); _buildPriceRow(); _buildEditableStockRow(); _buildEditablePriceRow();
   Widget _buildTextField(TextEditingController controller, String label,
-      {bool isNumber = false, int maxLength = 0, bool readOnly = false}) {
+      {bool isNumber = false, int maxLength = 0,}) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 8.0),
       child: SizedBox(width: 1000,
@@ -1679,7 +1689,6 @@ class _ProductDatabasePageState extends State<ProductDatabasePage> with TickerPr
           maxLength: maxLength > 0 ? maxLength : null,
           inputFormatters: _getInputFormatters(label),
           decoration: _getInputDecoration(label),
-          readOnly: readOnly,
           onChanged: (value) {
             if (isNumber && value.isEmpty) {
               controller.text = ''; controller.selection = TextSelection.collapsed(offset: 0);
