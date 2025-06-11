@@ -1,3 +1,4 @@
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -97,9 +98,7 @@ class StockBreakViewModel {
     try {
       // Fetch the product document
       final productDoc = await FirebaseFirestore.instance.collection('products').doc(productId).get();
-      if (!productDoc.exists) {
-        throw Exception("Product not found");
-      }
+      if (!productDoc.exists) {throw Exception("Product not found");}
 
       final productData = productDoc.data() as Map<String, dynamic>;
 
@@ -132,8 +131,7 @@ class StockBreakViewModel {
         await FirebaseFirestore.instance.collection('breakages').doc(breakageNotificationId).delete();
       }
     } catch (e) {
-      debugPrint("Error returning product from breakage: $e");
-      rethrow;
+      debugPrint("Error returning product from breakage: $e"); rethrow;
     }
   }
 
@@ -221,8 +219,7 @@ class _StockBreakFilteredPageState extends State<StockBreakFilteredPage> {
     if (userData.containsKey('error')) {
       setState(() {
         _isLoading = false;
-      });
-      return;
+      }); return;
     }
 
     setState(() {
@@ -231,9 +228,7 @@ class _StockBreakFilteredPageState extends State<StockBreakFilteredPage> {
       _adminPermission = userData['adminPermission']?.toString();
       _isLoading = false;
       
-      if (_storeNumber != null) {
-        _storeNumberController.text = _storeNumber!;
-      }
+      if (_storeNumber != null) {_storeNumberController.text = _storeNumber!;}
     });
   }
   
@@ -281,13 +276,13 @@ class _StockBreakFilteredPageState extends State<StockBreakFilteredPage> {
   }
 
   Widget _buildMainContent() {
-    return Scaffold(
+    return Scaffold(     
       appBar: AppBar(
         title: Text("Stock Break Management", style: TextStyle(color: Colors.white)),
-        backgroundColor: Colors.transparent, elevation: 0,
+        backgroundColor: Colors.transparent, elevation: 0,       
         flexibleSpace: Container(
           decoration: BoxDecoration(
-            gradient: LinearGradient(
+            gradient: LinearGradient(            
               colors: [
                 hexStringToColor("CB2B93"),
                 hexStringToColor("9546C4"),
@@ -323,56 +318,148 @@ class _StockBreakFilteredPageState extends State<StockBreakFilteredPage> {
       padding: const EdgeInsets.all(16.0),
       child: Container(
         decoration: BoxDecoration(
-          color: Colors.white.withOpacity(0.8),
-          borderRadius: BorderRadius.circular(10),
+          borderRadius: BorderRadius.circular(20),
+          boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.2), blurRadius: 20, spreadRadius: 0)],
         ),
-        child: Padding(
-          padding: const EdgeInsets.all(16.0),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              _buildTextField(_nameController, 'Name'),
-              _buildTextField(_storeNumberController, 'Store Number', enabled: false),
-              SizedBox(height: 8),
-              DropdownButtonFormField<String>(
-                value: _selectedBreakageType,
-                onChanged: (value) => setState(() => _selectedBreakageType = value),
-                decoration: InputDecoration(
-                  labelText: "Breakage Type",
-                  border: OutlineInputBorder(),
-                ),
-                items: [
-                  DropdownMenuItem(
-                    value: null,
-                    child: Text("All Types"),
-                  ),
-                  DropdownMenuItem(
-                    value: 'stockCurrent',
-                    child: Text("Shop Stock"),
-                  ),
-                  DropdownMenuItem(
-                    value: 'wareHouseStock',
-                    child: Text("Warehouse Stock"),
-                  ),
-                ],
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(20),
+          child: BackdropFilter(
+            filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+            child: Container(
+              decoration: BoxDecoration(
+                color: Colors.white.withOpacity(0.15),
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(width: 1.5, color: Colors.white.withOpacity(0.2)),
               ),
-              Row(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
                 children: [
-                  SizedBox(width: 8),
-                  IconButton(
-                    icon: Icon(Icons.clear_all),
-                    tooltip: 'Clear all filters',
-                    onPressed: () {
-                      setState(() {
-                        _nameController.clear();
-                        _selectedBreakageType = null;
-                      });
-                    },
+                  // Header do Filtro
+                  Row(
+                    children: [
+                      Icon(Icons.filter_alt_rounded, color: Colors.white.withOpacity(0.9), size: 24),
+                      const SizedBox(width: 8),
+                      Text(
+                        "Filter Breakages",
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      const Spacer(),
+                      Tooltip(
+                        message: 'Clear filters',
+                        child: IconButton(
+                          icon: Icon(Icons.clear_all,  color: Colors.white.withOpacity(0.7)),
+                          onPressed: () {
+                            setState(() {
+                              _nameController.clear();
+                              _selectedBreakageType = null;
+                            });
+                          },
+                        ),
+                      ),
+                    ],
                   ),
+                  const SizedBox(height: 16),
+                  
+                  // Campo de Pesquisa
+                  _buildGlassmorphicTextField(
+                    controller: _nameController,
+                    hintText: "Search by product name...",
+                    icon: Icons.search,
+                  ),
+                  const SizedBox(height: 12),
+                  
+                  // Dropdown de Tipo
+                  _buildGlassmorphicDropdown(),
                 ],
               ),
-            ],
+            ),
           ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildGlassmorphicTextField({
+    required TextEditingController controller,
+    required String hintText,
+    required IconData icon,
+  }) {
+    return Container(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(width: 1, color: Colors.white.withOpacity(0.3)),
+      ),
+      child: TextField(
+        controller: controller,
+        onChanged: (_) => setState(() {}),
+        style: TextStyle(color: Colors.white),
+        decoration: InputDecoration(
+          hintText: hintText,
+          hintStyle: TextStyle(color: Colors.white.withOpacity(0.7)),
+          prefixIcon: Icon(icon, color: Colors.white.withOpacity(0.7)),
+          border: InputBorder.none,
+          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          filled: true,
+          fillColor: Colors.white.withOpacity(0.1),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildGlassmorphicDropdown() {
+    return Container(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(width: 1, color: Colors.white.withOpacity(0.3)),
+      ),
+      child: DropdownButtonHideUnderline(
+        child: DropdownButton<String>(
+          isExpanded: true,
+          value: _selectedBreakageType,
+          dropdownColor: hexStringToColor("5E61F4").withOpacity(0.95),
+          icon: Icon(Icons.arrow_drop_down, color: Colors.white.withOpacity(0.8)),
+          style: TextStyle(color: Colors.white, fontSize: 16),
+          onChanged: (value) => setState(() => _selectedBreakageType = value),
+          items: [
+            DropdownMenuItem(
+              value: null,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: Text("All Breakage Types", style: TextStyle(color: Colors.white70)),
+              ),
+            ),
+            DropdownMenuItem(
+              value: 'stockCurrent',
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: Row(
+                  children: [
+                    Icon(Icons.store, size: 18, color: Colors.white70),
+                    const SizedBox(width: 8),
+                    Text("Shop Stock", style: TextStyle(color: Colors.white)),
+                  ],
+                ),
+              ),
+            ),
+            DropdownMenuItem(
+              value: 'wareHouseStock',
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: Row(
+                  children: [
+                    Icon(Icons.warehouse, size: 18, color: Colors.white70),
+                    const SizedBox(width: 8),
+                    Text("Warehouse Stock", style: TextStyle(color: Colors.white)),
+                  ],
+                ),
+              ),
+            ),
+          ],
         ),
       ),
     );
@@ -388,10 +475,7 @@ class _StockBreakFilteredPageState extends State<StockBreakFilteredPage> {
 
         if (!snapshot.hasData || snapshot.data!.isEmpty) {
           return Center(
-            child: Text(
-              'No breakages found.',
-              style: TextStyle(color: Colors.white70, fontSize: 18),
-            ),
+            child: Text('No breakages found.', style: TextStyle(color: Colors.white70, fontSize: 18)),
           );
         }
 
@@ -405,16 +489,14 @@ class _StockBreakFilteredPageState extends State<StockBreakFilteredPage> {
           final nameMatches = productName.contains(nameFilter);
           
           // Filtro por tipo de breakage (se selecionado)
-          final typeMatches = _selectedBreakageType == null || 
-                            breakage['breakageType'] == _selectedBreakageType;
+          final typeMatches = _selectedBreakageType == null || breakage['breakageType'] == _selectedBreakageType;
           
           return nameMatches && typeMatches;
         }).toList();
 
         if (filteredBreakages.isEmpty) {
           return Center(
-            child: Text(
-              'No breakages match the filter.', style: TextStyle(color: Colors.white70, fontSize: 18),
+            child: Text('No breakages match the filter.', style: TextStyle(color: Colors.white70, fontSize: 18),
             ),
           );
         } 
@@ -442,8 +524,7 @@ class _StockBreakFilteredPageState extends State<StockBreakFilteredPage> {
                 child: InkWell(
                   borderRadius: BorderRadius.circular(12),
                   onTap: () {
-                    if (_isStoreManager) {
-                      _showReturnBreakageDialog(context, breakage);
+                    if (_isStoreManager) {_showReturnBreakageDialog(context, breakage);
                     } else {
                       CustomSnackbar.show(
                         context: context,
@@ -474,10 +555,7 @@ class _StockBreakFilteredPageState extends State<StockBreakFilteredPage> {
                           ],
                         ),
                         const SizedBox(height: 8),
-                        Divider(
-                          color: Colors.grey[300],
-                          thickness: 1,
-                        ),
+                        Divider(color: Colors.grey[300], thickness: 1),
                         const SizedBox(height: 8),
                         Row(
                           children: [
@@ -506,15 +584,11 @@ class _StockBreakFilteredPageState extends State<StockBreakFilteredPage> {
                             Tooltip(
                               message: 'Amount of broken stock',
                               child: Container(
-                                padding: EdgeInsets.symmetric(
-                                    horizontal: 10, vertical: 4),
+                                padding: EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                                 decoration: BoxDecoration(
                                   color: hexStringToColor("5E61F4").withOpacity(0.1),
                                   borderRadius: BorderRadius.circular(20),
-                                  border: Border.all(
-                                    color: hexStringToColor("5E61F4"),
-                                    width: 1,
-                                  ),
+                                  border: Border.all(color: hexStringToColor("5E61F4"), width: 1),
                                 ),
                                 child: Row(
                                   children: [
@@ -548,22 +622,6 @@ class _StockBreakFilteredPageState extends State<StockBreakFilteredPage> {
       },
     );
   }
-
-  Widget _buildTextField(TextEditingController controller, String label, {bool enabled = true}) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8.0),
-      child: TextField(
-        controller: controller,
-        onChanged: (_) => setState(() {}),
-        enabled: enabled,
-        decoration: InputDecoration(
-          labelText: label,
-          border: OutlineInputBorder(),
-        ),
-      ),
-    );
-  }
-
 
   void _showReturnBreakageDialog(BuildContext context, Map<String, dynamic> breakage) {
     final TextEditingController quantityController = TextEditingController();
@@ -605,10 +663,7 @@ class _StockBreakFilteredPageState extends State<StockBreakFilteredPage> {
                   if (message != null)
                     Padding(
                       padding: const EdgeInsets.only(top: 10),
-                      child: Text(
-                        message!,
-                        style: TextStyle(color: messageColor, fontWeight: FontWeight.bold),
-                      ),
+                      child: Text(message!, style: TextStyle(color: messageColor, fontWeight: FontWeight.bold)),
                     ),
                 ],
               ),
@@ -622,16 +677,14 @@ class _StockBreakFilteredPageState extends State<StockBreakFilteredPage> {
                       setState(() {
                         message = "Quantity must be greater than zero.";
                         messageColor = Colors.red;
-                      });
-                      return;
+                      });return;
                     }
 
                     if (returnQuantity > breakage['breakageQty']) {
                       setState(() {
                         message = "Quantity exceeds available breakage.";
                         messageColor = Colors.red;
-                      });
-                      return;
+                      }); return;
                     }
 
                     try {

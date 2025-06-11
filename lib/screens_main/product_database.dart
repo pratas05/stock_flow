@@ -1904,7 +1904,7 @@ class _ProductDatabasePageState extends State<ProductDatabasePage> with TickerPr
       "Last Purchase Price": '[0-9]',
       "VAT Code (0, 1, 2, 3, or 4)": r'[0-4]', 
       "Product Location": '[ -_a-zA-Z0-9]',
-      "Base Price": r'[0-9]',
+      "Base Price": '[.0-9]',
     };
     return filters.containsKey(label)
         ? [FilteringTextInputFormatter.allow(RegExp(filters[label]!))]

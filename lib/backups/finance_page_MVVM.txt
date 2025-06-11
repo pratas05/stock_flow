@@ -1,3 +1,5 @@
+import 'dart:ui';
+
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -5,6 +7,7 @@ import 'package:stockflow/reusable_widgets/coins.dart';
 import 'package:stockflow/reusable_widgets/colors_utils.dart';
 import 'package:stockflow/reusable_widgets/custom_snackbar.dart';
 import 'package:stockflow/reusable_widgets/error_screen.dart';
+import 'package:stockflow/screens_main/admin.dart';
 
 // [1. MODEL]
 class UserModel {
@@ -139,8 +142,7 @@ class FinanceAndHRViewModel {
       final userDoc = await _firestore.collection('users').doc(user.uid).get();
       return UserModel.fromFirestore(userDoc);
     } catch (e) {
-      debugPrint("Error fetching current user: $e");
-      return null;
+      debugPrint("Error fetching current user: $e"); return null;
     }
   }
 
@@ -247,7 +249,7 @@ class _FinanceAndHumanResourcesPageState
     super.initState();
     _viewModel = FinanceAndHRViewModel();
     _loadUserData();
-    _tabController = TabController(length: 2, vsync: this);
+    _tabController = TabController(length: 3, vsync: this);
     _initialVatValues = VatModel(vat0: '0', vat1: '0', vat2: '0', vat3: '0', vat4: '0');
     _initializePermissions();
   }
@@ -343,6 +345,7 @@ class _FinanceAndHumanResourcesPageState
           tabs: const [
             Tab(text: 'Human Resources'),
             Tab(text: 'Finance'),
+            Tab(text: 'Administration'),
           ],
         ),
       ),
@@ -364,6 +367,7 @@ class _FinanceAndHumanResourcesPageState
           children: [
             _buildHRTab(_storeNumber!, FirebaseAuth.instance.currentUser?.uid),
             _buildFinanceTab(_storeNumber!),
+            const StoreDashboardPage()
           ],
         ),
       ),
@@ -379,12 +383,12 @@ class _FinanceAndHumanResourcesPageState
         }
 
         if (snapshot.hasError) {
-          return const Center(child: Text('Error loading users.', style: TextStyle(fontSize: 18, color: Colors.white)));
+          return const Center(
+            child: Text('Error loading users.', style: TextStyle(fontSize: 18, color: Colors.white)),
+          );
         }
 
-        final users =
-            snapshot.data?.where((user) => user.id != currentUserId).toList() ??
-                [];
+        final users = snapshot.data?.where((user) => user.id != currentUserId).toList() ?? [];
 
         if (users.isEmpty) {
           return const Center(
@@ -397,28 +401,111 @@ class _FinanceAndHumanResourcesPageState
           itemCount: users.length,
           itemBuilder: (context, index) {
             final user = users[index];
-            final hasAdminPermission =
-                user.adminPermission?.isNotEmpty ?? false;
+            final hasAdminPermission = user.adminPermission?.isNotEmpty ?? false;
 
-            return Card(
-              margin: const EdgeInsets.only(bottom: 16.0),
-              elevation: 5,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12.0),
-              ),
-              child: ListTile(
-                contentPadding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0),
-                title: Text(user.name, style: const TextStyle(fontWeight: FontWeight.bold)),
-                subtitle: Text(user.email),
-                leading: const Icon(Icons.person, size: 32, color: Colors.purple),
-                trailing: IconButton(
-                  icon: Icon(
-                    hasAdminPermission
-                        ? Icons.admin_panel_settings
-                        : Icons.person_outline,
-                    color: hasAdminPermission ? Colors.blue : Colors.grey, size: 32,
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 16.0),
+              child: Container(
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(20),
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [
+                      Colors.white.withOpacity(0.15),
+                      Colors.white.withOpacity(0.05),
+                    ],
                   ),
-                  onPressed: () => _toggleAdminPermission(user.id, hasAdminPermission, storeNumber),
+                  border: Border.all(color: Colors.white.withOpacity(0.2), width: 1.0),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.1),
+                      blurRadius: 20,
+                      spreadRadius: 2,
+                      offset: const Offset(0, 10),
+                    ),
+                  ],
+                ),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(20),
+                  child: BackdropFilter(
+                    filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+                    child: Padding(
+                      padding: const EdgeInsets.all(16.0),
+                      child: Row(
+                        children: [
+                          // Profile Icon with gradient
+                          Container(
+                            width: 50, height: 50,
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              gradient: LinearGradient(
+                                colors: [
+                                  Colors.purple.withOpacity(0.8),
+                                  Colors.blue.withOpacity(0.8),
+                                ],
+                                begin: Alignment.topLeft, end: Alignment.bottomRight,
+                              ),
+                            ),
+                            child: const Icon(
+                              Icons.person, color: Colors.white, size: 30,
+                            ),
+                          ),
+                          const SizedBox(width: 16),
+                          // User Info
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  user.name,
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.bold, fontSize: 18,
+                                  ),
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  user.email,
+                                  style: TextStyle(color: Colors.white.withOpacity(0.8), fontSize: 14),
+                                ),
+                              ],
+                            ),
+                          ),
+                          // Admin Toggle
+                          Container(
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              gradient: LinearGradient(
+                                colors: hasAdminPermission
+                                    ? [
+                                        Colors.blue.withOpacity(0.8),
+                                        Colors.lightBlue.withOpacity(0.8),
+                                      ]
+                                    : [
+                                        Colors.grey.withOpacity(0.5),
+                                        Colors.grey.withOpacity(0.3),
+                                      ],
+                                begin: Alignment.topLeft, end: Alignment.bottomRight,
+                              ),
+                              boxShadow: [
+                                BoxShadow(color: Colors.black.withOpacity(0.2), blurRadius: 10, spreadRadius: 1),
+                              ],
+                            ),
+                            child: IconButton(
+                              icon: Icon(
+                                hasAdminPermission
+                                    ? Icons.admin_panel_settings
+                                    : Icons.person_outline,
+                                color: Colors.white, size: 28,
+                              ),
+                              onPressed: () => _toggleAdminPermission(user.id, hasAdminPermission, storeNumber),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
                 ),
               ),
             );
@@ -443,13 +530,11 @@ class _FinanceAndHumanResourcesPageState
 
           if (snapshot.hasError) {
             return const Center(
-              child: Text('Error to load financial data', 
-                  style: TextStyle(fontSize: 18, color: Colors.white)),
+              child: Text('Error to load financial data', style: TextStyle(fontSize: 18, color: Colors.white)),
             );
           }
 
-          final vat = snapshot.data?.$1 ??
-              VatModel(vat0: '0', vat1: '0', vat2: '0', vat3: '0', vat4: '0');
+          final vat = snapshot.data?.$1 ?? VatModel(vat0: '0', vat1: '0', vat2: '0', vat3: '0', vat4: '0');
           final currentCurrency = snapshot.data?.$2;
           _initialVatValues = vat;
           _selectedCurrency = currentCurrency;
@@ -468,9 +553,7 @@ class _FinanceAndHumanResourcesPageState
                 // VAT Section
                 Card(
                   elevation: 8,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12.0),
-                  ),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12.0)),
                   child: Padding(
                     padding: const EdgeInsets.all(16.0),
                     child: Column(
@@ -525,12 +608,10 @@ class _FinanceAndHumanResourcesPageState
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(8.0),
                             ),
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 32, vertical: 12),
+                            padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 12),
                           ),
                           onPressed: () => _updateVatValues(storeNumber, controllers),
-                          child: const Text('Save VAT Rates',
-                              style: TextStyle(color: Colors.white)),
+                          child: const Text('Save VAT Rates', style: TextStyle(color: Colors.white)),
                         ),
                       ],
                     ),
@@ -541,16 +622,14 @@ class _FinanceAndHumanResourcesPageState
                 // Currency Section
                 Card(
                   elevation: 8,
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12.0)),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12.0)),
                   child: Padding(
                     padding: const EdgeInsets.all(16.0),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         const Text(
-                          'Store Currency',
-                          style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                          'Store Currency', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                         ),
                         const SizedBox(height: 8),
                         if (currentCurrency != null)
@@ -558,8 +637,7 @@ class _FinanceAndHumanResourcesPageState
                             padding: const EdgeInsets.only(bottom: 12.0),
                             child: RichText(
                               text: TextSpan(
-                                style: const TextStyle(
-                                    fontSize: 16, color: Colors.black87),
+                                style: const TextStyle(fontSize: 16, color: Colors.black87),
                                 children: [
                                   const TextSpan(
                                       text: 'Current Currency: ',
@@ -573,14 +651,11 @@ class _FinanceAndHumanResourcesPageState
                           value: _selectedCurrency,
                           decoration: InputDecoration(
                             labelText: 'Select New Currency',
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(8.0),
-                            ),
+                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(8.0)),
                             filled: true,
                             fillColor: Colors.grey[100],
                           ),
-                          items: CurrencyConstants.currencyMap.entries
-                              .map((entry) {
+                          items: CurrencyConstants.currencyMap.entries.map((entry) {
                             return DropdownMenuItem<String>(
                               value: entry.value,
                               child: Text(entry.key),
@@ -595,31 +670,23 @@ class _FinanceAndHumanResourcesPageState
                               context: context,
                               builder: (context) => AlertDialog(
                                 title: const Text('Confirm Currency Change'),
-                                content: Text(
-                                    'This will change the currency to $value for all financial calculations. Continue?'),
+                                content: Text('This will change the currency to $value for all financial calculations. Continue?'),
                                 actions: [
-                                  TextButton(
-                                      onPressed: () => Navigator.pop(context, false),
-                                      child: const Text('Cancel')),
+                                  TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
                                   TextButton(
                                     onPressed: () => Navigator.pop(context, true),
-                                    child: const Text('Confirm',
-                                        style: TextStyle(color: Colors.red)),
+                                    child: const Text('Confirm', style: TextStyle(color: Colors.red)),
                                   ),
                                 ],
                               ),
                             );
 
                             if (confirm != true) {
-                              setState(() {
-                                _selectedCurrency = previousValue;
-                              });
+                              setState(() {_selectedCurrency = previousValue;});
                               return;
                             }
 
-                            setState(() {
-                              _selectedCurrency = value;
-                            });
+                            setState(() { _selectedCurrency = value;});
 
                             try {
                               await _viewModel.updateStoreCurrency(value);
@@ -629,9 +696,7 @@ class _FinanceAndHumanResourcesPageState
                                 backgroundColor: Colors.green,
                               );
                             } catch (_) {
-                              setState(() {
-                                _selectedCurrency = previousValue;
-                              });
+                              setState(() { _selectedCurrency = previousValue;});
                               CustomSnackbar.show(
                                 context: context,
                                 message: 'Error saving currency',
