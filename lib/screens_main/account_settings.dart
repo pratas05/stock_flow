@@ -472,224 +472,189 @@ class _AccountSettingsState extends State<AccountSettings> {
     CustomSnackbar.show(context: context, message: "Please complete your setup first.", backgroundColor: Colors.red);
   }
 
-  Future<void> _showSetupDialog(BuildContext context) async {
-    final storeNumberController = TextEditingController();
-    final nicknameController = TextEditingController();
-    final storeNameController = TextEditingController();
-    final storeEmailController = TextEditingController();
-    final userPhoneController = TextEditingController();
-    final storeLocationController = TextEditingController();
-    final storePostalCodeController = TextEditingController();
-    final storeCityController = TextEditingController();
-    final storeCountryController = TextEditingController();
+Future<void> _showSetupDialog(BuildContext context) async {
+  final user = FirebaseAuth.instance.currentUser;
+  final storeNumberController = TextEditingController(text: user?.uid.substring(0, 8) ?? '');
+  final controllers = {
+    'nickname': TextEditingController(),
+    'storeName': TextEditingController(),
+    'storeEmail': TextEditingController(),
+    'userPhone': TextEditingController(),
+    'storeLocation': TextEditingController(),
+    'storePostalCode': TextEditingController(),
+    'storeCity': TextEditingController(),
+    'storeCountry': TextEditingController(),
+  };
 
-    String? selectedCurrency;
-    bool isStoreManager = true;
+  String? selectedCurrency;
+  bool isStoreManager = true;
 
-    // ignore: unused_local_variable
-    bool dialogDismissed = false;
+  await showDialog(
+    context: context,
+    barrierDismissible: false,
+    builder: (context) {
+      return StatefulBuilder(
+        builder: (context, setState) {
+          void resetStoreNumber() {
+            if (isStoreManager && user != null && user.uid.length >= 8) {
+              storeNumberController.text = user.uid.substring(0, 8);
+            }
+          }
 
-    await showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) {
-        return StatefulBuilder(
-          builder: (context, setState) {
-            return AlertDialog(
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-              content: Container(
-                width: MediaQuery.of(context).size.width * 0.6,
-                padding: const EdgeInsets.all(16.0),
-                child: SingleChildScrollView(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const Text(
-                        "Complete Your Setup", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+          List<Widget> buildManagerFields() {
+            final fieldMap = {
+              'Store Name': controllers['storeName'],
+              'Store Email': controllers['storeEmail'],
+              'Phone Number': controllers['userPhone'],
+              'Store Address': controllers['storeLocation'],
+              'Postal Code': controllers['storePostalCode'],
+              'City': controllers['storeCity'],
+              'Country': controllers['storeCountry'],
+            };
+
+            return fieldMap.entries
+                .map((e) => Padding(
+                      padding: const EdgeInsets.only(bottom: 8),
+                      child: TextField(
+                        controller: e.value,
+                        decoration: InputDecoration(labelText: e.key),
+                        keyboardType: e.key == 'Postal Code' || e.key == 'Phone Number'
+                            ? TextInputType.number
+                            : TextInputType.text,
+                        inputFormatters: e.key == 'Postal Code' || e.key == 'Phone Number'
+                            ? [FilteringTextInputFormatter.digitsOnly]
+                            : null,
                       ),
-                      const SizedBox(height: 16),
-                      const Text("Choose if you are an admin or an employee."),
-                      const SizedBox(height: 8),
-                      SwitchListTile(
-                        title: const Text("I'm the store manager"),
-                        value: isStoreManager,
-                        onChanged: (value) => setState(() => isStoreManager = value),
-                      ),
-                      const SizedBox(height: 8),
-                      TextField(
-                        controller: storeNumberController,
-                        keyboardType: TextInputType.number,
-                        inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                        decoration: const InputDecoration(labelText: "Store Number"),
-                      ),
-                      const SizedBox(height: 8),
-                      TextField(
-                        controller: nicknameController,
-                        decoration: const InputDecoration(labelText: "Your Name"),
-                      ),
-                      const SizedBox(height: 8),
-                      if (isStoreManager) ...[
-                        TextField(
-                          controller: storeNameController,
-                          decoration: const InputDecoration(labelText: "Store Name"),
-                        ),
-                        const SizedBox(height: 8),
-                        TextField(
-                          controller: storeEmailController,
-                          decoration: const InputDecoration(labelText: "Store Email"),
-                        ),
-                        const SizedBox(height: 8),
-                        TextField(
-                          controller: userPhoneController,
-                          keyboardType: TextInputType.phone,
-                          inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                          decoration: const InputDecoration(labelText: "Phone Number"),
-                        ),
-                        const SizedBox(height: 8),
-                        TextField(
-                          controller: storeLocationController,
-                          decoration: const InputDecoration(labelText: "Store Address"),
-                        ),
-                        const SizedBox(height: 8),
-                        TextField(
-                          controller: storePostalCodeController,
-                          keyboardType: TextInputType.number,
-                          decoration: const InputDecoration(labelText: "Postal Code"),
-                        ),
-                        const SizedBox(height: 8),
-                        TextField(
-                          controller: storeCityController,
-                          decoration: const InputDecoration(labelText: "City"),
-                        ),
-                        const SizedBox(height: 8),
-                        TextField(
-                          controller: storeCountryController,
-                          decoration: const InputDecoration(labelText: "Country"),
-                        ),
-                        const SizedBox(height: 8),
-                        DropdownButtonFormField<String>(
-                          value: selectedCurrency,
-                          decoration: const InputDecoration(
-                            labelText: "Store Currency",
-                            border: OutlineInputBorder(),
-                          ),
-                          items: CurrencyConstants.currencyMap.entries.map((entry) {
-                            return DropdownMenuItem<String>(
-                              value: entry.value,
-                              child: Text(entry.key),
-                            );
-                          }).toList(),
-                          onChanged: (value) => setState(() => selectedCurrency = value),
-                          validator: (value) {
-                            if (isStoreManager && (value == null || value.isEmpty)) {
-                              return 'Please select a currency';
-                            }
-                            return null;
-                          },
-                          menuMaxHeight: 160,
-                        ),
-                      ],
-                    ],
+                    ))
+                .toList()
+              ..add(Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: DropdownButtonFormField<String>(
+                  value: selectedCurrency,
+                  decoration: const InputDecoration(
+                    labelText: "Store Currency",
+                    border: OutlineInputBorder(),
                   ),
+                  items: CurrencyConstants.currencyMap.entries
+                      .map((e) => DropdownMenuItem(value: e.value, child: Text(e.key)))
+                      .toList(),
+                  onChanged: (val) => setState(() => selectedCurrency = val),
+                  validator: (val) =>
+                      (isStoreManager && (val == null || val.isEmpty)) ? 'Please select a currency' : null,
+                  menuMaxHeight: 160,
+                ),
+              ));
+          }
+
+          void showError(String msg) => CustomSnackbar.show(
+                context: context,
+                message: msg,
+                backgroundColor: Colors.red,
+              );
+
+          return AlertDialog(
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            content: Container(
+              width: MediaQuery.of(context).size.width * 0.6,
+              padding: const EdgeInsets.all(16),
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Text("Complete Your Setup", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                    const SizedBox(height: 16),
+                    const Text("Choose if you are an admin or an employee."),
+                    const SizedBox(height: 8),
+                    SwitchListTile(
+                      title: const Text("I'm the store manager"),
+                      value: isStoreManager,
+                      onChanged: (val) => setState(() {
+                        isStoreManager = val;
+                        resetStoreNumber();
+                      }),
+                    ),
+                    const SizedBox(height: 8),
+                    TextField(
+                      controller: storeNumberController,
+                      decoration: const InputDecoration(labelText: "Store Number"),
+                      readOnly: isStoreManager,
+                    ),
+                    const SizedBox(height: 8),
+                    TextField(
+                      controller: controllers['nickname'],
+                      decoration: const InputDecoration(labelText: "Your Name"),
+                    ),
+                    const SizedBox(height: 8),
+                    if (isStoreManager) ...buildManagerFields(),
+                  ],
                 ),
               ),
-              actions: [
-                TextButton(
-                  onPressed: () {
-                    dialogDismissed = true;
+            ),
+            actions: [
+              TextButton(
+                onPressed: () {
+                  Navigator.pop(context);
+                  setState(() => _showSetupDialogOnLoad = false);
+                },
+                child: const Text("Cancel"),
+              ),
+              TextButton(
+                onPressed: () async {
+                  final nickname = controllers['nickname']!.text.trim();
+                  final storeNumber = storeNumberController.text.trim();
+
+                  if (!isStoreManager) {
+                    if (nickname.isEmpty || storeNumber.isEmpty) {
+                      showError("Please fill store number and your name");
+                      return;
+                    }
+                  } else {
+                    final missing = controllers.entries
+                        .where((e) => e.key != 'nickname' && e.value.text.trim().isEmpty)
+                        .map((e) => e.key)
+                        .toList();
+                    if (missing.isNotEmpty || selectedCurrency == null) {
+                      showError("Please fill all fields first");
+                      return;
+                    }
+                  }
+
+                  try {
+                    await _viewModel.saveUserSetup(
+                      storeNumber: storeNumber,
+                      nickname: nickname,
+                      storeName: isStoreManager ? controllers['storeName']!.text.trim() : '',
+                      storeEmail: isStoreManager ? controllers['storeEmail']!.text.trim() : '',
+                      userPhone: isStoreManager ? controllers['userPhone']!.text.trim() : '',
+                      storeLocation: isStoreManager ? controllers['storeLocation']!.text.trim() : '',
+                      storePostalCode: isStoreManager ? controllers['storePostalCode']!.text.trim() : '',
+                      storeCity: isStoreManager ? controllers['storeCity']!.text.trim() : '',
+                      storeCountry: isStoreManager ? controllers['storeCountry']!.text.trim() : '',
+                      storeCurrency: isStoreManager ? selectedCurrency ?? '' : '',
+                      isStoreManager: isStoreManager,
+                    );
+
+                    CustomSnackbar.show(context: context, message: "Setup completed successfully");
                     Navigator.pop(context);
-                    setState(() => _showSetupDialogOnLoad = false);
-                  },
-                  child: const Text("Cancel"),
-                ),
-                TextButton(
-                  onPressed: () async {
-                    final storeNumber = storeNumberController.text.trim();
-                    final nickname = nicknameController.text.trim();
-                    
-                    // For employees, only check store number and nickname
-                    if (!isStoreManager) {
-                      if (storeNumber.isEmpty || nickname.isEmpty) {
-                        CustomSnackbar.show(
-                          context: context,
-                          message: "Please fill store number and your name",
-                          backgroundColor: Colors.red,
-                        );
-                        return;
-                      }
-                    } 
-                    // For store managers, check all fields
-                    else {
-                      final storeName = storeNameController.text.trim();
-                      final storeEmail = storeEmailController.text.trim();
-                      final userPhone = userPhoneController.text.trim();
-                      final storeLocation = storeLocationController.text.trim();
-                      final storePostalCode = storePostalCodeController.text.trim();
-                      final storeCity = storeCityController.text.trim();
-                      final storeCountry = storeCountryController.text.trim();
 
-                      if (storeName.isEmpty ||
-                          storeEmail.isEmpty ||
-                          userPhone.isEmpty ||
-                          storeLocation.isEmpty ||
-                          storePostalCode.isEmpty ||
-                          storeCity.isEmpty ||
-                          storeCountry.isEmpty ||
-                          selectedCurrency == null) {
-                        CustomSnackbar.show(
-                          context: context,
-                          message: "Please fill all fields first",
-                          backgroundColor: Colors.red,
-                        );
-                        return;
-                      }
-                    }
-
-                    try {
-                      await _viewModel.saveUserSetup(
-                        storeNumber: storeNumber,
-                        nickname: nickname,
-                        storeName: isStoreManager ? storeNameController.text.trim() : '',
-                        storeEmail: isStoreManager ? storeEmailController.text.trim() : '',
-                        userPhone: isStoreManager ? userPhoneController.text.trim() : '',
-                        storeLocation: isStoreManager ? storeLocationController.text.trim() : '',
-                        storePostalCode: isStoreManager ? storePostalCodeController.text.trim() : '',
-                        storeCity: isStoreManager ? storeCityController.text.trim() : '',
-                        storeCountry: isStoreManager ? storeCountryController.text.trim() : '',
-                        storeCurrency: isStoreManager ? selectedCurrency ?? '' : '',
-                        isStoreManager: isStoreManager,
-                      );
-
-                      CustomSnackbar.show(
-                        context: context,
-                        message: "Setup completed successfully",
-                      );
-
-                      Navigator.pop(context);
-
-                      setState(() {
-                        _nickname = nickname;
-                        _storeNumber = storeNumber;
-                        _isStoreManager = isStoreManager;
-                      });
-                    } catch (e) {
-                      print(e);
-                      CustomSnackbar.show(
-                        context: context,
-                        message: 'Error to complete your setup: ${e.toString()}',
-                        backgroundColor: Colors.red,
-                      );
-                    }
-                  },
-                  child: const Text("Save", style: TextStyle(fontWeight: FontWeight.bold)),
-                ),
-              ],
-            );
-          },
-        );
-      },
-    );
-  }
+                    setState(() {
+                      _nickname = nickname;
+                      _storeNumber = storeNumber;
+                      _isStoreManager = isStoreManager;
+                    });
+                  } catch (e) {
+                    showError('Error to complete your setup: $e');
+                  }
+                },
+                child: const Text("Save", style: TextStyle(fontWeight: FontWeight.bold)),
+              ),
+            ],
+          );
+        },
+      );
+    },
+  );
+}
 
   Future<void> _showEditStoreNumberDialog(BuildContext context) async {
     final user = FirebaseAuth.instance.currentUser;
