@@ -208,162 +208,180 @@ class NotificationsStockAlert extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return FutureBuilder<bool>(
-        future: NotificationsViewModel().hasNotificationAccess(),
-        builder: (context, accessSnapshot) {
-          // Check if user has access
-          if (accessSnapshot.connectionState == ConnectionState.done &&
-              accessSnapshot.hasData &&
-              accessSnapshot.data == false) {
-            return const ErrorScreen(
-              icon: Icons.warning_amber_rounded,
-              title: "Access Denied",
-              message: "You don't have permission to access notifications for this store.",
-            );
-          }
-          return FutureBuilder<String?>(
-            future: NotificationsViewModel().getUserStoreNumber(),
-            builder: (context, snapshot) {
-              final storeNumber = snapshot.data;
-              return Scaffold(
-                extendBodyBehindAppBar: true,
-                appBar: (snapshot.connectionState == ConnectionState.done &&
-                        snapshot.hasData &&
-                        storeNumber != null &&
-                        storeNumber.isNotEmpty)
-                    ? PreferredSize(
-                        preferredSize: const Size.fromHeight(80.0),
-                        child: AppBar(
-                          backgroundColor: Colors.transparent,
-                          elevation: 0,
-                          flexibleSpace: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              const Text('Notifications', style: TextStyle(fontSize: 18, color: Colors.white)),
-                              IconButton(
-                                icon: const Icon(Icons.add_alert),
-                                onPressed: () => _showSendNotificationModal(context),
-                                iconSize: 25.0, color: Colors.white,
-                              ),
-                            ],
-                          ),
-                        ),
-                      )
-                    : null,
-                body: Container(
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      colors: [
-                        hexStringToColor("CB2B93"),
-                        hexStringToColor("9546C4"),
-                        hexStringToColor("5E61F4"),
-                      ],
-                      begin: Alignment.topCenter, end: Alignment.bottomCenter,
-                    ),
-                  ),
-                  child: () {
-                    if (snapshot.connectionState == ConnectionState.waiting) {
-                      return const Center(child: CircularProgressIndicator());
-                    }
-
-                    if (snapshot.hasError ||
-                        storeNumber == null ||
-                        storeNumber.isEmpty) {
-                      return const ErrorScreen(
-                        icon: Icons.warning_amber_rounded,
-                        title: "Store Access Required",
-                        message: "Your account is not associated with any store. Please contact admin.",
-                      );
-                    }
-
-                    NotificationsViewModel().deleteExpiredNotifications(storeNumber);
-
-                    return StreamBuilder<List<NotificationModel>>(
-                      stream: NotificationsViewModel().getNotificationsStream(storeNumber),
-                      builder: (context, snapshot) {
-                        if (snapshot.connectionState ==
-                          ConnectionState.waiting) {
-                          return const Center(child: CircularProgressIndicator());
-                        }
-
-                        if (snapshot.hasError) {
-                          return const Center(
-                            child: Text('Error to load notifications.',
-                                style: TextStyle(
-                                    fontSize: 18, color: Colors.white)),
-                          );
-                        }
-
-                        final notifications = snapshot.data ?? [];
-                        final validNotifications = notifications
-                            .where((n) =>
-                                !NotificationsViewModel.isNotificationExpired(n.timestamp))
-                            .toList();
-
-                        if (validNotifications.isEmpty) {
-                          return const Center(
-                            child: Text('No notifications available.', style: TextStyle(fontSize: 18, color: Colors.white)),
-                          );
-                        }
-
-                        return ListView(
-                          children: _groupNotificationsByDay(validNotifications)
-                              .entries
-                              .map((entry) {
-                            final dayLabel = entry.key;
-                            final notificationsForDay = entry.value;
-
-                            return Column(
-                              crossAxisAlignment: CrossAxisAlignment.center,
-                              children: [
-                                Center(
-                                  child: Container(
-                                    margin: const EdgeInsets.symmetric(
-                                        vertical: 10.0),
-                                    padding: const EdgeInsets.symmetric(
-                                        vertical: 8.0, horizontal: 16.0),
-                                    decoration: BoxDecoration(
-                                      gradient: const LinearGradient(
-                                        colors: [
-                                          Colors.blue,
-                                          Colors.lightBlueAccent
-                                        ],
-                                        begin: Alignment.topLeft,
-                                        end: Alignment.bottomRight,
-                                      ),
-                                      borderRadius: BorderRadius.circular(20.0),
-                                      boxShadow: [
-                                        BoxShadow(
-                                          color: Colors.blue.withOpacity(0.3),
-                                          blurRadius: 4,
-                                          offset: const Offset(0, 2),
-                                        ),
-                                      ],
-                                    ),
-                                    child: Text(
-                                      dayLabel,
-                                      style: const TextStyle(
-                                          fontSize: 14.0,
-                                          fontWeight: FontWeight.bold,
-                                          color: Colors.white),
-                                      textAlign: TextAlign.center,
-                                    ),
-                                  ),
-                                ),
-                                ...notificationsForDay
-                                  .map((notification) => _buildNotificationCard(context, notification)).toList(),
-                              ],
-                            );
-                          }).toList(),
-                        );
-                      },
-                    );
-                }(),
+    return FutureBuilder<Map<String, dynamic>>(
+      future: _checkAccessAndStoreNumber(), // Nova função combinada
+      builder: (context, snapshot) {
+        // Enquanto está carregando
+        if (snapshot.connectionState != ConnectionState.done) {
+          return const Scaffold(
+            backgroundColor: Colors.transparent,
+            body: Center(
+              child: CircularProgressIndicator(
+                valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
               ),
+            ),
+          );
+        }
+
+        // Se erro ou sem storeNumber
+        if (snapshot.hasError || snapshot.data?['storeNumber'] == null) {
+          return const ErrorScreen(
+            icon: Icons.warning_amber_rounded,
+            title: "Store Access Required",
+            message: "Your account is not associated with any store. Please contact admin.",
+          );
+        }
+
+        // Se tem storeNumber mas não tem acesso
+        if (snapshot.data?['hasAccess'] == false) {
+          return const ErrorScreen(
+            icon: Icons.warning_amber_rounded,
+            title: "Access Denied",
+            message: "You don't have permission to access notifications for this store.",
+          );
+        }
+
+        // Conteúdo principal
+        return _buildMainContent(context, snapshot.data!['storeNumber'] as String);
+      },
+    );
+  }
+
+  // Nova função combinada para evitar múltiplos FutureBuilders
+  Future<Map<String, dynamic>> _checkAccessAndStoreNumber() async {
+    final storeNumber = await NotificationsViewModel().getUserStoreNumber();
+    if (storeNumber == null || storeNumber.isEmpty) {
+      return {'storeNumber': null, 'hasAccess': false};
+    }
+
+    final hasAccess = await NotificationsViewModel().hasNotificationAccess();
+    return {'storeNumber': storeNumber, 'hasAccess': hasAccess};
+  }
+
+  Widget _buildMainContent(BuildContext context, String storeNumber) {
+    NotificationsViewModel().deleteExpiredNotifications(storeNumber);
+
+    return Scaffold(
+      extendBodyBehindAppBar: true,
+      appBar: PreferredSize(
+        preferredSize: const Size.fromHeight(80.0),
+        child: AppBar(
+          backgroundColor: Colors.transparent,
+          elevation: 0,
+          flexibleSpace: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Text(
+                'Notifications',
+                style: TextStyle(fontSize: 18, color: Colors.white),
+              ),
+              IconButton(
+                icon: const Icon(Icons.add_alert),
+                onPressed: () => _showSendNotificationModal(context),
+                iconSize: 25.0,
+                color: Colors.white,
+              ),
+            ],
+          ),
+        ),
+      ),
+      body: Container(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            colors: [
+              hexStringToColor("CB2B93"),
+              hexStringToColor("9546C4"),
+              hexStringToColor("5E61F4"),
+            ],
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+          ),
+        ),
+        child: StreamBuilder<List<NotificationModel>>(
+          stream: NotificationsViewModel().getNotificationsStream(storeNumber),
+          builder: (context, snapshot) {
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return const Center(
+                child: CircularProgressIndicator(
+                  valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                ),
+              );
+            }
+
+            if (snapshot.hasError) {
+              return const Center(
+                child: Text(
+                  'Error loading notifications.',
+                  style: TextStyle(fontSize: 18, color: Colors.white),
+                ),
+              );
+            }
+
+            final notifications = snapshot.data ?? [];
+            final validNotifications = notifications
+                .where((n) => !NotificationsViewModel.isNotificationExpired(n.timestamp))
+                .toList();
+
+            if (validNotifications.isEmpty) {
+              return const Center(
+                child: Text(
+                  'No notifications available.',
+                  style: TextStyle(fontSize: 18, color: Colors.white),
+                ),
+              );
+            }
+
+            return ListView(
+              children: _groupNotificationsByDay(validNotifications)
+                  .entries
+                  .map((entry) {
+                final dayLabel = entry.key;
+                final notificationsForDay = entry.value;
+
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    Center(
+                      child: Container(
+                        margin: const EdgeInsets.symmetric(vertical: 10.0),
+                        padding: const EdgeInsets.symmetric(
+                            vertical: 8.0, horizontal: 16.0),
+                        decoration: BoxDecoration(
+                          gradient: const LinearGradient(
+                            colors: [Colors.blue, Colors.lightBlueAccent],
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                          ),
+                          borderRadius: BorderRadius.circular(20.0),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.blue.withOpacity(0.3),
+                              blurRadius: 4,
+                              offset: const Offset(0, 2),
+                            ),
+                          ],
+                        ),
+                        child: Text(
+                          dayLabel,
+                          style: const TextStyle(
+                              fontSize: 14.0,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.white),
+                          textAlign: TextAlign.center,
+                        ),
+                      ),
+                    ),
+                    ...notificationsForDay
+                        .map((notification) => _buildNotificationCard(context, notification))
+                        .toList(),
+                  ],
+                );
+              }).toList(),
             );
           },
-        );
-    });
+        ),
+      ),
+    );
   }
 
   Widget _buildNotificationCard(
