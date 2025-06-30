@@ -17,43 +17,69 @@ class _ChatPageState extends State<ChatPage> {
   String? storeNumber;
   bool isLoading = true;
   bool hasStoreAccess = false;
+  bool isPending = false;
 
   @override
   void initState() {
     super.initState();
-    _checkStoreAccess();
+    _loadUserData();
   }
 
-  Future<void> _checkStoreAccess() async {
-    final user = FirebaseAuth.instance.currentUser;
-    if (user != null) {
-      try {
-        final userDoc = await FirebaseFirestore.instance
-            .collection('users')
-            .doc(user.uid)
-            .get();
-        if (userDoc.exists) {
-          setState(() {
-            storeNumber = userDoc['storeNumber'];
-            isLoading = false;
-            hasStoreAccess = storeNumber != null && storeNumber!.isNotEmpty;
-          });
-          if (hasStoreAccess) {
-            _cleanupOldMessages();
-          }
-        } else {
-          setState(() {
-            isLoading = false;
-            hasStoreAccess = false;
-          });
-        }
-      } catch (e) {
+  Future<void> _loadUserData() async {
+    try {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) {
         setState(() {
           isLoading = false;
           hasStoreAccess = false;
         });
+        return;
       }
-    } else {
+
+      final userDoc = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .get();
+
+      if (!userDoc.exists) {
+        debugPrint('User document does not exist');
+        setState(() {
+          isLoading = false;
+          hasStoreAccess = false;
+        });
+        return;
+      }
+
+      final data = userDoc.data();
+      if (data == null) {
+        debugPrint('User document data is null');
+        setState(() {
+          isLoading = false;
+          hasStoreAccess = false;
+        });
+        return;
+      }
+
+      // debugPrint('User data: $data');
+
+      setState(() {
+        storeNumber = data['storeNumber']?.toString();
+        isPending = data['isPending'] as bool? ?? false;
+        isLoading = false;
+        
+        // Verificação mais robusta do storeNumber
+        hasStoreAccess = storeNumber != null && storeNumber!.isNotEmpty;
+      });
+
+      // debugPrint('Store number: $storeNumber');
+      // debugPrint('Is pending: $isPending');
+      // debugPrint('Has store access: $hasStoreAccess');
+
+      if (hasStoreAccess) {
+        _cleanupOldMessages();
+      }
+    } catch (e) {
+      debugPrint('Error loading user data: $e');
       setState(() {
         isLoading = false;
         hasStoreAccess = false;
@@ -63,23 +89,28 @@ class _ChatPageState extends State<ChatPage> {
 
   Future<void> _cleanupOldMessages() async {
     try {
+      if (storeNumber == null) return;
+      
       final oneDayAgo = DateTime.now().subtract(const Duration(days: 1));
       final querySnapshot = await FirebaseFirestore.instance
           .collection('messages')
+          .where('storeNumber', isEqualTo: storeNumber)
           .where('createdAt', isLessThan: Timestamp.fromDate(oneDayAgo))
           .get();
 
-      for (var doc in querySnapshot.docs) {await doc.reference.delete();}
+      for (var doc in querySnapshot.docs) {
+        await doc.reference.delete();
+      }
     } catch (e) {
       debugPrint('Error cleaning up old messages: $e');
     }
   }
 
-  void _sendMessage() async {
-    final plainText = _messageController.text.trim();
-    if (plainText.isEmpty || storeNumber == null) return;
-
+  Future<void> _sendMessage() async {
     try {
+      final plainText = _messageController.text.trim();
+      if (plainText.isEmpty || storeNumber == null) return;
+
       final encryptedText = EncryptionHelper.encryptText(plainText);
 
       await FirebaseFirestore.instance.collection('messages').add({
@@ -88,24 +119,47 @@ class _ChatPageState extends State<ChatPage> {
         'createdAt': FieldValue.serverTimestamp(),
         'userId': FirebaseAuth.instance.currentUser?.uid,
       });
+      
       _messageController.clear();
     } catch (e) {
       debugPrint('Error sending message: $e');
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Failed to send message')));
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Failed to send message')),
+        );
+      }
     }
   }
 
   Stream<QuerySnapshot> _chatStream() {
-    if (storeNumber == null) {return const Stream.empty();}
+    if (storeNumber == null) return const Stream.empty();
+    
     return FirebaseFirestore.instance
         .collection('messages')
         .where('storeNumber', isEqualTo: storeNumber)
         .orderBy('createdAt', descending: true)
-        .snapshots();
+        .snapshots()
+        .handleError((error) {
+      debugPrint('Error in chat stream: $error');
+    });
   }
 
   @override
   Widget build(BuildContext context) {
+    if (isLoading) {
+      return _buildLoadingScreen();
+    }
+
+    // Primeiro verifica se está pendente
+    if (isPending) {
+      return const ErrorScreen(
+        icon: Icons.hourglass_top,
+        title: "Pending Approval",
+        message: "Your account is pending approval. Please wait for admin confirmation.",
+      );
+    }
+
+    // Depois verifica se tem acesso à loja
     if (!hasStoreAccess) {
       return const ErrorScreen(
         icon: Icons.warning_amber_rounded,
@@ -117,8 +171,9 @@ class _ChatPageState extends State<ChatPage> {
     return Scaffold(
       extendBodyBehindAppBar: true,
       appBar: AppBar(
-        title: const Text('Store Chat', style: TextStyle(color: Colors.white)),
-        backgroundColor: Colors.transparent, elevation: 0,
+        title: Text('Store Chat', style: const TextStyle(color: Colors.white)),
+        backgroundColor: Colors.transparent,
+        elevation: 0,
         iconTheme: const IconThemeData(color: Colors.white),
       ),
       body: Container(
@@ -136,163 +191,170 @@ class _ChatPageState extends State<ChatPage> {
         child: Column(
           children: [
             Expanded(
-              child: StreamBuilder<QuerySnapshot>(
-                stream: _chatStream(),
-                builder: (context, snapshot) {
-                  if (snapshot.connectionState == ConnectionState.waiting) {
-                    return const Center(child: CircularProgressIndicator());
-                  }
-                  if (snapshot.hasError) {
-                    if (snapshot.error.toString().contains('failed-precondition')) {
-                      return const Center(
-                        child: Padding(
-                          padding: EdgeInsets.all(16.0),
-                          child: Text(
-                            'A required index is missing. Please try again later.',
-                            textAlign: TextAlign.center,
-                            style: TextStyle(color: Colors.white),
-                          ),
-                        ),
-                      );
-                    }
-                    return const Center(
-                      child: Text(
-                        'Error loading messages.',
-                        style: TextStyle(color: Colors.white),
-                      ),
-                    );
-                  }
-                  if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-                    return const Center(
-                      child: Text(
-                        'No messages yet.',
-                        style: TextStyle(color: Colors.white),
-                      ),
-                    );
-                  }
-
-                  final docs = snapshot.data!.docs;
-                  return ListView.builder(
-                    reverse: true,
-                    itemCount: docs.length,
-                    itemBuilder: (context, index) {
-                      final data = docs[index].data() as Map<String, dynamic>;
-                      final userId = data['userId'];
-                      final isCurrentUser = userId == FirebaseAuth.instance.currentUser?.uid;
-
-                      return FutureBuilder<DocumentSnapshot>(
-                        future: FirebaseFirestore.instance.collection('users').doc(userId).get(),
-                        builder: (context, userSnapshot) {
-                          if (userSnapshot.connectionState == ConnectionState.waiting) {
-                            return const Padding(
-                              padding: EdgeInsets.all(8.0),
-                              child: Text(
-                                'Loading...', style: TextStyle(color: Colors.white),
-                              ),
-                            );
-                          }
-
-                          final userData = userSnapshot.data?.data() as Map<String, dynamic>?;
-                          final userName = userData?['name'] ?? 'Unknown User';
-
-                          // Descriptografa a mensagem
-                          final encryptedMessage = data['text'] ?? '';
-                          String decryptedMessage = '';
-                          try {
-                            decryptedMessage = EncryptionHelper.decryptText(encryptedMessage);
-                          } catch (e) {decryptedMessage = '[Erro ao descriptografar mensagem]';}
-
-                          return Align(
-                            alignment: isCurrentUser ? Alignment.centerRight : Alignment.centerLeft,
-                            child: Padding(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 8.0,
-                                vertical: 4.0,
-                              ),
-                              child: Column(
-                                crossAxisAlignment: isCurrentUser
-                                    ? CrossAxisAlignment.end
-                                    : CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    userName,
-                                    style: const TextStyle(
-                                      fontSize: 12, fontWeight: FontWeight.bold,
-                                      color: Colors.white,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 4),
-                                  Container(
-                                    padding: const EdgeInsets.all(12.0),
-                                    decoration: BoxDecoration(
-                                      color: isCurrentUser
-                                          ? Colors.blueAccent.withOpacity(0.8)
-                                          : Colors.grey.withOpacity(0.8),
-                                      borderRadius: BorderRadius.only(
-                                        topLeft: const Radius.circular(12),
-                                        topRight: const Radius.circular(12),
-                                        bottomLeft: isCurrentUser
-                                            ? const Radius.circular(12)
-                                            : const Radius.circular(0),
-                                        bottomRight: isCurrentUser
-                                            ? const Radius.circular(0)
-                                            : const Radius.circular(12),
-                                      ),
-                                    ),
-                                    child: Text(
-                                      decryptedMessage,
-                                      style: const TextStyle(fontSize: 14, color: Colors.white),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          );
-                        },
-                      );
-                    },
-                  );
-                },
-              ),
+              child: _buildChatMessages(),
             ),
-            Padding(
-              padding: const EdgeInsets.symmetric(
-                horizontal: 8.0,
-                vertical: 16.0,
-              ),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: TextField(
-                      controller: _messageController,
-                      style: const TextStyle(color: Colors.white),
-                      decoration: InputDecoration(
-                        hintText: 'Type a message...',
-                        hintStyle: const TextStyle(color: Colors.white),
-                        filled: true,
-                        fillColor: Colors.transparent,
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
-                          borderSide: BorderSide.none,
-                        ),
-                      ),
-                      onSubmitted: (value) {
-                        if (value.trim().isNotEmpty) {
-                          _sendMessage();
-                        }
-                      },
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  IconButton(
-                    icon: const Icon(Icons.send, color: Colors.white),
-                    onPressed: _sendMessage,
-                  ),
-                ],
-              ),
-            ),
+            _buildMessageInput(),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildLoadingScreen() {
+    return Scaffold(
+      body: Container(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            colors: [
+              hexStringToColor("CB2B93"),
+              hexStringToColor("9546C4"),
+              hexStringToColor("5E61F4"),
+            ],
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+          ),
+        ),
+        child: const Center(child: CircularProgressIndicator()),
+      ),
+    );
+  }
+
+  Widget _buildChatMessages() {
+    return StreamBuilder<QuerySnapshot>(
+      stream: _chatStream(),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(child: CircularProgressIndicator());
+        }
+
+        if (snapshot.hasError) {
+          debugPrint('Chat stream error: ${snapshot.error}');
+          return const Center(
+            child: Text(
+              'Error loading messages',
+              style: TextStyle(color: Colors.white),
+            ),
+          );
+        }
+
+        if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+          return const Center(
+            child: Text(
+              'No messages yet. Start the conversation!',
+              style: TextStyle(color: Colors.white),
+            ),
+          );
+        }
+
+        final docs = snapshot.data!.docs;
+        return ListView.builder(
+          reverse: true,
+          itemCount: docs.length,
+          itemBuilder: (context, index) {
+            return _buildMessageItem(docs[index]);
+          },
+        );
+      },
+    );
+  }
+
+  Widget _buildMessageItem(QueryDocumentSnapshot doc) {
+    final data = doc.data() as Map<String, dynamic>;
+    final userId = data['userId'];
+    final isCurrentUser = userId == FirebaseAuth.instance.currentUser?.uid;
+
+    return FutureBuilder<DocumentSnapshot>(
+      future: FirebaseFirestore.instance.collection('users').doc(userId).get(),
+      builder: (context, userSnapshot) {
+        if (userSnapshot.connectionState == ConnectionState.waiting) {
+          return const Padding(
+            padding: EdgeInsets.all(8.0),
+            child: Text('Loading...', style: TextStyle(color: Colors.white)),
+          );
+        }
+
+        final userData = userSnapshot.data?.data() as Map<String, dynamic>?;
+        final userName = userData?['name'] ?? 'Unknown User';
+        final encryptedMessage = data['text'] ?? '';
+        
+        String decryptedMessage;
+        try {
+          decryptedMessage = EncryptionHelper.decryptText(encryptedMessage);
+        } catch (e) {
+          decryptedMessage = '[Error decrypting message]';
+        }
+
+        return Align(
+          alignment: isCurrentUser ? Alignment.centerRight : Alignment.centerLeft,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 4.0),
+            child: Column(
+              crossAxisAlignment: isCurrentUser ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+              children: [
+                Text(
+                  userName,
+                  style: const TextStyle(
+                    fontSize: 12, 
+                    fontWeight: FontWeight.bold,
+                    color: Colors.white,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Container(
+                  padding: const EdgeInsets.all(12.0),
+                  decoration: BoxDecoration(
+                    color: isCurrentUser
+                        ? Colors.blueAccent.withOpacity(0.8)
+                        : Colors.grey.withOpacity(0.8),
+                    borderRadius: BorderRadius.only(
+                      topLeft: const Radius.circular(12),
+                      topRight: const Radius.circular(12),
+                      bottomLeft: isCurrentUser ? const Radius.circular(12) : const Radius.circular(0),
+                      bottomRight: isCurrentUser ? const Radius.circular(0) : const Radius.circular(12),
+                    ),
+                  ),
+                  child: Text(
+                    decryptedMessage,
+                    style: const TextStyle(fontSize: 14, color: Colors.white),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildMessageInput() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 16.0),
+      child: Row(
+        children: [
+          Expanded(
+            child: TextField(
+              controller: _messageController,
+              style: const TextStyle(color: Colors.white),
+              decoration: InputDecoration(
+                hintText: 'Type a message...',
+                hintStyle: const TextStyle(color: Colors.white),
+                filled: true,
+                fillColor: Colors.white.withOpacity(0.1),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide.none,
+                ),
+                contentPadding: const EdgeInsets.symmetric(horizontal: 16),
+              ),
+              onSubmitted: (value) => _sendMessage(),
+            ),
+          ),
+          const SizedBox(width: 8),
+          IconButton(
+            icon: const Icon(Icons.send, color: Colors.white, size: 28),
+            onPressed: _sendMessage,
+          ),
+        ],
       ),
     );
   }

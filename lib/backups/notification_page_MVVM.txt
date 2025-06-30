@@ -81,13 +81,15 @@ class NotificationsViewModel {
       final storeNumber = userDoc.data()?['storeNumber'] as String?;
       final isStoreManager = userDoc.data()?['isStoreManager'] ?? false;
       final adminPermission = userDoc.data()?['adminPermission'] as String?;
+      final isPending = userDoc.data()?['isPending'] ?? false; // Nova verificação
 
-      // If user is store manager, check if adminPermission matches storeNumber
-      if (isStoreManager) {
-        return adminPermission == storeNumber;
-      }
+      // Se estiver pendente, não tem acesso
+      if (isPending) return false;
 
-      // Regular users with store number can access
+      // Se for store manager, verifica se adminPermission corresponde ao storeNumber
+      if (isStoreManager) {return adminPermission == storeNumber;}
+
+      // Usuários regulares com storeNumber podem acessar
       return storeNumber != null && storeNumber.isNotEmpty;
     } catch (e) {
       debugPrint("Error checking notification access: $e");
@@ -232,6 +234,14 @@ class NotificationsStockAlert extends StatelessWidget {
           );
         }
 
+        if (snapshot.data?['isPending'] == true) {
+          return const ErrorScreen(
+            icon: Icons.hourglass_top,
+            title: "Pending Approval",
+            message: "Your account is pending approval. Please wait for admin confirmation.",
+          );
+        }
+
         // Se tem storeNumber mas não tem acesso
         if (snapshot.data?['hasAccess'] == false) {
           return const ErrorScreen(
@@ -249,13 +259,26 @@ class NotificationsStockAlert extends StatelessWidget {
 
   // Nova função combinada para evitar múltiplos FutureBuilders
   Future<Map<String, dynamic>> _checkAccessAndStoreNumber() async {
-    final storeNumber = await NotificationsViewModel().getUserStoreNumber();
-    if (storeNumber == null || storeNumber.isEmpty) {
-      return {'storeNumber': null, 'hasAccess': false};
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      return {'storeNumber': null, 'hasAccess': false, 'isPending': false};
     }
 
+    final userDoc = await FirebaseFirestore.instance
+        .collection('users')
+        .doc(user.uid)
+        .get();
+        
+    if (!userDoc.exists) {return {'storeNumber': null, 'hasAccess': false, 'isPending': false};}
+
+    final storeNumber = userDoc.data()?['storeNumber'] as String?;
+    final isPending = userDoc.data()?['isPending'] ?? false;
+
+    // Se estiver pendente, retorna imediatamente sem verificar outras permissões
+    if (isPending) {return {'storeNumber': storeNumber, 'hasAccess': false, 'isPending': true};}
+
     final hasAccess = await NotificationsViewModel().hasNotificationAccess();
-    return {'storeNumber': storeNumber, 'hasAccess': hasAccess};
+    return {'storeNumber': storeNumber, 'hasAccess': hasAccess, 'isPending': false};
   }
 
   Widget _buildMainContent(BuildContext context, String storeNumber) {

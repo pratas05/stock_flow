@@ -1,5 +1,4 @@
 import 'dart:ui';
-
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -15,6 +14,7 @@ class UserModel {
   final String? adminPermission;
   final String? storeNumber;
   final bool isStoreManager;
+  final bool isPending; // Adicione esta linha
 
   UserModel({
     required this.id,
@@ -23,6 +23,7 @@ class UserModel {
     this.adminPermission,
     this.storeNumber,
     required this.isStoreManager,
+    required this.isPending, // Adicione esta linha
   });
 
   factory UserModel.fromFirestore(DocumentSnapshot doc) {
@@ -37,6 +38,7 @@ class UserModel {
           adminPermission: null,
           storeNumber: null,
           isStoreManager: false,
+          isPending: true, 
         );
       }
 
@@ -52,6 +54,7 @@ class UserModel {
           adminPermission: null,
           storeNumber: null,
           isStoreManager: false,
+          isPending: true,
         );
       }
 
@@ -62,6 +65,7 @@ class UserModel {
         storeNumber: dataMap['storeNumber']?.toString(),
         adminPermission: dataMap['adminPermission']?.toString(),
         isStoreManager: dataMap['isStoreManager'] as bool? ?? false,
+        isPending: dataMap['isPending'] as bool? ?? true, // Assume true se não existir
       );
     } catch (e) {
       debugPrint("Error creating UserModel: $e");
@@ -72,6 +76,7 @@ class UserModel {
         storeNumber: null,
         adminPermission: null,
         isStoreManager: false,
+        isPending: true,
       );
     }
   }
@@ -127,9 +132,12 @@ class FinanceAndHRViewModel {
       final user = await getCurrentUser();
       if (user == null) return false;
       
-      return user.isStoreManager && user.adminPermission == user.storeNumber;
+      // Admin tem acesso completo independente do status pendente
+      return user.isStoreManager && 
+            user.adminPermission == user.storeNumber &&
+            user.storeNumber != null;
     } catch (e) {
-      debugPrint("Error checking admin access: $e");
+      debugPrint("Error checking admin access: $e"); 
       return false;
     }
   }
@@ -221,6 +229,42 @@ class FinanceAndHRViewModel {
       debugPrint("Error updating store currency: $e"); rethrow;
     }
   }
+
+  // Adicione estes métodos na classe FinanceAndHRViewModel
+  Future<List<UserModel>> getPendingUsers(String storeNumber) async {
+    try {
+      final query = await _firestore
+          .collection('users')
+          .where('isPending', isEqualTo: true)
+          .where('storeNumber', isEqualTo: storeNumber)
+          .get();
+      
+      return query.docs.map((doc) => UserModel.fromFirestore(doc)).toList();
+    } catch (e) {
+      debugPrint("Error fetching pending users: $e");
+      return [];
+    }
+  }
+
+  Future<void> approveUser(String userId) async {
+    try {
+      await _firestore.collection('users').doc(userId).update({
+        'isPending': false,
+      });
+    } catch (e) {
+      debugPrint("Error approving user: $e");
+      rethrow;
+    }
+  }
+
+  Future<void> rejectUser(String userId) async {
+    try {
+      await _firestore.collection('users').doc(userId).delete();
+    } catch (e) {
+      debugPrint("Error rejecting user: $e");
+      rethrow;
+    }
+  }
 }
 
 // [3. VIEW]
@@ -242,16 +286,19 @@ class _FinanceAndHumanResourcesPageState
   bool _isLoading = true;
   String? _selectedCurrency;
   bool _hasFullPermission = false;
-
+  bool _isPending = false;
 
   @override
   void initState() {
     super.initState();
     _viewModel = FinanceAndHRViewModel();
-    _loadUserData();
     _tabController = TabController(length: 3, vsync: this);
     _initialVatValues = VatModel(vat0: '0', vat1: '0', vat2: '0', vat3: '0', vat4: '0');
-    _initializePermissions();
+    
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _loadUserData();
+      _initializePermissions();
+    });
   }
 
   Future<void> _initializePermissions() async {
@@ -268,7 +315,11 @@ class _FinanceAndHumanResourcesPageState
         setState(() {
           _storeNumber = user.storeNumber;
           _isStoreManager = user.isStoreManager;
+          _isPending = user.isPending;
         });
+
+        // Atualiza as permissões depois de carregar os dados do usuário
+        _hasFullPermission = await _viewModel.hasFullAdminAccess();
 
         if (_storeNumber != null && _storeNumber!.isNotEmpty) {
           final vatValues = await _viewModel.getVatValues(_storeNumber);
@@ -302,6 +353,7 @@ class _FinanceAndHumanResourcesPageState
       );
     }
 
+    // Verificação 1: Acesso à loja
     if (_storeNumber == null || _storeNumber!.isEmpty) {
       return ErrorScreen(
         icon: Icons.warning_amber_rounded,
@@ -310,6 +362,17 @@ class _FinanceAndHumanResourcesPageState
       );
     }
 
+    // Verificação 2: Status pendente (apenas para não-admins)
+    final isAdmin = _hasFullPermission && _isStoreManager;
+    if (_isPending && !isAdmin) {
+      return ErrorScreen(
+        icon: Icons.hourglass_top,
+        title: "Pending Approval",
+        message: "Your account is pending approval. Please wait for admin confirmation.",
+      );
+    }
+
+    // Verificação 3: Permissões
     if (!_isStoreManager || !_hasFullPermission) {
       return ErrorScreen(
         icon: Icons.warning_amber_rounded,
@@ -375,144 +438,309 @@ class _FinanceAndHumanResourcesPageState
   }
 
   Widget _buildHRTab(String storeNumber, String? currentUserId) {
-    return StreamBuilder<List<UserModel>>(
-      stream: _viewModel.getStoreUsers(storeNumber),
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Center(child: CircularProgressIndicator());
-        }
+  return FutureBuilder<List<UserModel>>(
+    future: _viewModel.getPendingUsers(storeNumber),
+    builder: (context, pendingSnapshot) {
+      if (pendingSnapshot.connectionState == ConnectionState.waiting) {
+        return const Center(child: CircularProgressIndicator());
+      }
 
-        if (snapshot.hasError) {
-          return const Center(
-            child: Text('Error loading users.', style: TextStyle(fontSize: 18, color: Colors.white)),
+      final pendingUsers = pendingSnapshot.data ?? [];
+
+      return StreamBuilder<List<UserModel>>(
+        stream: _viewModel.getStoreUsers(storeNumber),
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator());
+          }
+
+          if (snapshot.hasError) {
+            return const Center(
+              child: Text('Error loading users.', style: TextStyle(fontSize: 18, color: Colors.white)),
+            );
+          }
+
+          // Filtrar usuários não pendentes (excluindo o usuário atual)
+          final activeUsers = snapshot.data?.where((user) => 
+              user.id != currentUserId && !user.isPending).toList() ?? [];
+
+          return ListView(
+            padding: const EdgeInsets.all(16.0),
+            children: [
+              // Seção de usuários pendentes
+              if (pendingUsers.isNotEmpty) ...[
+                const Padding(
+                  padding: EdgeInsets.only(bottom: 8.0),
+                  child: Text(
+                    'Pending Approvals',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+                ...pendingUsers.map((user) => _buildPendingUserCard(user)).toList(),
+                const SizedBox(height: 24),
+                const Padding(
+                  padding: EdgeInsets.only(bottom: 8.0),
+                  child: Text(
+                    'Store Team',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+              ],
+              // Seção de usuários ativos
+              ...activeUsers.map((user) => _buildActiveUserCard(user, storeNumber)).toList(),
+            ],
           );
-        }
+        },
+      );
+    },
+  );
+}
 
-        final users = snapshot.data?.where((user) => user.id != currentUserId).toList() ?? [];
-
-        if (users.isEmpty) {
-          return const Center(
-            child: Text('No users found for this store.', style: TextStyle(fontSize: 18, color: Colors.white)),
-          );
-        }
-
-        return ListView.builder(
+  Widget _buildPendingUserCard(UserModel user) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 16.0),
+      child: Container(
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(20),
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [
+              Colors.orange.withOpacity(0.3),
+              Colors.orange.withOpacity(0.1),
+            ],
+          ),
+          border: Border.all(color: Colors.orange.withOpacity(0.5), width: 1.0),
+        ),
+        child: Padding(
           padding: const EdgeInsets.all(16.0),
-          itemCount: users.length,
-          itemBuilder: (context, index) {
-            final user = users[index];
-            final hasAdminPermission = user.adminPermission?.isNotEmpty ?? false;
-
-            return Padding(
-              padding: const EdgeInsets.only(bottom: 16.0),
-              child: Container(
+          child: Row(
+            children: [
+              // Ícone de usuário pendente
+              Container(
+                width: 50, height: 50,
                 decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(20),
+                  shape: BoxShape.circle,
                   gradient: LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
                     colors: [
-                      Colors.white.withOpacity(0.15),
-                      Colors.white.withOpacity(0.05),
+                      Colors.orange.withOpacity(0.8),
+                      Colors.deepOrange.withOpacity(0.8),
                     ],
                   ),
-                  border: Border.all(color: Colors.white.withOpacity(0.2), width: 1.0),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withOpacity(0.1),
-                      blurRadius: 20,
-                      spreadRadius: 2,
-                      offset: const Offset(0, 10),
+                ),
+                child: const Icon(
+                  Icons.person_add, color: Colors.white, size: 30,
+                ),
+              ),
+              const SizedBox(width: 16),
+              // Informações do usuário
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      user.name,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 18,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      user.email,
+                      style: TextStyle(
+                        color: Colors.white.withOpacity(0.8),
+                        fontSize: 14,
+                      ),
                     ),
                   ],
                 ),
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(20),
-                  child: BackdropFilter(
-                    filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-                    child: Padding(
-                      padding: const EdgeInsets.all(16.0),
-                      child: Row(
-                        children: [
-                          // Profile Icon with gradient
-                          Container(
-                            width: 50, height: 50,
-                            decoration: BoxDecoration(
-                              shape: BoxShape.circle,
-                              gradient: LinearGradient(
-                                colors: [
-                                  Colors.purple.withOpacity(0.8),
-                                  Colors.blue.withOpacity(0.8),
-                                ],
-                                begin: Alignment.topLeft, end: Alignment.bottomRight,
-                              ),
-                            ),
-                            child: const Icon(
-                              Icons.person, color: Colors.white, size: 30,
-                            ),
-                          ),
-                          const SizedBox(width: 16),
-                          // User Info
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  user.name,
-                                  style: const TextStyle(
-                                    color: Colors.white,
-                                    fontWeight: FontWeight.bold, fontSize: 18,
-                                  ),
-                                ),
-                                const SizedBox(height: 4),
-                                Text(
-                                  user.email,
-                                  style: TextStyle(color: Colors.white.withOpacity(0.8), fontSize: 14),
-                                ),
-                              ],
-                            ),
-                          ),
-                          // Admin Toggle
-                          Container(
-                            decoration: BoxDecoration(
-                              shape: BoxShape.circle,
-                              gradient: LinearGradient(
-                                colors: hasAdminPermission
-                                    ? [
-                                        Colors.blue.withOpacity(0.8),
-                                        Colors.lightBlue.withOpacity(0.8),
-                                      ]
-                                    : [
-                                        Colors.grey.withOpacity(0.5),
-                                        Colors.grey.withOpacity(0.3),
-                                      ],
-                                begin: Alignment.topLeft, end: Alignment.bottomRight,
-                              ),
-                              boxShadow: [
-                                BoxShadow(color: Colors.black.withOpacity(0.2), blurRadius: 10, spreadRadius: 1),
-                              ],
-                            ),
-                            child: IconButton(
-                              icon: Icon(
-                                hasAdminPermission
-                                    ? Icons.admin_panel_settings
-                                    : Icons.person_outline,
-                                color: Colors.white, size: 28,
-                              ),
-                              onPressed: () => _toggleAdminPermission(user.id, hasAdminPermission, storeNumber),
-                            ),
-                          ),
+              ),
+              // Botões de aprovação/rejeição
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // Botão de rejeitar
+                  Container(
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      gradient: LinearGradient(
+                        colors: [
+                          Colors.red.withOpacity(0.8),
+                          Colors.redAccent.withOpacity(0.8),
                         ],
                       ),
                     ),
+                    child: IconButton(
+                      icon: const Icon(Icons.close, color: Colors.white),
+                      onPressed: () => _rejectUser(user.id),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  // Botão de aprovar
+                  Container(
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      gradient: LinearGradient(
+                        colors: [
+                          Colors.green.withOpacity(0.8),
+                          Colors.lightGreen.withOpacity(0.8),
+                        ],
+                      ),
+                    ),
+                    child: IconButton(
+                      icon: const Icon(Icons.check, color: Colors.white),
+                      onPressed: () => _approveUser(user.id),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildActiveUserCard(UserModel user, String storeNumber) {
+    final hasAdminPermission = user.adminPermission?.isNotEmpty ?? false;
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 16.0),
+      child: Container(
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(20),
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [
+              Colors.white.withOpacity(0.15),
+              Colors.white.withOpacity(0.05),
+            ],
+          ),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: Row(
+            children: [
+              Container(
+                width: 50, height: 50,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  gradient: LinearGradient(
+                    colors: [
+                      Colors.purple.withOpacity(0.8),
+                      Colors.blue.withOpacity(0.8),
+                    ],
                   ),
                 ),
+                child: const Icon(
+                  Icons.person, color: Colors.white, size: 30,
+                ),
               ),
-            );
-          },
-        );
-      },
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      user.name,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 18,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      user.email,
+                      style: TextStyle(
+                        color: Colors.white.withOpacity(0.8),
+                        fontSize: 14,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Container(
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  gradient: LinearGradient(
+                    colors: hasAdminPermission
+                        ? [
+                            Colors.blue.withOpacity(0.8),
+                            Colors.lightBlue.withOpacity(0.8),
+                          ]
+                        : [
+                            Colors.grey.withOpacity(0.5),
+                            Colors.grey.withOpacity(0.3),
+                          ],
+                  ),
+                ),
+                child: IconButton(
+                  icon: Icon(
+                    hasAdminPermission
+                        ? Icons.admin_panel_settings
+                        : Icons.person_outline,
+                    color: Colors.white,
+                    size: 28,
+                  ),
+                  onPressed: () => _toggleAdminPermission(
+                      user.id, hasAdminPermission, storeNumber),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
+  }
+
+  Future<void> _approveUser(String userId) async {
+    try {
+      await _viewModel.approveUser(userId);
+      CustomSnackbar.show(
+        context: context,
+        message: 'User approved successfully!',
+        backgroundColor: Colors.green,
+      );
+      setState(() {}); // Atualiza a UI
+    } catch (e) {
+      CustomSnackbar.show(
+        context: context,
+        message: 'Error approving user',
+        backgroundColor: Colors.red,
+      );
+      debugPrint("Error approving user: $e");
+    }
+  }
+
+  Future<void> _rejectUser(String userId) async {
+    try {
+      await _viewModel.rejectUser(userId);
+      CustomSnackbar.show(
+        context: context,
+        message: 'User rejected and removed',
+        backgroundColor: const Color.fromARGB(255, 255, 115, 0),
+      );
+      setState(() {}); // Atualiza a UI
+    } catch (e) {
+      CustomSnackbar.show(
+        context: context,
+        message: 'Error rejecting user',
+        backgroundColor: Colors.red,
+      );
+      debugPrint("Error rejecting user: $e");
+    }
   }
 
   Widget _buildFinanceTab(String storeNumber) {

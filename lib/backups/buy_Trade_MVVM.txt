@@ -109,6 +109,9 @@ class BuyTradeViewModel {
       final userData = await getUserData();
       if (userData == null) return false;
       
+      final isPending = userData['isPending'] ?? false;
+      if (isPending) return false;
+      
       return (userData['isStoreManager'] as bool? ?? false) && (userData['adminPermission'] == userData['storeNumber']);
     } catch (e) {
       debugPrint("Error checking admin access: $e"); return false;
@@ -248,6 +251,7 @@ class _BuyTradePageState extends State<BuyTradePage> with SingleTickerProviderSt
   bool _isStoreManager = false;
   final VatMonitorService _vatMonitor = VatMonitorService();
   bool _hasFullPermission = false;
+  bool _isPending = false;
 
   @override
   void initState() {
@@ -265,6 +269,7 @@ class _BuyTradePageState extends State<BuyTradePage> with SingleTickerProviderSt
         setState(() {
           storeNumber = userData['storeNumber'];
           _isStoreManager = userData['isStoreManager'] ?? false;
+          _isPending = userData['isPending'] ?? false;
         });
         
         final hasPermission = await _viewModel.hasFullAdminAccess();
@@ -297,6 +302,7 @@ class _BuyTradePageState extends State<BuyTradePage> with SingleTickerProviderSt
     if (_isLoading) {return _buildLoadingScreen();}
     if (!_isStoreManager) {return _buildNoPermissionsScreen();}
     if (!_hasFullPermission) {return _buildNoPermissionsScreen();}
+    if (_isPending) { return _buildNoPermissionsScreen();}
 
     return Scaffold(
       appBar: _buildAppBar(),
@@ -338,6 +344,14 @@ class _BuyTradePageState extends State<BuyTradePage> with SingleTickerProviderSt
         icon: Icons.warning_amber_rounded,
         title: "Store Access Required",
         message: "Your account is not associated with any store. Please contact admin.",
+      );
+    }
+
+    if (_isPending) {  
+      return const ErrorScreen(
+        icon: Icons.hourglass_top,
+        title: "Pending Approval",
+        message: "Your account is pending approval. Please wait for admin confirmation.",
       );
     }
 
@@ -777,10 +791,7 @@ class _BuyTradePageState extends State<BuyTradePage> with SingleTickerProviderSt
                             "€${_viewModel.cartTotal.toStringAsFixed(2)}?",
                           ),
                           actions: [
-                            TextButton(
-                              onPressed: () => Navigator.pop(context, false), 
-                              child: const Text("Cancel")
-                            ),
+                            TextButton(onPressed: () => Navigator.pop(context, false), child: const Text("Cancel")),
                             ElevatedButton.icon(
                               onPressed: () => Navigator.pop(context, true),
                               icon: const FaIcon(FontAwesomeIcons.paypal),

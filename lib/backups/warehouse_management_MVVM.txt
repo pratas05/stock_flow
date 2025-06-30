@@ -93,6 +93,31 @@ class WarehouseViewModel {
     }
   }
 
+  Future<bool> isUserPending() async {
+    try {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) return true; // Assume pending if not authenticated
+
+      final userDoc = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .get();
+
+      if (!userDoc.exists) return true; // Assume pending if user doc doesn't exist
+
+      // Verifica se o campo exists e retorna seu valor
+      // Se não existir, assume false (não pendente)
+      if (userDoc.data()?.containsKey('isPending') ?? false) {
+        return userDoc.get('isPending') as bool? ?? true;
+      } else {
+        return false; // Campo não existe, assume que não está pendente
+      }
+    } catch (e) {
+      debugPrint("Error checking pending status: $e");
+      return true; // Assume pending on error
+    }
+  }
+
   Future<void> updateWarehouseStock({
     required String productId,
     required int newStock,
@@ -304,6 +329,7 @@ class _WarehouseManagementPageState extends State<WarehouseManagementPage>
   bool _isStoreManager = false;
   bool _isLoading = true;
   final VatMonitorService _vatMonitor = VatMonitorService();
+  bool _isPending = false;
 
   @override
   void initState() {
@@ -326,6 +352,9 @@ class _WarehouseManagementPageState extends State<WarehouseManagementPage>
       // Load user's store number
       final storeNumber = await _viewModel.getCurrentUserStoreNumber();
       
+      // Check if user is pending
+      final isPending = await _viewModel.isUserPending();
+      
       // Check if user is store manager
       final isStoreManager = await _viewModel.isUserStoreManager();
       
@@ -334,10 +363,11 @@ class _WarehouseManagementPageState extends State<WarehouseManagementPage>
 
       setState(() {
         _storeNumber = storeNumber;
+        _isPending = isPending;
         _isStoreManager = isStoreManager && hasAdminPermission; // Only true if both conditions are met
       });
 
-      if (_storeNumber != null && _storeNumber!.isNotEmpty) {
+      if (_storeNumber != null && _storeNumber!.isNotEmpty && !_isPending) {
         _vatMonitor.startMonitoring(_storeNumber!);
       }
     } catch (e) {
@@ -1872,6 +1902,14 @@ class _WarehouseManagementPageState extends State<WarehouseManagementPage>
         icon: Icons.warning_amber_rounded,
         title: "Store Access Required",
         message: "Your account is not associated with any store. Please contact admin.",
+      );
+    }
+
+    if (_isPending) {
+      return ErrorScreen(
+        icon: Icons.hourglass_top,
+        title: "Pending Approval",
+        message: "Your account is pending approval. Please wait for admin confirmation.",
       );
     }
 

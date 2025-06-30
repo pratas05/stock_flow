@@ -57,6 +57,7 @@ class StockBreakViewModel {
         'storeNumber': userDoc.data()?['storeNumber'],
         'isStoreManager': userDoc.data()?['isStoreManager'] ?? false,
         'adminPermission': userDoc.data()?['adminPermission'] ?? '',
+        'isPending': userDoc.data()?['isPending'] ?? false, // Add this line
       };
     } catch (e) {
       debugPrint("Error fetching user data: $e");
@@ -204,6 +205,7 @@ class _StockBreakFilteredPageState extends State<StockBreakFilteredPage> {
   bool _isStoreManager = false;
   String? _selectedBreakageType;
   String? _adminPermission;
+  bool _isPending = false; 
   
   @override
   void initState() {
@@ -219,16 +221,20 @@ class _StockBreakFilteredPageState extends State<StockBreakFilteredPage> {
     if (userData.containsKey('error')) {
       setState(() {
         _isLoading = false;
-      }); return;
+      });
+      return;
     }
 
     setState(() {
       _storeNumber = userData['storeNumber']?.toString();
       _isStoreManager = userData['isStoreManager'] ?? false;
       _adminPermission = userData['adminPermission']?.toString();
+      _isPending = userData['isPending'] ?? false; // Add this line
       _isLoading = false;
       
-      if (_storeNumber != null) {_storeNumberController.text = _storeNumber!;}
+      if (_storeNumber != null) {
+        _storeNumberController.text = _storeNumber!;
+      }
     });
   }
   
@@ -252,6 +258,14 @@ class _StockBreakFilteredPageState extends State<StockBreakFilteredPage> {
         icon: Icons.warning_amber_rounded,
         title: "Store Access Required",
         message: "Your account is not associated with any store. Please contact admin.",
+      );
+    }
+
+    if (_isPending) {
+      return ErrorScreen(
+        icon: Icons.hourglass_top,
+        title: "Pending Approval",
+        message: "Your account is pending approval. Please wait for admin authorization.",
       );
     }
 
