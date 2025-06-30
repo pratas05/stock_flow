@@ -1,7 +1,3 @@
-// CONSIDERAÇÕES:
-// ALTERAR O BALANCE DA SANDBOX ACCOUNT PARA O PAGAMENTO SER FEITO NA INTEGRA, NO PAYPAL E NAO NO CARTÃO DE CRÉDITO
-// INICIAR SESSÃO COM A SANDBOX ACCOUNT PARA TESTAR O PAGAMENTO (guardar num local seguro ou ver no Dasboard do PayPal)
-
 import 'package:flutter/material.dart';
 import 'package:flutter_paypal_payment/flutter_paypal_payment.dart';
 import 'package:stockflow/reusable_widgets/secrets.dart';

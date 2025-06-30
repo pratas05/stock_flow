@@ -117,6 +117,19 @@ class ProductViewModel {
     return userDoc.data()?['storeCurrency'] ?? 'EUR'; // Valor padrão caso não exista
   }
 
+  Future<bool> isUserPending() async {
+    try {
+      final user = _auth.currentUser;
+      if (user == null) return false;
+
+      final userDoc = await _firestore.collection('users').doc(user.uid).get();
+      return userDoc.data()?['isPending'] ?? false;
+    } catch (e) {
+      debugPrint("Error checking pending status: $e");
+      return false;
+    }
+  }
+
 // PRODUCTS OPERATIONS (SAVE, UPDATE, DELETE AND GET) ------------------------------------------
   Future<DocumentReference> saveProduct(ProductModel product) async {
     try {
@@ -310,6 +323,7 @@ class _ProductDatabasePageState extends State<ProductDatabasePage> with TickerPr
   bool _isLoading = true;
   bool _hasAdminAccess = false;
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  bool _isPending = false;
 
 // CONFIGURAÇÃO INICIAL (initState(); dispose(); _loadUserData(); _cleanupExpiredDiscounts(); _getVatRate())----------------------
   @override
@@ -344,19 +358,23 @@ class _ProductDatabasePageState extends State<ProductDatabasePage> with TickerPr
       
       final isStoreManager = userDoc.data()?['isStoreManager'] ?? false;
       final adminPermission = userDoc.data()?['adminPermission'] as String?;
+      final isPending = userDoc.data()?['isPending'] ?? false;
       
       setState(() {
         _storeNumber = storeNumber;
         _isStoreManager = isStoreManager;
         _hasAdminAccess = isStoreManager && adminPermission == storeNumber;
+        _isPending = isPending; // Add this line
       });
       
-      if (_storeNumber != null && _storeNumber!.isNotEmpty) {
+      if (_storeNumber != null && _storeNumber!.isNotEmpty && !_isPending) {
         _vatMonitor.startMonitoring(_storeNumber!);
       }
     } catch (e) {
       debugPrint("Error loading user data: $e");
-    } finally {setState(() => _isLoading = false);}
+    } finally {
+      setState(() => _isLoading = false);
+    }
   }
 
   Future<void> _cleanupExpiredDiscounts() async {
@@ -1942,6 +1960,14 @@ class _ProductDatabasePageState extends State<ProductDatabasePage> with TickerPr
         icon: Icons.warning_amber_rounded,
         title: "Store Access Required",
         message: "Your account is not associated with any store. Please contact admin.",
+      );
+    }
+
+    if (_isPending) {
+      return ErrorScreen(
+        icon: Icons.hourglass_top,
+        title: "Pending Approval",
+        message: "Your account is pending approval. Please wait for admin authorization.",
       );
     }
 

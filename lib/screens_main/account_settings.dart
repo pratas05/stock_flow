@@ -26,6 +26,7 @@ class UserData {
   final String? storeCountry;
   final String? storeCurrency;
   final bool? isStoreManager;
+  final bool? isPending;
   final String? adminPermission;
 
   UserData({
@@ -43,6 +44,7 @@ class UserData {
     this.isStoreManager,
     this.storeCurrency,
     this.adminPermission,
+    this.isPending,
   });
 }
 
@@ -62,8 +64,9 @@ class AccountSettingsViewModel {
 
     final isStoreManager = snapshot.data()?['isStoreManager'] ?? false;
     final adminPermission = snapshot.data()?['adminPermission'] as String?;
+    final isPending = snapshot.data()?['isPending'] ?? false;
 
-    return isStoreManager && adminPermission == storeNumber;
+    return isStoreManager && adminPermission == storeNumber && !isPending;
   }
 
   Future<UserData?> loadUserData() async {
@@ -87,6 +90,7 @@ class AccountSettingsViewModel {
       storeCountry: snapshot.data()?['storeCountry'],
       isStoreManager: snapshot.data()?['isStoreManager'] ?? false,
       adminPermission: snapshot.data()?['adminPermission'],
+      isPending: snapshot.data()?['isPending'] ?? false,
     );
   }
 
@@ -117,7 +121,18 @@ class AccountSettingsViewModel {
       if (existingStoreQuery.docs.isNotEmpty) {
         throw Exception('A store already exists with the store number $storeNumber');
       }
-    } 
+    } else {
+      // For employees - verify store exists and get pending status
+      final storeQuery = await _firestore
+          .collection('users')
+          .where('storeNumber', isEqualTo: storeNumber)
+          .where('isStoreManager', isEqualTo: true)
+          .get();
+
+      if (storeQuery.docs.isEmpty) {
+        throw Exception('No store found with number $storeNumber');
+      }
+    }
 
     await _firestore.collection('users').doc(user.uid).set({
       'storeNumber': storeNumber,
@@ -133,6 +148,7 @@ class AccountSettingsViewModel {
       'userEmail': user.email,
       'userId': user.uid,
       'isStoreManager': isStoreManager,
+      'isPending': !isStoreManager, // Employees are pending by default
       'adminPermission': isStoreManager ? storeNumber : "",
     }, SetOptions(merge: true));
   }
@@ -141,8 +157,20 @@ class AccountSettingsViewModel {
     final user = _auth.currentUser;
     if (user == null) return;
 
+    // Verify the new store exists
+    final storeQuery = await _firestore
+        .collection('users')
+        .where('storeNumber', isEqualTo: newStoreNumber)
+        .where('isStoreManager', isEqualTo: true)
+        .get();
+
+    if (storeQuery.docs.isEmpty) {
+      throw Exception('No store found with number $newStoreNumber');
+    }
+
     await _firestore.collection('users').doc(user.uid).update({
       'storeNumber': newStoreNumber,
+      'isPending': true, // Set to pending when changing store
     });
   }
 
@@ -169,7 +197,11 @@ class AccountSettingsViewModel {
     final startOfDay = DateTime(date.year, date.month, date.day);
     final endOfDay = DateTime(date.year, date.month, date.day, 23, 59, 59);
 
-    final usersSnapshot = await userRef.where('storeNumber', isEqualTo: storeNumber).get();
+    final usersSnapshot = await userRef
+        .where('storeNumber', isEqualTo: storeNumber)
+        .where('isPending', isEqualTo: false) // Only non-pending users
+        .get();
+        
     final userIds = usersSnapshot.docs.map((doc) => doc.id).toList();
     if (userIds.isEmpty) return {};
 
@@ -204,7 +236,11 @@ class AccountSettingsViewModel {
     await _cleanOldActivities(storeNumber, limitDate);
 
     // Depois obtenha as atividades recentes
-    final usersSnapshot = await userRef.where('storeNumber', isEqualTo: storeNumber).get();
+    final usersSnapshot = await userRef
+        .where('storeNumber', isEqualTo: storeNumber)
+        .where('isPending', isEqualTo: false) // Only non-pending users
+        .get();
+        
     final userIds = usersSnapshot.docs.map((doc) => doc.id).toList();
     if (userIds.isEmpty) return {};
 
@@ -249,8 +285,12 @@ class AccountSettingsViewModel {
       final userRef = _firestore.collection('users');
       final activityRef = _firestore.collection('user_activity');
       
-      // Obter todos os usuários da loja
-      final usersSnapshot = await userRef.where('storeNumber', isEqualTo: storeNumber).get();
+      // Obter todos os usuários da loja (apenas não pendentes)
+      final usersSnapshot = await userRef
+          .where('storeNumber', isEqualTo: storeNumber)
+          .where('isPending', isEqualTo: false)
+          .get();
+          
       final userIds = usersSnapshot.docs.map((doc) => doc.id).toList();
       
       if (userIds.isEmpty) return;
@@ -296,6 +336,7 @@ class _AccountSettingsState extends State<AccountSettings> {
   DateTime? _selectedDay;
   bool get isSetupComplete => _storeNumber != null && _nickname != null;
   bool _isStoreManager = false;
+  bool _isPending = false;
   bool _hasActivityPermission = false;
   Timer? _cleanupTimer;
 
@@ -329,6 +370,7 @@ class _AccountSettingsState extends State<AccountSettings> {
         _nickname = userData.name;
         _storeNumber = userData.storeNumber;
         _isStoreManager = userData.isStoreManager ?? false;
+        _isPending = userData.isPending ?? false;
         _hasActivityPermission = hasPermission;
       });
     }
@@ -339,10 +381,25 @@ class _AccountSettingsState extends State<AccountSettings> {
         setState(() => _showSetupDialogOnLoad = false);
       });
     } else if (_storeNumber != null) {_loadDaysWithActivities();}
+    
+    // Show pending status message if needed
+    if (_isPending) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _showPendingStatusMessage();
+      });
+    }
+  }
+
+  void _showPendingStatusMessage() {
+    CustomSnackbar.show(
+      context: context,
+      message: "Your affiliation is pending approval by the store manager",
+      duration: const Duration(seconds: 5),
+    );
   }
 
   Future<void> _loadDaysWithActivities() async {
-    if (_storeNumber == null) return;
+    if (_storeNumber == null || _isPending) return;
     setState(() => _isLoading = true);
     _daysWithActivities = await _viewModel.getDaysWithActivities(_storeNumber!);
     setState(() => _isLoading = false);
@@ -383,6 +440,29 @@ class _AccountSettingsState extends State<AccountSettings> {
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
             const SizedBox(height: 50),
+            if (_isPending) ...[
+              Container(
+                padding: const EdgeInsets.all(12),
+                margin: const EdgeInsets.only(bottom: 20),
+                decoration: BoxDecoration(
+                  color: Colors.orange.withOpacity(0.2),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.orange),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.pending_actions, color: Colors.orange),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        "Your affiliation with store $_storeNumber is pending approval",
+                        style: const TextStyle(color: Colors.white),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
             ...AccountSettingsWidgets.buildButtonList(
               context: context,
               isSetupComplete: isSetupComplete,
@@ -394,7 +474,7 @@ class _AccountSettingsState extends State<AccountSettings> {
               onStoreNumberPressed: () => _showEditStoreNumberDialog(context),
               onPersonalInfoPressed: () => _showEditPersonalInfoDialog(context),
               onPasswordPressed: () => _showChangePasswordDialog(context),
-              onActivitiesPressed: isSetupComplete
+              onActivitiesPressed: isSetupComplete && !_isPending
                   ? () => _showCalendarDialog(context)
                   : () => _showSetupSnackBar(context),
               onTermsPressed: () => _showTermsAndConditions(context),
@@ -444,7 +524,10 @@ class _AccountSettingsState extends State<AccountSettings> {
   }
 
   Future<void> _showActivitiesForDate(DateTime date) async {
-    if (_isStoreManager == false || _storeNumber == null) {_showNoPermissionSnackBar(); return;}
+    if (_isStoreManager == false || _storeNumber == null || _isPending) {
+      _showNoPermissionSnackBar(); 
+      return;
+    }
 
     setState(() => _isLoading = true);
     try {
@@ -592,6 +675,13 @@ class _AccountSettingsState extends State<AccountSettings> {
                       ),
                       const SizedBox(height: 8),
                       if (isStoreManager) ...buildManagerFields(),
+                      if (!isStoreManager) ...[
+                        const SizedBox(height: 8),
+                        const Text(
+                          "Note: Your affiliation will need to be approved by the store manager",
+                          style: TextStyle(color: Colors.orange),
+                        ),
+                      ],
                     ],
                   ),
                 ),
@@ -611,7 +701,8 @@ class _AccountSettingsState extends State<AccountSettings> {
 
                     if (!isStoreManager) {
                       if (nickname.isEmpty || storeNumber.isEmpty) {
-                        showError("Please fill store number and your name"); return;
+                        showError("Please fill store number and your name"); 
+                        return;
                       }
                     } else {
                       final missing = controllers.entries
@@ -619,7 +710,8 @@ class _AccountSettingsState extends State<AccountSettings> {
                           .map((e) => e.key)
                           .toList();
                       if (missing.isNotEmpty || selectedCurrency == null) {
-                        showError("Please fill all fields first"); return;
+                        showError("Please fill all fields first"); 
+                        return;
                       }
                     }
 
@@ -638,13 +730,19 @@ class _AccountSettingsState extends State<AccountSettings> {
                         isStoreManager: isStoreManager,
                       );
 
-                      CustomSnackbar.show(context: context, message: "Setup completed successfully");
+                      CustomSnackbar.show(
+                        context: context, 
+                        message: isStoreManager 
+                          ? "Setup completed successfully" 
+                          : "Affiliation request sent. Waiting for manager approval",
+                      );
                       Navigator.pop(context);
 
                       setState(() {
                         _nickname = nickname;
                         _storeNumber = storeNumber;
                         _isStoreManager = isStoreManager;
+                        _isPending = !isStoreManager;
                       });
                     } catch (e) {
                       showError('Error to complete your setup: $e');
@@ -673,7 +771,8 @@ class _AccountSettingsState extends State<AccountSettings> {
         message: "You need to affiliate with a store first",
         backgroundColor: Colors.red,
       );
-      _showSetupDialog(context); return;
+      _showSetupDialog(context); 
+      return;
     }
 
     await showDialog(
@@ -703,13 +802,17 @@ class _AccountSettingsState extends State<AccountSettings> {
                     const Padding(
                       padding: EdgeInsets.only(top: 8.0),
                       child: Text(
-                        "You can change your store number",
+                        "You can change your store number. Your affiliation will need to be approved again.",
                         style: TextStyle(color: Colors.grey, fontSize: 12),
                       ),
                     ),
                 ],
               ),
-              actions: [TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text("Close")),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(), 
+                  child: const Text("Close")
+                ),
                 if (!_isStoreManager)
                   TextButton(
                     onPressed: isSaving
@@ -732,11 +835,12 @@ class _AccountSettingsState extends State<AccountSettings> {
                               await _viewModel.updateStoreNumber(newStoreNumber);
                               setState(() {
                                 _storeNumber = newStoreNumber;
+                                _isPending = true;
                               });
                               Navigator.of(context).pop();
                               CustomSnackbar.show(
                                 context: context,
-                                message: "Store number updated successfully",
+                                message: "Store number updated. Waiting for manager approval.",
                               );
                             } catch (e) {
                               setState(() => errorMessage = "Error: ${e.toString()}");
@@ -763,9 +867,11 @@ class _AccountSettingsState extends State<AccountSettings> {
     if (_storeNumber == null) {
       CustomSnackbar.show(
         context: context,
-        message: "Please complete your setup first.", backgroundColor: Colors.red,
+        message: "Please complete your setup first.", 
+        backgroundColor: Colors.red,
       );
-      _showSetupDialog(context); return;
+      _showSetupDialog(context); 
+      return;
     }
 
     final nicknameController = TextEditingController(text: _nickname);
@@ -795,7 +901,10 @@ class _AccountSettingsState extends State<AccountSettings> {
               ),
               actions: [
                 if (!isSaving)
-                TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text("Cancel")),
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(), 
+                  child: const Text("Cancel")
+                ),
                 TextButton(
                   onPressed: isSaving
                       ? null
@@ -818,6 +927,11 @@ class _AccountSettingsState extends State<AccountSettings> {
                             setState(() {
                               _nickname = nickname;
                             });
+                            Navigator.of(context).pop();
+                            CustomSnackbar.show(
+                              context: context,
+                              message: "Name updated successfully",
+                            );
                           } catch (e) {
                             setState(() => errorMessage = "Failed to update name: ${e.toString()}");
                           } finally {
@@ -842,8 +956,10 @@ class _AccountSettingsState extends State<AccountSettings> {
         content: const Text("Are you sure you want to reset your password?"),
         actions: [
           TextButton(onPressed: () => Navigator.pop(context, false), child: const Text("No")),
-          TextButton(onPressed: () => Navigator.pop(context, true), child: const Text('Yes, Send Email',
-            style: TextStyle(fontWeight: FontWeight.bold))),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true), 
+            child: const Text('Yes, Send Email', style: TextStyle(fontWeight: FontWeight.bold)),
+          ),
         ],
       ),
     );
@@ -872,7 +988,8 @@ class _AccountSettingsState extends State<AccountSettings> {
       } catch (e) {
         CustomSnackbar.show(
           context: context,
-          message: "Failed to send password reset email: ${e.toString()}", backgroundColor: Colors.red,
+          message: "Failed to send password reset email: ${e.toString()}", 
+          backgroundColor: Colors.red,
         );
       }
     }
@@ -887,7 +1004,12 @@ class _AccountSettingsState extends State<AccountSettings> {
           content: SingleChildScrollView(
             child: Column(children: const [Text(PrivacyPolicy.privacyPolicyText)]),
           ),
-          actions: <Widget>[TextButton(child: const Text("Close"), onPressed: () => Navigator.of(context).pop())],
+          actions: <Widget>[
+            TextButton(
+              child: const Text("Close"), 
+              onPressed: () => Navigator.of(context).pop()
+            ),
+          ],
         );
       },
     );
@@ -900,7 +1022,12 @@ class _AccountSettingsState extends State<AccountSettings> {
         return AlertDialog(
           title: Text(title),
           content: Text(content),
-          actions: [TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Close'))],
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(), 
+              child: const Text('Close')
+            ),
+          ],
         );
       },
     );
