@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:stockflow/reusable_widgets/colors_utils.dart';
-import 'package:stockflow/reusable_widgets/encryption_service.dart';
 import 'package:stockflow/reusable_widgets/error_screen.dart';
 
 class ChatPage extends StatefulWidget {
@@ -60,20 +59,12 @@ class _ChatPageState extends State<ChatPage> {
         return;
       }
 
-      // debugPrint('User data: $data');
-
       setState(() {
         storeNumber = data['storeNumber']?.toString();
         isPending = data['isPending'] as bool? ?? false;
         isLoading = false;
-        
-        // Verificação mais robusta do storeNumber
         hasStoreAccess = storeNumber != null && storeNumber!.isNotEmpty;
       });
-
-      // debugPrint('Store number: $storeNumber');
-      // debugPrint('Is pending: $isPending');
-      // debugPrint('Has store access: $hasStoreAccess');
 
       if (hasStoreAccess) {
         _cleanupOldMessages();
@@ -90,7 +81,7 @@ class _ChatPageState extends State<ChatPage> {
   Future<void> _cleanupOldMessages() async {
     try {
       if (storeNumber == null) return;
-      
+
       final oneDayAgo = DateTime.now().subtract(const Duration(days: 1));
       final querySnapshot = await FirebaseFirestore.instance
           .collection('messages')
@@ -101,25 +92,21 @@ class _ChatPageState extends State<ChatPage> {
       for (var doc in querySnapshot.docs) {
         await doc.reference.delete();
       }
-    } catch (e) {
-      debugPrint('Error cleaning up old messages: $e');
-    }
+    } catch (e) {debugPrint('Error cleaning up old messages: $e');}
   }
 
   Future<void> _sendMessage() async {
     try {
-      final plainText = _messageController.text.trim();
-      if (plainText.isEmpty || storeNumber == null) return;
-
-      final encryptedText = EncryptionHelper.encryptText(plainText);
+      final text = _messageController.text.trim();
+      if (text.isEmpty || storeNumber == null) return;
 
       await FirebaseFirestore.instance.collection('messages').add({
-        'text': encryptedText,
+        'text': text,
         'storeNumber': storeNumber,
         'createdAt': FieldValue.serverTimestamp(),
         'userId': FirebaseAuth.instance.currentUser?.uid,
       });
-      
+
       _messageController.clear();
     } catch (e) {
       debugPrint('Error sending message: $e');
@@ -133,7 +120,7 @@ class _ChatPageState extends State<ChatPage> {
 
   Stream<QuerySnapshot> _chatStream() {
     if (storeNumber == null) return const Stream.empty();
-    
+
     return FirebaseFirestore.instance
         .collection('messages')
         .where('storeNumber', isEqualTo: storeNumber)
@@ -150,7 +137,6 @@ class _ChatPageState extends State<ChatPage> {
       return _buildLoadingScreen();
     }
 
-    // Primeiro verifica se está pendente
     if (isPending) {
       return const ErrorScreen(
         icon: Icons.hourglass_top,
@@ -159,7 +145,6 @@ class _ChatPageState extends State<ChatPage> {
       );
     }
 
-    // Depois verifica se tem acesso à loja
     if (!hasStoreAccess) {
       return const ErrorScreen(
         icon: Icons.warning_amber_rounded,
@@ -171,7 +156,7 @@ class _ChatPageState extends State<ChatPage> {
     return Scaffold(
       extendBodyBehindAppBar: true,
       appBar: AppBar(
-        title: Text('Store Chat', style: const TextStyle(color: Colors.white)),
+        title: const Text('Store Chat', style: TextStyle(color: Colors.white)),
         backgroundColor: Colors.transparent,
         elevation: 0,
         iconTheme: const IconThemeData(color: Colors.white),
@@ -190,9 +175,7 @@ class _ChatPageState extends State<ChatPage> {
         ),
         child: Column(
           children: [
-            Expanded(
-              child: _buildChatMessages(),
-            ),
+            Expanded(child: _buildChatMessages()),
             _buildMessageInput(),
           ],
         ),
@@ -275,14 +258,7 @@ class _ChatPageState extends State<ChatPage> {
 
         final userData = userSnapshot.data?.data() as Map<String, dynamic>?;
         final userName = userData?['name'] ?? 'Unknown User';
-        final encryptedMessage = data['text'] ?? '';
-        
-        String decryptedMessage;
-        try {
-          decryptedMessage = EncryptionHelper.decryptText(encryptedMessage);
-        } catch (e) {
-          decryptedMessage = '[Error decrypting message]';
-        }
+        final plainMessage = data['text'] ?? '';
 
         return Align(
           alignment: isCurrentUser ? Alignment.centerRight : Alignment.centerLeft,
@@ -294,7 +270,7 @@ class _ChatPageState extends State<ChatPage> {
                 Text(
                   userName,
                   style: const TextStyle(
-                    fontSize: 12, 
+                    fontSize: 12,
                     fontWeight: FontWeight.bold,
                     color: Colors.white,
                   ),
@@ -314,7 +290,7 @@ class _ChatPageState extends State<ChatPage> {
                     ),
                   ),
                   child: Text(
-                    decryptedMessage,
+                    plainMessage,
                     style: const TextStyle(fontSize: 14, color: Colors.white),
                   ),
                 ),

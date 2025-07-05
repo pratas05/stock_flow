@@ -14,7 +14,7 @@ import 'package:stockflow/reusable_widgets/vat_manager.dart';
 
 // [1. MODEL]
 class Product {
-  final String id, name, model, storeNumber;
+  final String id, name, model, storeNumber, category;
   final double basePrice, vatPrice;
   final int stockCurrent, wareHouseStock, stockBreak;
 
@@ -28,6 +28,7 @@ class Product {
     required this.wareHouseStock,
     required this.stockBreak,
     required this.storeNumber,
+    required this.category,
   });
 
   factory Product.fromDocument(DocumentSnapshot doc) => Product(
@@ -40,6 +41,7 @@ class Product {
     stockBreak: (doc['stockBreak'] ?? 0).toInt(),
     storeNumber: doc['storeNumber'] ?? '',
     vatPrice: (doc['vatPrice'] ?? 0.0).toDouble(),
+    category: doc['category'] ?? 'Uncategorized',
   );
 }
 
@@ -66,7 +68,7 @@ class BuyTradeViewModel {
   void addToCart(Product product) {
   final existingItem = _cartItems.firstWhere(
     (item) => item.product.id == product.id,
-    orElse: () => CartItem(product: Product(id: '', name: '', model: '', basePrice: 0, vatPrice: 0, stockCurrent: 0, wareHouseStock: 0, stockBreak: 0, storeNumber: '')),
+    orElse: () => CartItem(product: Product(id: '', name: '', model: '', basePrice: 0, vatPrice: 0, stockCurrent: 0, wareHouseStock: 0, stockBreak: 0, storeNumber: '', category: '')),
   );
 
   if (existingItem.product.id.isNotEmpty) {
@@ -97,6 +99,67 @@ class BuyTradeViewModel {
 
   void clearCart() {
     _cartItems.clear();
+  }
+
+  Future<void> _recordSale(CartItem item) async {
+    try {
+      final now = Timestamp.now();
+      final expiryDate = Timestamp.fromDate(DateTime.now().add(const Duration(days: 32)));
+      
+      // Get the product document to access lastPurchasePrice
+      final productDoc = await _firestore.collection('products').doc(item.product.id).get();
+      final lastPurchasePrice = (productDoc['lastPurchasePrice'] ?? 0.0).toDouble();
+      
+      final saleRef = _firestore.collection('sales').doc(item.product.id);
+      
+      // Calculate financial metrics
+      final totalExpend = lastPurchasePrice * item.quantity;
+      final profit = (item.product.vatPrice - lastPurchasePrice) * item.quantity;
+      
+      // Get the current document to check if it exists
+      final saleDoc = await saleRef.get();
+      
+      if (saleDoc.exists) {
+        // Update existing sale record
+        await saleRef.update({
+          'sales': FieldValue.arrayUnion([{
+            'quantity': item.quantity,
+            'date': now,
+            'price': item.product.vatPrice,
+            'lastPurchasePrice': lastPurchasePrice,
+            'total': item.totalPrice,
+            'totalExpend': totalExpend,
+            'profit': profit,
+            'expireAt': expiryDate,
+          }]),
+          'lastUpdated': now,
+          'productName': item.product.name,
+          'productModel': item.product.model,
+          'category': item.product.category,
+        });
+      } else {
+        // Create new sale record
+        await saleRef.set({
+          'productId': item.product.id,
+          'productName': item.product.name,
+          'productModel': item.product.model,
+          'category': item.product.category,
+          'sales': [{
+            'quantity': item.quantity,
+            'date': now,
+            'price': item.product.vatPrice,
+            'lastPurchasePrice': lastPurchasePrice,
+            'total': item.totalPrice,
+            'totalExpend': totalExpend,
+            'profit': profit,
+            'expireAt': expiryDate,
+          }],
+          'firstSale': now,
+          'lastUpdated': now,
+        });
+      }
+      
+    } catch (e) {debugPrint("Error recording sale: $e"); rethrow;}
   }
 
   double get cartTotal => _cartItems.fold(
@@ -141,15 +204,24 @@ class BuyTradeViewModel {
 
   Future<void> buyProductsInCart() async {
     final batch = _firestore.batch();
+    // ignore: unused_local_variable
+    final now = Timestamp.now();
     
+    // Process each item in cart
     for (final item in _cartItems) {
       final productRef = _firestore.collection('products').doc(item.product.id);
-      batch.update(productRef, {
-        'stockCurrent': FieldValue.increment(-item.quantity),
-      });
+      
+      // Update product stock
+      batch.update(productRef, {'stockCurrent': FieldValue.increment(-item.quantity)});
+      
+      // Record sale (we'll do this separately since batch doesn't support get() operations)
+      await _recordSale(item);
     }
     
+    // Commit the batch update for stock changes
     await batch.commit();
+    
+    // Clear the cart only after everything succeeds
     clearCart();
   }
 
@@ -809,11 +881,20 @@ class _BuyTradePageState extends State<BuyTradePage> with SingleTickerProviderSt
                             context: context,
                             cartItems: _viewModel.cartItems,
                             cartTotal: _viewModel.cartTotal,
-                            onSuccess: () async {
-                              await _viewModel.buyProductsInCart();
-                              if (mounted) {
-                                _resetCartVisuals();
-                                _showSafeSnackbar("Purchase completed successfully!");
+                           onSuccess: () async {
+                              try {
+                                await _viewModel.buyProductsInCart();
+                                if (mounted) {
+                                  _resetCartVisuals();
+                                  _showSafeSnackbar("Purchase completed successfully!");
+                                }
+                              } catch (e) {
+                                if (mounted) {
+                                  _showSafeSnackbar(
+                                    "Purchase recorded but sales tracking failed: ${e.toString()}",
+                                    isError: true
+                                  );
+                                }
                               }
                             },
                           );

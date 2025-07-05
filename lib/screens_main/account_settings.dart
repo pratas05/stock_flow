@@ -791,7 +791,6 @@ class _AccountSettingsState extends State<AccountSettings> {
                     controller: storeNumberController,
                     enabled: !_isStoreManager, // Desabilita se for manager
                     keyboardType: TextInputType.number,
-                    inputFormatters: [FilteringTextInputFormatter.digitsOnly],
                     decoration: InputDecoration(
                       labelText: "Store Number",
                       errorText: errorMessage,

@@ -215,27 +215,31 @@ class _StockBreakFilteredPageState extends State<StockBreakFilteredPage> {
   }
 
   Future<void> _loadUserData() async {
+    if (!mounted) return;  // Add this check
+    
     setState(() => _isLoading = true);
     final userData = await _viewModel.getUserData();
     
+    if (!mounted) return;  // Add this check
+    
     if (userData.containsKey('error')) {
-      setState(() {
-        _isLoading = false;
-      });
+      if (mounted) {  // Add this check
+        setState(() {_isLoading = false;});
+      }
       return;
     }
 
-    setState(() {
-      _storeNumber = userData['storeNumber']?.toString();
-      _isStoreManager = userData['isStoreManager'] ?? false;
-      _adminPermission = userData['adminPermission']?.toString();
-      _isPending = userData['isPending'] ?? false; // Add this line
-      _isLoading = false;
-      
-      if (_storeNumber != null) {
-        _storeNumberController.text = _storeNumber!;
-      }
-    });
+    if (mounted) {  // Add this check
+      setState(() {
+        _storeNumber = userData['storeNumber']?.toString();
+        _isStoreManager = userData['isStoreManager'] ?? false;
+        _adminPermission = userData['adminPermission']?.toString();
+        _isPending = userData['isPending'] ?? false;
+        _isLoading = false;
+        
+        if (_storeNumber != null) {_storeNumberController.text = _storeNumber!;}
+      });
+    }
   }
   
   bool get _hasModificationPermission {

@@ -430,7 +430,7 @@ class _FinanceAndHumanResourcesPageState
           children: [
             _buildHRTab(_storeNumber!, FirebaseAuth.instance.currentUser?.uid),
             _buildFinanceTab(_storeNumber!),
-            const StoreDashboardPage()
+            StoreDashboardPage()
           ],
         ),
       ),
