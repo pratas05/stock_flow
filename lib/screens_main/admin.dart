@@ -1,13 +1,13 @@
 import 'dart:io';
 import 'dart:math';
 import 'package:flutter/material.dart';
-import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:stockflow/reusable_widgets/colors_utils.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'package:stockflow/reusable_widgets/analysis_processor.dart';
+import 'package:stockflow/reusable_widgets/secrets.dart';
 
 class StoreDashboardPage extends StatelessWidget {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
@@ -165,7 +165,7 @@ class StoreDashboardPage extends StatelessWidget {
       final productCategory = productData['category'] ?? 'Sem categoria';
       final productBrand = productData['brand'] ?? 'Sem marca';
 
-      final apiKey = dotenv.env['GROQ_API_KEY'];
+      final apiKey = groqApiKey;
       const url = "https://api.groq.com/openai/v1/chat/completions";
 
       final prompt = '''
