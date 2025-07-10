@@ -171,14 +171,14 @@ class StoreDashboardPage extends StatelessWidget {
       final prompt = '''
   Analise o desempenho comercial do produto "$productName" com estas métricas:
 
-  **Dados Básicos:**
+  Dados Básicos:
   - Categoria: $productCategory
   - Marca: $productBrand
   - Preço Atual: €${productPrice.toStringAsFixed(2)} ${productPrice == 0 ? '(preço obtido do vatPrice)' : ''}
   - Número de Localizações: $numberOfLocations (${numberOfLocations > 1 ? 'Disponível em múltiplas lojas' : 'Disponível em uma loja'})
   - Stock Máximo: $stockMax unidades
 
-  **Métricas de Vendas:**
+  Métricas de Vendas:
   - Total de Vendas (30 dias): $totalSales
   - Quantidade Vendida: $totalQuantity unidades
   - Receita Total: €${totalRevenue.toStringAsFixed(2)}
@@ -187,7 +187,7 @@ class StoreDashboardPage extends StatelessWidget {
   - Margem: ${totalRevenue > 0 ? ((totalRevenue - totalCost) / totalRevenue * 100).toStringAsFixed(2) : 0}%
   - Proporção Vendas/Stock Máximo: ${salesToStockRatio.toStringAsFixed(2)} (${(salesToStockRatio * 100).toStringAsFixed(2)}%)
 
-  **Análise Requerida:**
+  Análise Requerida:
   1. Avalie se o stock máximo atual ($stockMax) é adequado para a demanda (vendas de $totalQuantity unidades em 30 dias)
   2. Sugira ajustes no stock máximo se necessário ou se as vendas forem satisfatórias
   3. Avalie o impacto das $numberOfLocations localização(ões) nas vendas.

@@ -497,7 +497,7 @@ class _ProductDatabasePageState extends State<ProductDatabasePage> with TickerPr
         children: [
           Row(
             children: [
-              SizedBox(width: 35), // <-- Espaço à esquerda para centralizar o campo
+              SizedBox(width: 35),
               Expanded(
                 child: TextField(
                   decoration: InputDecoration(
@@ -517,7 +517,7 @@ class _ProductDatabasePageState extends State<ProductDatabasePage> with TickerPr
                 icon: Icon(Icons.add),
                 onPressed: () {
                   if (_locationInputController.text.isNotEmpty) {
-                    setState(() {
+                    setState(() { // Garanta que está usando setState aqui
                       _productLocations.add(_locationInputController.text.trim());
                       _locationInputController.clear();
                     });
@@ -529,14 +529,18 @@ class _ProductDatabasePageState extends State<ProductDatabasePage> with TickerPr
           ),
           const SizedBox(height: 8),
           Padding(
-            padding: const EdgeInsets.only(left: 100), // Alinha os chips com o campo
+            padding: const EdgeInsets.only(left: 100),
             child: Wrap(
               spacing: 8, runSpacing: 8,
               children: [
                 for (var location in _productLocations)
                   Chip(
                     label: Text(location),
-                    onDeleted: () {setState(() {_productLocations.remove(location);});},
+                    onDeleted: () {
+                      setState(() { // E aqui também
+                        _productLocations.remove(location);
+                      });
+                    },
                   ),
               ],
             ),
@@ -649,6 +653,7 @@ class _ProductDatabasePageState extends State<ProductDatabasePage> with TickerPr
 
       _showSnackBar("Product saved successfully!");
       _clearFields();
+      setState(() {});
     } catch (e) {
       print("Error in _saveProduct: ${e.toString()}");
       _showSnackBar("Error saving product: ${e.toString()}");
@@ -667,9 +672,11 @@ class _ProductDatabasePageState extends State<ProductDatabasePage> with TickerPr
     _stockMinController.clear();
     _lastPurchasePriceController.clear();
     _vatCodeController.clear();
-    _productLocations.clear();
+    _productLocations.clear(); 
+    _locationInputController.clear(); 
     _basePriceController.clear();
-  }
+    setState(() {}); 
+  } 
 
 // LISTAGEM DE PRODUTOS (_buildProductList(); _buildSearchBar(); _buildProductCard())-------------------------------------------
   Widget _buildProductList() {
@@ -1911,10 +1918,10 @@ class _ProductDatabasePageState extends State<ProductDatabasePage> with TickerPr
     final filters = {
       "Product Name": '[.,a-zA-Z0-9 ]',
       "Model": '[.,a-zA-Z0-9 ]',
-      "Description": '[.,a-zA-Z0-9 ]',
-      "Brand": '[a-zA-Z ]',
-      "Category": '[a-zA-Z ]',
-      "Subcategory": '[a-zA-Z ]',
+      "Description": r'[.,a-zA-Z0-9 áàâãéèêíïóôõöúçñÁÀÂÃÉÈÊÍÏÓÔÕÖÚÇÑ]',
+      "Brand": r'[a-zA-Z áàâãéèêíïóôõöúçñÁÀÂÃÉÈÊÍÏÓÔÕÖÚÇÑ]', // Modificado aqui
+      "Category": r'[a-zA-Z áàâãéèêíïóôõöúçñÁÀÂÃÉÈÊÍÏÓÔÕÖÚÇÑ]', // Modificado aqui
+      "Subcategory": r'[a-zA-Z áàâãéèêíïóôõöúçñÁÀÂÃÉÈÊÍÏÓÔÕÖÚÇÑ]', // Modificado aqui
       "WareHouse Stock": '[0-9]',
       "Max Stock": '[0-9]',
       "Order Stock": '[0-9]',
