@@ -189,7 +189,7 @@ class AccountSettingsWidgets {
                     todayTextStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
                     selectedTextStyle: const TextStyle(fontSize: 12, color: Colors.white, fontWeight: FontWeight.bold),
                     defaultDecoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: Colors.grey[300]!)),
-                    selectedDecoration: const BoxDecoration(color: Colors.blue, shape: BoxShape.circle),
+                    selectedDecoration: const BoxDecoration(color: Colors.purpleAccent, shape: BoxShape.circle),
                     todayDecoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(
                         color: Colors.purpleAccent, width: 1.5,
                       ),
